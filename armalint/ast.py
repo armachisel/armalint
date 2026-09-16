@@ -155,6 +155,16 @@ def _matching(tokens: list[Token], start: int, opener: str, closer: str) -> int 
 
 _EXPR_PRECEDENCE = {"=": 0, "||": 1, "&&": 2, "==": 3, "!=": 3, "<": 4, ">": 4, "<=": 4, ">=": 4, "+": 5, "-": 5, "*": 6, "/": 6, "%": 6}
 
+# Commands which have the unambiguous SQF prefix form ``command operand``.
+# Keeping this list local to the parser avoids coupling the syntax tree to the
+# type checker while still giving common built-ins a useful AST shape.
+_PREFIX_COMMANDS = frozenset({
+    "abs", "acos", "asin", "atan", "ceil", "count", "cos", "floor",
+    "isarray", "isclass", "isnil", "isnumber", "isnull", "isserver",
+    "parsenumber", "parsesimplearray", "round", "sin", "sqrt", "tan",
+    "toarray", "tolower", "toupper", "typename", "typeof", "tostring",
+})
+
 
 def parse_expression(tokens: list[Token]) -> Expression | None:
     """Parse a conservative expression tree for common SQF operators."""
@@ -174,6 +184,12 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
             pos += 1
             item = primary()
             return UnaryExpression(token, item.end if item else token, token, item) if item else None
+        if token.value.lower() in _PREFIX_COMMANDS and pos + 1 < len(visible):
+            command = token
+            pos += 1
+            operand = primary()
+            return (CommandExpression(command, operand.end, command, None, operand)
+                    if operand else None)
         if token.type in ("number", "string") or (token.type == "keyword" and token.value.lower() in ("true", "false", "nil")):
             pos += 1; return LiteralExpression(token, token, token)
         if token.type in ("ident", "local", "keyword"):
@@ -656,4 +672,7 @@ if __name__ == "__main__":
     assert isinstance(variable_call, Statement) and isinstance(variable_call.expression, CallExpression)
     negated = parse('not _condition;').statements[0]
     assert isinstance(negated, Statement) and isinstance(negated.expression, UnaryExpression)
+    unary_command = parse('count [1, 2];').statements[0]
+    assert isinstance(unary_command, Statement) and isinstance(unary_command.expression, CommandExpression)
+    assert unary_command.expression.left is None
     print("ast self-test passed")

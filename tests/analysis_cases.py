@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from armalint.argument_types import check_argument_types_text
-from armalint.ast import BinaryExpression, Block, CallExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
+from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
 from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
 from armalint.suppression import filter_suppressed
@@ -46,6 +46,12 @@ def _ast_expression_walker() -> bool:
 def _ast_chained_command_expression() -> bool:
     node = parse('player setPosASL [0, 0, 0];').statements[0]
     return bool(getattr(node, "expression", None) and len(list(walk_expression(node.expression))) >= 3)
+
+
+def _ast_unary_command_expression() -> bool:
+    node = parse('count [1, 2];').statements[0]
+    expr = getattr(node, "expression", None)
+    return isinstance(expr, CommandExpression) and expr.left is None and expr.command.value.lower() == "count"
 
 
 def _ast_malformed_expression_recovery() -> bool:
@@ -234,6 +240,7 @@ CASES = (
     ("AST nested spawn expression", _ast_nested_spawn_expression),
     ("AST expression walker", _ast_expression_walker),
     ("AST chained command expression", _ast_chained_command_expression),
+    ("AST unary command expression", _ast_unary_command_expression),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
