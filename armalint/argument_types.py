@@ -8,7 +8,7 @@ checker; unknown expressions and mission functions remain unchecked.
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .ast import Block, IfStatement, LoopStatement, Node, Statement, parse
+from .ast import ArrayExpression, BinaryExpression, Block, CallExpression, CodeExpression, CommandExpression, Expression, IfStatement, LiteralExpression, LoopStatement, NameExpression, Node, Statement, UnaryExpression, parse
 from .tokenizer import Token, tokenize
 
 _CODE = "W203"
@@ -117,6 +117,34 @@ _KNOWN_VARIABLE_TYPES = {
     "configfile": "Config", "missionconfigfile": "Config",
     "profileconfigfile": "Config", "campaignconfigfile": "Config",
 }
+
+
+def _infer_ast_expression(expr: Expression | None, variables: dict[str, str], function_return_types: dict[str, str] | None = None) -> str | None:
+    """Infer types from the expression AST for common composed expressions."""
+    if expr is None:
+        return None
+    if isinstance(expr, LiteralExpression):
+        if expr.value.type == "number": return "Number"
+        if expr.value.type == "string": return "String"
+        if expr.value.type == "keyword" and expr.value.value.lower() in ("true", "false", "nil"): return "Boolean"
+    if isinstance(expr, NameExpression):
+        return variables.get(expr.name.value.lower()) or _KNOWN_VARIABLE_TYPES.get(expr.name.value.lower())
+    if isinstance(expr, ArrayExpression):
+        return "Array"
+    if isinstance(expr, UnaryExpression):
+        return _infer_ast_expression(expr.operand, variables, function_return_types) if expr.operator.value == "+" else "Number"
+    if isinstance(expr, BinaryExpression):
+        if expr.operator.value == "=": return _infer_ast_expression(expr.right, variables, function_return_types)
+        if expr.operator.value in ("+", "-", "*", "/", "%"): return "Number"
+        if expr.operator.value in ("==", "!=", "<", ">", "<=", ">=", "&&", "||"): return "Boolean"
+    if isinstance(expr, CommandExpression):
+        name = expr.command.value.lower()
+        if name in _COMMAND_RETURN_TYPES: return _COMMAND_RETURN_TYPES[name]
+        if name in _RETURN_TYPES: return _RETURN_TYPES[name]
+    if isinstance(expr, CallExpression) and isinstance(expr.target, NameExpression) and function_return_types:
+        return function_return_types.get(expr.target.name.value.lower())
+    if isinstance(expr, CodeExpression): return "Code"
+    return None
 
 
 def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> str | None:
@@ -451,6 +479,13 @@ def check_argument_types(
             variables.pop(key, None)
     # Re-apply precise loop-element facts after ordinary assignment collection;
     # the loop body may otherwise look like a conflicting global assignment.
+    for node in parse(tokens).statements:
+        if isinstance(node, Statement) and isinstance(node.expression, BinaryExpression) and node.expression.operator.value == "=":
+            left = node.expression.left
+            if isinstance(left, NameExpression) and left.name.value.lower() not in variables:
+                inferred = _infer_ast_expression(node.expression.right, variables, function_return_types)
+                if inferred:
+                    variables[left.name.value.lower()] = inferred
     _collect_foreach_element_types(tokens, variables)
 
     for i, tok in enumerate(tokens):
