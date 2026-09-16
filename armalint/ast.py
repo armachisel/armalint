@@ -35,6 +35,7 @@ class IfStatement(Node):
     condition: list[Token] = field(default_factory=list)
     then_block: Block | None = None
     else_block: Block | "IfStatement" | None = None
+    negated: bool = False
 
 
 @dataclass
@@ -355,7 +356,9 @@ class Parser:
 
     def _if_node(self, pos: int, limit: int) -> tuple[Node | None, int]:
         condition_start = pos + 1
+        negated = False
         if condition_start < limit and self.tokens[condition_start].type == "operator" and self.tokens[condition_start].value == "!":
+            negated = True
             condition_start += 1
         if condition_start >= limit or self.tokens[condition_start].type != "lparen":
             return None, pos + 1
@@ -384,7 +387,7 @@ class Parser:
         if next_pos < limit and self.tokens[next_pos].type == "semicolon":
             end = self.tokens[next_pos]
             next_pos += 1
-        return IfStatement(start=self.tokens[pos], end=end, condition=self.tokens[condition_start + 1:close], then_block=then_node, else_block=else_node), next_pos
+        return IfStatement(start=self.tokens[pos], end=end, condition=self.tokens[condition_start + 1:close], then_block=then_node, else_block=else_node, negated=negated), next_pos
 
 
 def parse(source_or_tokens: str | list[Token]) -> Program:
@@ -394,6 +397,7 @@ def parse(source_or_tokens: str | list[Token]) -> Program:
 if __name__ == "__main__":
     tree = parse('if !(x > 0) then { hint "no"; } else { hint "yes"; };')
     assert isinstance(tree.statements[0], IfStatement)
+    assert tree.statements[0].negated is True
     assert tree.statements[0].then_block is not None
     assert len(tree.statements) == 1
     assert tree.statements[0].end.type == "semicolon"
