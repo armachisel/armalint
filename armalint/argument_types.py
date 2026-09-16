@@ -386,6 +386,7 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
     """Infer loop element types from AST headers and body spans."""
     def collect_body(node: Node, element_type: str) -> None:
         if isinstance(node, Statement):
+            variables["_x"] = element_type
             for i, token in enumerate(node.tokens[:-2]):
                 if (token.type == "local" and node.tokens[i + 1].type == "operator"
                         and node.tokens[i + 1].value == "="
@@ -472,6 +473,7 @@ def check_argument_types(
     """Check built-in unary arguments and configured function argument types."""
     diags: list[Diagnostic] = []
     variables: dict[str, str] = {}
+    element_types: dict[str, str] = {}
     _collect_param_types(tokens, variables)
     _collect_foreach_element_types(tokens, variables)
     # Collect simple literal assignments. If the same variable is assigned
@@ -483,10 +485,17 @@ def check_argument_types(
         key = tok.value.lower()
         if inferred is None:
             variables.pop(key, None)
-        elif key not in variables:
-            variables[key] = inferred
-        elif variables[key] != inferred:
-            variables.pop(key, None)
+        else:
+            if key not in variables:
+                variables[key] = inferred
+            elif variables[key] != inferred:
+                variables.pop(key, None)
+        for producer, element_type in _ARRAY_ELEMENT_TYPES.items():
+            if any(t.value.lower() == producer for t in tokens[i + 2:]):
+                element_types[key] = element_type
+        if i + 4 < len(tokens) and tokens[i + 2].type == "local" and tokens[i + 3].value.lower() == "select" and tokens[i + 4].type == "number":
+            if tokens[i + 2].value.lower() in element_types:
+                variables[key] = element_types[tokens[i + 2].value.lower()]
     # Re-apply precise loop-element facts after ordinary assignment collection;
     # the loop body may otherwise look like a conflicting global assignment.
     for node in parse(tokens).statements:
