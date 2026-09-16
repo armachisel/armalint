@@ -53,6 +53,13 @@ def _constant_condition(tokens: list[Token], negated: bool = False) -> bool | No
     if len(visible) == 2 and visible[0].type == "operator" and visible[0].value == "!":
         negated = not negated
         visible = visible[1:]
+    if len(visible) == 3 and visible[1].type == "operator" and visible[1].value in ("&&", "||"):
+        literals = {"true": True, "false": False, "nil": False}
+        if all(token.type == "keyword" and token.value.lower() in literals for token in (visible[0], visible[2])):
+            left = literals[visible[0].value.lower()]
+            right = literals[visible[2].value.lower()]
+            result = left and right if visible[1].value == "&&" else left or right
+            return not result if negated else result
     if len(visible) != 1 or visible[0].type != "keyword":
         return None
     value = visible[0].value.lower()
@@ -363,6 +370,7 @@ if __name__ == "__main__":
     assert len(check_undefined_text('if !(true) then { _a = 1; }; hint str _a;')) == 1
     assert len(check_undefined_text('if (!true) then { _a = 1; }; hint str _a;')) == 1
     assert check_undefined_text('if (1 == 1) then { _a = 1; }; hint str _a;') == []
+    assert len(check_undefined_text('if (true && false) then { _a = 1; }; hint str _a;')) == 1
 
     # Arma 3 event-handler magic variables are always defined.
     assert check_undefined_text("hint str _thisArgs; hint str _thisEventHandler;") == []

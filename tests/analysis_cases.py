@@ -71,6 +71,11 @@ def _undefined_constant_comparison() -> bool:
     return not any(item.code == "W101" and "_assigned" in item.message for item in diagnostics)
 
 
+def _undefined_boolean_condition() -> bool:
+    diagnostics = check_undefined_text('if (true && false) then { _assigned = 1; }; hint str _assigned;')
+    return len([item for item in diagnostics if item.code == "W101" and "_assigned" in item.message]) == 1
+
+
 def _unknown_keyword_not_constant() -> bool:
     diagnostics = check_control_flow_text('if (1 == then) then { hint "unknown"; };')
     return not any(item.code == "W206" for item in diagnostics)
@@ -172,6 +177,7 @@ CASES = (
     ("negated constant condition", _constant_negated_condition),
     ("literal comparison condition", _constant_comparison_condition),
     ("constant comparison branch", _undefined_constant_comparison),
+    ("constant boolean branch", _undefined_boolean_condition),
     ("unknown keyword is not constant", _unknown_keyword_not_constant),
     ("grouped literal comparison", _grouped_constant_comparison),
     ("literal boolean composition", _constant_boolean_composition),
