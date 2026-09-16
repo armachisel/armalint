@@ -54,6 +54,11 @@ def _types_near_roads() -> bool:
     return any(item.code == "W203" for item in diagnostics)
 
 
+def _types_engine_object_collection() -> bool:
+    diagnostics = check_argument_types_text("_value = 0; { _value = _x; } forEach allDead; count _value;")
+    return any(item.code == "W203" for item in diagnostics)
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -73,6 +78,7 @@ CASES = (
     ("try/catch definition merge", _undefined_try_branch),
     ("Config and HashMap type inference", _types_config_hashmap),
     ("object array loop type inference", _types_near_roads),
+    ("engine object collection inference", _types_engine_object_collection),
     ("multi-code suppression", _suppression_multi_code),
 )
 
