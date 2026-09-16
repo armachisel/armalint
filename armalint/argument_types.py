@@ -61,6 +61,7 @@ _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "allowdamage": (frozenset(("Boolean",)), "Boolean"),
     "setbehaviour": (frozenset(("String",)), "String"),
     "setunitpos": (frozenset(("String",)), "String"),
+    "in": (frozenset(("Array",)), "Array"),
 }
 
 _RETURN_TYPES = {
@@ -73,6 +74,7 @@ _RETURN_TYPES = {
     "sin": "Number", "cos": "Number", "tan": "Number",
     "asin": "Number", "acos": "Number", "atan": "Number",
     "selectrandom": None,
+    "in": "Boolean",
 }
 
 # Return types for common engine commands. These are used when a command is
@@ -95,6 +97,7 @@ _COMMAND_RETURN_TYPES = {
     "allman": "Array", "allstaticobjects": "Array", "allstaticweapons": "Array",
     "lineintersectswith": "Array",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
+    "in": "Boolean",
     "min": "Number", "max": "Number", "mod": "Number",
     "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
     "isclass": "Boolean", "isarray": "Boolean", "istext": "Boolean",
@@ -416,8 +419,13 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
             t.value.lower() for t in node.header
             if t.type in ("ident", "keyword") and t.value.lower() in _ARRAY_ELEMENT_TYPES
         ), None)
-        if producer and node.body:
-            collect_body(node.body, _ARRAY_ELEMENT_TYPES[producer])
+        element_type = _ARRAY_ELEMENT_TYPES.get(producer) if producer else None
+        if element_type is None and node.header and node.header[0].type == "lbracket":
+            values = [t for t in node.header[1:-1] if t.type in ("number", "string", "keyword")]
+            if values and all(t.type == "number" for t in values):
+                element_type = "Number"
+        if element_type and node.body:
+            collect_body(node.body, element_type)
         if node.body:
             collect_loop(node.body)
 
@@ -610,6 +618,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_aimDir = player weaponDirection "rifle"; _desiredDir = [0,0,0] vectorFromTo [1,0,0]; acos (_aimDir vectorCos _desiredDir);') == []
     bad_hash_key = check_argument_types_text('params ["_road"]; private _cache = createHashMap; _cached = _cache get _road; _info = getRoadInfo _road;')
     assert any(item.code == _CODE and "get expects" in item.message for item in bad_hash_key), bad_hash_key
+    assert check_argument_types_text('private _state = "run"; allowDamage (_state in ["run", "freeflight"]);') == []
+    assert check_argument_types_text('{ sin _x; cos _x; } forEach [18, 15];') == []
     assert check_argument_types_text('_v = [1,0,0] vectorAdd [0,1,0]; _d = _v vectorDotProduct [1,1,0]; acos (_d);') == []
     assert check_argument_types_text('_n = (1 max 0); sleep _n;') == []
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
