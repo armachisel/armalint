@@ -68,6 +68,23 @@ def _types_nearest_objects() -> bool:
     return any(item.code == "W203" for item in diagnostics)
 
 
+def _types_near_entities() -> bool:
+    diagnostics = check_argument_types_text('_value = 0; { _value = _x; } forEach (player nearEntities 50); count _value;')
+    return any(item.code == "W203" for item in diagnostics)
+
+
+def _types_common_object_collections() -> bool:
+    samples = (
+        "allAir", "allLand", "allMan", "allStaticObjects", "allStaticWeapons",
+        "crew player", "units group player",
+    )
+    for producer in samples:
+        source = f'_value = 0; {{ _value = _x; }} forEach {producer}; count _value;'
+        if not any(item.code == "W203" for item in check_argument_types_text(source)):
+            return False
+    return True
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -90,6 +107,8 @@ CASES = (
     ("engine object collection inference", _types_engine_object_collection),
     ("local array is not engine collection", _types_local_array_named_like_collection),
     ("nearest object collection inference", _types_nearest_objects),
+    ("near entity collection inference", _types_near_entities),
+    ("common object collection inference", _types_common_object_collections),
     ("multi-code suppression", _suppression_multi_code),
 )
 
