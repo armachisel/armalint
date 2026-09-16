@@ -91,6 +91,11 @@ def _constant_boolean_composition() -> bool:
     return len([item for item in diagnostics if item.code == "W206"]) == 1
 
 
+def _negated_grouped_condition() -> bool:
+    diagnostics = check_control_flow_text('if (!(true && false)) then { hint "constant"; };')
+    return len([item for item in diagnostics if item.code == "W206"]) == 1
+
+
 def _undefined_wait_until() -> bool:
     diagnostics = check_undefined_text("waitUntil { hint str _ready; };")
     return len(diagnostics) == 1 and "_ready" in diagnostics[0].message
@@ -181,6 +186,7 @@ CASES = (
     ("unknown keyword is not constant", _unknown_keyword_not_constant),
     ("grouped literal comparison", _grouped_constant_comparison),
     ("literal boolean composition", _constant_boolean_composition),
+    ("negated grouped condition", _negated_grouped_condition),
     ("undefined variable in waitUntil", _undefined_wait_until),
     ("try/catch definition merge", _undefined_try_branch),
     ("params lexical scope", _undefined_params_scope),
