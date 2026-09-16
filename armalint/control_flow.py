@@ -50,8 +50,9 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
             # Continue walking nested blocks so diagnostics remain useful.
         if isinstance(node, Statement):
             for embedded in getattr(node, "embedded", []):
-                if isinstance(embedded, LoopStatement) and embedded.body:
-                    _walk_block(embedded.body, diags)
+                embedded_body = getattr(embedded, "body", None)
+                if embedded_body:
+                    _walk_block(embedded_body, diags)
         elif isinstance(node, Block):
             _walk_block(node, diags)
         elif isinstance(node, IfStatement):
@@ -94,4 +95,6 @@ if __name__ == "__main__":
     assert check_control_flow_text('if (true) then { exitWith {}; }; hint "maybe";') == []
     embedded = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded
+    embedded_exit = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
+    assert len([d for d in embedded_exit if d.code == _CODE]) == 1
     print("control_flow self-test passed")
