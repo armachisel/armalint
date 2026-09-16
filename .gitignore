@@ -1,0 +1,15 @@
+# Local Python environments and packaging output
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Armalint-generated mission/mod data
+armalint_mods.json
+armalint_mods_types.json
+armalint_scan_cache.json
