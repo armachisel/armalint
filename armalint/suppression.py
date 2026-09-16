@@ -22,7 +22,8 @@ def filter_suppressed(
     ignored_rules: set[str] | frozenset[str] | None = None,
 ) -> list[Diagnostic]:
     """Filter configured and inline-suppressed diagnostics."""
-    disabled = {value.upper() for value in (ignored_rules or ())}
+    configured = {value.upper() for value in (ignored_rules or ())}
+    disabled = set(configured)
     next_line: dict[int, set[str]] = {}
     line_rules: dict[int, set[str]] = {}
     active_by_line: dict[int, set[str]] = {}
@@ -49,7 +50,7 @@ def filter_suppressed(
         code = diagnostic.code.upper()
         line_codes = next_line.get(diagnostic.line, set()) | line_rules.get(diagnostic.line, set())
         active = active_by_line.get(diagnostic.line, set())
-        if "*" in active or code in active or "*" in line_codes or code in line_codes:
+        if code in configured or "*" in configured or "*" in active or code in active or "*" in line_codes or code in line_codes:
             continue
         result.append(diagnostic)
     return result
@@ -68,5 +69,5 @@ if __name__ == "__main__":
         Diagnostic(Severity.WARNING, "W201", "other", 8, 1),
     ]
     assert [item.message for item in filter_suppressed(diagnostics, source)] == ["other"]
-    assert filter_suppressed(diagnostics, source, {"W201"})[-1].message == "other"
+    assert filter_suppressed(diagnostics, source, {"W201"}) == []
     print("suppression self-test passed")
