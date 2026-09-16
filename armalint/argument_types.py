@@ -22,7 +22,9 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "hintsilent": (frozenset(("String", "Array", "Structured Text")), "String or Structured Text"),
     "systemchat": (frozenset(("String",)), "String"),
     "parsenumber": (frozenset(("String",)), "String"),
+    "parsesimplearray": (frozenset(("String",)), "String"),
     "toarray": (frozenset(("String",)), "String"),
+    "tostring": (frozenset(("Array",)), "Array"),
     "tolower": (frozenset(("String",)), "String"),
     "toupper": (frozenset(("String",)), "String"),
     "abs": (frozenset(("Number",)), "Number"),
@@ -44,6 +46,7 @@ _RETURN_TYPES = {
     "str": "String", "format": "String", "parsetext": "Structured Text",
     "composetext": "Structured Text", "parsenumber": "Number",
     "toarray": "Array", "tolower": "String", "toupper": "String",
+    "typename": "String", "typeof": "String", "tostring": "String",
     "count": "Number", "find": "Number", "abs": "Number", "ceil": "Number",
     "floor": "Number", "round": "Number", "sqrt": "Number",
     "sin": "Number", "cos": "Number", "tan": "Number",
@@ -57,12 +60,15 @@ _RETURN_TYPES = {
 _COMMAND_RETURN_TYPES = {
     "getdir": "Number", "getnumber": "Number", "gettext": "String",
     "getpos": "Array", "getposasl": "Array", "getposatl": "Array",
+    "getposworld": "Array", "getposvisual": "Array",
     "velocity": "Array", "vectorup": "Array", "vectordir": "Array",
     "nearroads": "Array", "getroadinfo": "Array",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
     "min": "Number", "max": "Number", "mod": "Number",
     "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
-    "isclass": "Boolean", "isequaltype": "Boolean", "find": "Number",
+    "isclass": "Boolean", "isarray": "Boolean", "istext": "Boolean",
+    "isnumber": "Boolean", "isequaltype": "Boolean", "find": "Number",
+    "isserver": "Boolean", "isdedicated": "Boolean", "hasinterface": "Boolean",
 }
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
@@ -336,6 +342,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('toLower 42;')[0].code == _CODE
     assert check_argument_types_text('selectRandom "not an array";')[0].code == _CODE
     assert check_argument_types_text('abs -2; toUpper "ok";') == []
+    assert check_argument_types_text('parseSimpleArray "[1]"; toString [1, 2];') == []
+    assert check_argument_types_text('parseSimpleArray 42;')[0].code == _CODE
     assert check_argument_types_text('_d = [0, 0, []] call unknown_fnc; round _d;') == []
     assert check_argument_types_text('_d = getDir player; sin _d;') == []
     assert check_argument_types_text('_p = [0, 0, 0] getPosASL objNull; count _p;') == []
