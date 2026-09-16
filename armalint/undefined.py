@@ -204,7 +204,8 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     return diags, defined
 
 
-def _private_names(nodes: list[Node]) -> set[str]:
+def _local_names(nodes: list[Node]) -> set[str]:
+    """Collect locals introduced by private/params within a block."""
     names: set[str] = set()
     for node in nodes:
         if not isinstance(node, Statement):
@@ -218,6 +219,13 @@ def _private_names(nodes: list[Node]) -> set[str]:
                 names.add(tokens[j].value)
             elif j < len(tokens) and tokens[j].type == "lbracket":
                 names.update(name for name in _collect_string_names(tokens, j, True)[0])
+            continue
+        for i, token in enumerate(tokens):
+            if token.type != "keyword" or token.value.lower() != "params":
+                continue
+            j = _next_significant(tokens, i)
+            if j < len(tokens) and tokens[j].type == "lbracket":
+                names.update(_collect_params_names(tokens, j)[0])
     return names
 
 
@@ -240,7 +248,7 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
             child_diags, defined = _walk_node(child, defined, isinstance(child, Block))
             diags.extend(child_diags)
         if scoped:
-            defined.difference_update(_private_names(node.statements) - incoming)
+            defined.difference_update(_local_names(node.statements) - incoming)
         return diags, defined
     if isinstance(node, IfStatement):
         diags, _ = _scan_tokens(node.condition, incoming)
@@ -353,6 +361,8 @@ if __name__ == "__main__":
     assert check_undefined_text('if (true) then { private _inner; _inner = 1; hint str _inner; };') == []
     private_leak = check_undefined_text('if (true) then { private _inner; _inner = 1; }; hint str _inner;')
     assert len(private_leak) == 1 and "_inner" in private_leak[0].message, private_leak
+    params_leak = check_undefined_text('if (true) then { params ["_inner"]; hint str _inner; }; hint str _inner;')
+    assert len(params_leak) == 1 and "_inner" in params_leak[0].message, params_leak
     embedded_loop = check_undefined_text('_result = ({ hint str _missingInLoop; } forEach allUnits);')
     assert len(embedded_loop) == 1 and "_missingInLoop" in embedded_loop[0].message, embedded_loop
     spawned = check_undefined_text('spawn { hint str _missingInSpawn; };')
