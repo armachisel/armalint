@@ -211,7 +211,15 @@ def _private_names(nodes: list[Node]) -> set[str]:
 def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[list[Diagnostic], set[str]]:
     """Analyze structured nodes and conservatively merge branch definitions."""
     if isinstance(node, Statement):
-        return _scan_tokens(node.tokens, incoming)
+        diags, defined = _scan_tokens(node.tokens, incoming)
+        for embedded in node.embedded:
+            embedded_diags, _ = _walk_node(embedded, set(defined), True)
+            diags.extend(embedded_diags)
+        unique: dict[tuple[int, int, str, str], Diagnostic] = {}
+        for diagnostic in diags:
+            unique[(diagnostic.line, diagnostic.column, diagnostic.code, diagnostic.message)] = diagnostic
+        diags = list(unique.values())
+        return diags, defined
     if isinstance(node, Block):
         diags: list[Diagnostic] = []
         defined = set(incoming)
@@ -313,5 +321,7 @@ if __name__ == "__main__":
     assert check_undefined_text('if (true) then { private _inner; _inner = 1; hint str _inner; };') == []
     private_leak = check_undefined_text('if (true) then { private _inner; _inner = 1; }; hint str _inner;')
     assert len(private_leak) == 1 and "_inner" in private_leak[0].message, private_leak
+    embedded_loop = check_undefined_text('_result = ({ hint str _missingInLoop; } forEach allUnits);')
+    assert len(embedded_loop) == 1 and "_missingInLoop" in embedded_loop[0].message, embedded_loop
 
     print("undefined self-test passed")
