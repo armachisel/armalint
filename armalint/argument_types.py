@@ -23,13 +23,32 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "systemchat": (frozenset(("String",)), "String"),
     "parsenumber": (frozenset(("String",)), "String"),
     "toarray": (frozenset(("String",)), "String"),
+    "tolower": (frozenset(("String",)), "String"),
+    "toupper": (frozenset(("String",)), "String"),
+    "abs": (frozenset(("Number",)), "Number"),
+    "ceil": (frozenset(("Number",)), "Number"),
+    "floor": (frozenset(("Number",)), "Number"),
+    "round": (frozenset(("Number",)), "Number"),
+    "sqrt": (frozenset(("Number",)), "Number"),
+    "sin": (frozenset(("Number",)), "Number"),
+    "cos": (frozenset(("Number",)), "Number"),
+    "tan": (frozenset(("Number",)), "Number"),
+    "asin": (frozenset(("Number",)), "Number"),
+    "acos": (frozenset(("Number",)), "Number"),
+    "atan": (frozenset(("Number",)), "Number"),
+    "selectrandom": (frozenset(("Array",)), "Array"),
     "count": (frozenset(("String", "Array")), "String, Array, Config or HashMap"),
 }
 
 _RETURN_TYPES = {
     "str": "String", "format": "String", "parsetext": "Structured Text",
     "composetext": "Structured Text", "parsenumber": "Number",
-    "toarray": "Array", "count": "Number", "find": "Number",
+    "toarray": "Array", "tolower": "String", "toupper": "String",
+    "count": "Number", "find": "Number", "abs": "Number", "ceil": "Number",
+    "floor": "Number", "round": "Number", "sqrt": "Number",
+    "sin": "Number", "cos": "Number", "tan": "Number",
+    "asin": "Number", "acos": "Number", "atan": "Number",
+    "selectrandom": None,
 }
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
@@ -202,6 +221,10 @@ if __name__ == "__main__":
     assert check_argument_types_text('uiSleep "soon";')[0].code == _CODE
     assert check_argument_types_text('count "abc";') == []
     assert check_argument_types_text('count true;')[0].code == _CODE
+    assert check_argument_types_text('sqrt "x";')[0].code == _CODE
+    assert check_argument_types_text('toLower 42;')[0].code == _CODE
+    assert check_argument_types_text('selectRandom "not an array";')[0].code == _CODE
+    assert check_argument_types_text('abs -2; toUpper "ok";') == []
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(
