@@ -161,6 +161,11 @@ def _types_vector_angle() -> bool:
     return check_argument_types_text(source) == []
 
 
+def _types_vector_producers() -> bool:
+    source = '_v = [1,0,0] vectorAdd [0,1,0]; _d = _v vectorDotProduct [1,1,0]; acos (_d);'
+    return check_argument_types_text(source) == []
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -199,6 +204,7 @@ CASES = (
     ("near entity collection inference", _types_near_entities),
     ("common object collection inference", _types_common_object_collections),
     ("vector angle inference", _types_vector_angle),
+    ("vector producer inference", _types_vector_producers),
     ("multi-code suppression", _suppression_multi_code),
 )
 

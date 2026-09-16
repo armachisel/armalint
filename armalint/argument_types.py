@@ -82,6 +82,8 @@ _COMMAND_RETURN_TYPES = {
     "getposworld": "Array", "getposvisual": "Array",
     "velocity": "Array", "vectorup": "Array", "vectordir": "Array",
     "weapondirection": "Array", "vectorfromto": "Array", "vectorcos": "Number",
+    "vectoradd": "Array", "vectordiff": "Array", "vectormultiply": "Array",
+    "vectornormalized": "Array", "vectordotproduct": "Number",
     "nearroads": "Array", "getroadinfo": "Array",
     "arrayintersect": "Array", "pushback": "Number", "pushbackunique": "Number",
     "findif": "Number",
@@ -559,6 +561,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_ok = (1 > 0); sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_alt = round (((getPosATL player) select 2) max 0);') == []
     assert check_argument_types_text('_aimDir = player weaponDirection "rifle"; _desiredDir = [0,0,0] vectorFromTo [1,0,0]; acos (_aimDir vectorCos _desiredDir);') == []
+    assert check_argument_types_text('_v = [1,0,0] vectorAdd [0,1,0]; _d = _v vectorDotProduct [1,1,0]; acos (_d);') == []
     assert check_argument_types_text('_n = (1 max 0); sleep _n;') == []
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", 1]; sleep _delay;') == []
