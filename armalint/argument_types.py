@@ -429,8 +429,11 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
             if t.type in ("ident", "keyword") and t.value.lower() in _ARRAY_ELEMENT_TYPES
         ), None)
         element_type = _ARRAY_ELEMENT_TYPES.get(producer) if producer else None
-        if element_type is None and node.header and node.header[0].type == "lbracket":
-            values = [t for t in node.header[1:-1] if t.type in ("number", "string", "keyword")]
+        header = node.header
+        if len(header) >= 2 and header[0].type == "lparen" and header[-1].type == "rparen":
+            header = header[1:-1]
+        if element_type is None and header and header[0].type == "lbracket":
+            values = [t for t in header[1:-1] if t.type in ("number", "string", "keyword")]
             if values and all(t.type == "number" for t in values):
                 element_type = "Number"
         if node.body:
@@ -655,6 +658,7 @@ if __name__ == "__main__":
     assert any(item.code == _CODE and "get expects" in item.message for item in bad_hash_key), bad_hash_key
     assert check_argument_types_text('private _state = "run"; allowDamage (_state in ["run", "freeflight"]);') == []
     assert check_argument_types_text('{ sin _x; cos _x; } forEach [18, 15];') == []
+    assert check_argument_types_text('{ sin _x; cos _x; } forEach ([18, 15]);') == []
     assert check_argument_types_text('if (_value isEqualType []) then { count _value; };') == []
     assert check_argument_types_text('{ count _x; } forEach (fullCrew player);') == []
     assert check_argument_types_text('{ getRoadInfo _x; } forEach (roadsConnectedTo player);') == []
