@@ -85,6 +85,9 @@ class Parser:
     def _node(self, pos: int, limit: int) -> tuple[Node | None, int]:
         tok = self.tokens[pos]
         if tok.type == "lbrace":
+            foreach = self._foreach_node(pos, limit)
+            if foreach is not None:
+                return foreach
             close = _matching(self.tokens, pos, "lbrace", "rbrace")
             if close is None or close >= limit:
                 return None, pos + 1
@@ -110,6 +113,38 @@ class Parser:
                 return Statement(tok, self.tokens[end], self.tokens[pos:end], ";"), end + 1
             end += 1
         return Statement(tok, self.tokens[end - 1], self.tokens[pos:end], None), end
+
+    def _foreach_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
+        """Parse the valid ``{ ... } forEach expression`` form."""
+        body_close = _matching(self.tokens, pos, "lbrace", "rbrace")
+        if body_close is None or body_close + 1 >= limit:
+            return None
+        foreach = self.tokens[body_close + 1]
+        if foreach.type != "keyword" or foreach.value.lower() != "foreach":
+            return None
+        end = body_close + 2
+        depth = 0
+        while end < limit:
+            token_type = self.tokens[end].type
+            if token_type in ("lparen", "lbracket", "lbrace"):
+                depth += 1
+            elif token_type in ("rparen", "rbracket", "rbrace"):
+                depth = max(0, depth - 1)
+            elif token_type == "semicolon" and depth == 0:
+                break
+            end += 1
+        body_node, _ = self._node(pos, body_close + 1)
+        if not isinstance(body_node, Block):
+            return None
+        final_end = self.tokens[end] if end < limit and self.tokens[end].type == "semicolon" else body_node.end
+        next_pos = end + 1 if end < limit and self.tokens[end].type == "semicolon" else end
+        return LoopStatement(
+            start=self.tokens[pos],
+            end=final_end,
+            kind="foreach",
+            header=self.tokens[body_close + 2:end],
+            body=body_node,
+        ), next_pos
 
     def _loop_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
         """Parse ``while {...} do {...}`` and ``for ... do {...}`` forms."""
@@ -209,4 +244,6 @@ if __name__ == "__main__":
     assert tree.statements[0].end.type == "semicolon"
     loop = parse('while { _x > 0 } do { exitWith {}; };').statements[0]
     assert isinstance(loop, LoopStatement) and loop.body is not None
+    foreach = parse('{ hint str _x; } forEach _items;').statements[0]
+    assert isinstance(foreach, LoopStatement) and foreach.kind == "foreach"
     print("ast self-test passed")
