@@ -125,3 +125,20 @@ You can add project-specific type contracts as well:
 These declarations belong to the project because they describe the functions
 that project expects to call. They do not change the built-in database or any
 other mission's analysis.
+
+If a mission function has a known return type, declare it with
+`functionReturns`. This lets type inference continue through a call:
+
+```json
+{
+  "functionReturns": {
+    "ALT_fnc_distanceToRoute": "Number",
+    "ALT_fnc_getDensifiedRoute": "Array"
+  }
+}
+```
+
+For example, after the first declaration Armalint can understand
+`_distance = [] call ALT_fnc_distanceToRoute; round _distance;` as a numeric
+expression. Without the declaration it leaves the call's return type unknown
+and does not guess.

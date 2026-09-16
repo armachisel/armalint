@@ -23,6 +23,7 @@ _CONFIG_EXTENSIONS = (".hpp", ".ext", ".cpp", ".cfg")
 def lint_text(
     source: str, filename: str = "", index: SymbolIndex | None = None,
     function_signatures: dict[str, list[str | None]] | None = None,
+    function_return_types: dict[str, str] | None = None,
 ) -> list[Diagnostic]:
     """Run all analyzers over ``source`` and return their diagnostics.
 
@@ -42,7 +43,7 @@ def lint_text(
     # Type inference is file-local. Include expansion is useful for symbol and
     # undefined-variable analysis, but carrying inferred locals across included
     # files creates false positives when common names are reused.
-    diags.extend(check_argument_types(tokenize(source), function_signatures))
+    diags.extend(check_argument_types(tokenize(source), function_signatures, function_return_types))
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
@@ -56,6 +57,7 @@ def lint_text(
 def lint_file(
     path: str, index: SymbolIndex | None = None,
     function_signatures: dict[str, list[str | None]] | None = None,
+    function_return_types: dict[str, str] | None = None,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -77,7 +79,7 @@ def lint_file(
     diags: list[Diagnostic] = []
     diags.extend(check_syntax(tokens))
     diags.extend(check_control_flow(tree))
-    diags.extend(check_argument_types(tokenize(source), function_signatures))
+    diags.extend(check_argument_types(tokenize(source), function_signatures, function_return_types))
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))

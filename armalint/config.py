@@ -139,6 +139,19 @@ def extract_function_type_signatures(config: dict) -> dict[str, list[str]]:
     return result
 
 
+def extract_function_return_types(config: dict) -> dict[str, str]:
+    """Read optional ``functionReturns`` types from project config."""
+    raw = config.get("functionReturns")
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, str] = {}
+    for name, return_type in raw.items():
+        if (isinstance(name, str) and name.strip()
+                and isinstance(return_type, str) and return_type.strip()):
+            result[name.strip().lower()] = return_type.strip()
+    return result
+
+
 def extract_mods(config: dict) -> list[dict]:
     """Normalize ``config["mods"]`` into a list of ``{"name", "url", "workshop_id"}`` dicts.
 
@@ -200,6 +213,10 @@ if __name__ == "__main__":
         with open(plain, "w", encoding="utf-8") as fh:
             fh.write("{}")
         assert find_config(nested) == plain
+
+        assert extract_function_return_types({
+            "functionReturns": {"ALT_fnc_distanceToRoute": "Number", "bad": 3}
+        }) == {"alt_fnc_distancetoroute": "Number"}
 
         # find_mod_cache walks up looking for armalint_mods.json.
         assert find_mod_cache(nested) is None
