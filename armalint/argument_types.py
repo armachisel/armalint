@@ -11,6 +11,7 @@ from .diagnostic import Diagnostic, Severity
 from .tokenizer import Token, tokenize
 
 _CODE = "W203"
+_ARITY_CODE = "W204"
 _TRIVIA = frozenset(("comment", "preprocessor"))
 
 # (accepted inferred types, user-facing type label). This initial set covers
@@ -388,6 +389,17 @@ def check_argument_types(
         signature = signatures.get(tokens[j].value.lower())
         if signature is None:
             continue
+        if len(items) != len(signature):
+            relation = "expects" if len(items) < len(signature) else "received"
+            expected = len(signature)
+            actual = len(items)
+            message = (f"{tokens[j].value} expects {expected} argument(s), got {actual}"
+                       if relation == "expects" else
+                       f"{tokens[j].value} received {actual} argument(s), signature has {expected}")
+            diags.append(Diagnostic(
+                Severity.WARNING, _ARITY_CODE, message,
+                tokens[j].line, tokens[j].column,
+            ))
         for arg_index, expected in enumerate(signature[:len(items)]):
             if expected is None:
                 continue
@@ -454,5 +466,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_value = 1; _value = "x"; sleep _value;') == []
     assert check_argument_types(tokenize('[42, "ok"] call acme_fnc_route;'), {"acme_fnc_route": ["Object", "String"]})[0].message == "acme_fnc_route argument 1 expects Object, got Number"
     assert check_argument_types(tokenize('[player, "ok"] call acme_fnc_route;'), {"ACME_fnc_route": ["Object", "String"]}) == []
+    assert check_argument_types(tokenize('[player] call acme_fnc_route;'), {"acme_fnc_route": ["Object", "String"]})[0].code == _ARITY_CODE
+    assert check_argument_types(tokenize('[player, "ok", 1] call acme_fnc_route;'), {"acme_fnc_route": ["Object", "String"]})[0].code == _ARITY_CODE
     assert check_argument_types(tokenize('[true] spawn acme_fnc_route;'), {"acme_fnc_route": ["Number"]})[0].code == _CODE
     print("argument_types self-test passed")
