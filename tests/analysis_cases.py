@@ -54,6 +54,11 @@ def _ast_unary_command_expression() -> bool:
     return isinstance(expr, CommandExpression) and expr.left is None and expr.command.value.lower() == "count"
 
 
+def _ast_select_element_type() -> bool:
+    diagnostics = check_argument_types_text('_value = [1, "x"] select 0; allowDamage _value;')
+    return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -241,6 +246,7 @@ CASES = (
     ("AST expression walker", _ast_expression_walker),
     ("AST chained command expression", _ast_chained_command_expression),
     ("AST unary command expression", _ast_unary_command_expression),
+    ("AST select element type", _ast_select_element_type),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
