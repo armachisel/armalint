@@ -505,9 +505,11 @@ def _seed_ast_assignments(nodes: list[Node], variables: dict[str, str], function
         for child_name in ("body", "then_block", "else_block", "try_block", "catch_block"):
             child = getattr(node, child_name, None)
             if isinstance(child, Block):
-                _seed_ast_assignments(child.statements, variables, function_return_types)
+                nested = dict(variables)
+                _seed_ast_assignments(child.statements, nested, function_return_types)
             elif isinstance(child, Node):
-                _seed_ast_assignments([child], variables, function_return_types)
+                nested = dict(variables)
+                _seed_ast_assignments([child], nested, function_return_types)
 
 
 def check_argument_types(
