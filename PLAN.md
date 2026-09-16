@@ -6,11 +6,11 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 - [x] Add an AST/control-flow foundation while retaining the current token passes.
 - [x] Add conservative unreachable-code diagnostics after unconditional terminators.
-- [ ] Parse expressions, statements, blocks, `if`/`else`, loops, `switch`, and `exitWith` with source spans.
-- [ ] Make undefined-variable analysis scope-aware and merge definitions across branches.
-- [ ] Add unreachable-code diagnostics after `exitWith`, `throw`, `breakOut`, and `continue`.
+- [x] Parse expressions, statements, blocks, `if`/`else`, loops, `switch`, and `exitWith` with source spans.
+- [x] Make undefined-variable analysis scope-aware and merge definitions across branches.
+- [x] Add unreachable-code diagnostics after `exitWith`, `throw`, `breakOut`, and `continue`.
 - [ ] Replace heuristic statement-boundary checks with AST statement termination rules.
-- [ ] Model `private`, `params`, loop variables, and nested code blocks as lexical scopes.
+- [x] Model `private`, `params`, loop variables, and nested code blocks as lexical scopes.
 
 ## Priority 2: semantic and type analysis
 
