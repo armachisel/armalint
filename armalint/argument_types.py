@@ -41,7 +41,7 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "acos": (frozenset(("Number",)), "Number"),
     "atan": (frozenset(("Number",)), "Number"),
     "selectrandom": (frozenset(("Array",)), "Array"),
-    "count": (frozenset(("String", "Array")), "String, Array, Config or HashMap"),
+    "count": (frozenset(("String", "Array", "Config", "HashMap")), "String, Array, Config or HashMap"),
 }
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
@@ -90,6 +90,7 @@ _COMMAND_RETURN_TYPES = {
     "isclass": "Boolean", "isarray": "Boolean", "istext": "Boolean",
     "isnumber": "Boolean", "isequaltype": "Boolean", "find": "Number",
     "isserver": "Boolean", "isdedicated": "Boolean", "hasinterface": "Boolean",
+    "createhashmap": "HashMap", "createhashmapfrom": "HashMap",
 }
 _ARRAY_ELEMENT_TYPES = {
     "nearroads": "Object", "allplayers": "Object", "allunits": "Object",
@@ -98,6 +99,8 @@ _ARRAY_ELEMENT_TYPES = {
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
+    "configfile": "Config", "missionconfigfile": "Config",
+    "profileconfigfile": "Config", "campaignconfigfile": "Config",
 }
 
 
@@ -523,6 +526,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('uiSleep "soon";')[0].code == _CODE
     assert check_argument_types_text('count "abc";') == []
     assert check_argument_types_text('count true;')[0].code == _CODE
+    assert check_argument_types_text('count configFile; count createHashMap;') == []
     assert check_argument_types_text('sqrt "x";')[0].code == _CODE
     assert check_argument_types_text('toLower 42;')[0].code == _CODE
     assert check_argument_types_text('selectRandom "not an array";')[0].code == _CODE
