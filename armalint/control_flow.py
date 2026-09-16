@@ -7,7 +7,7 @@ from .diagnostic import Diagnostic, Severity
 
 _CODE = "W104"
 _CONSTANT_CONDITION = "W206"
-_TERMINATORS = frozenset(("exitwith", "throw", "breakout", "continue"))
+_TERMINATORS = frozenset(("exitwith", "throw", "breakout", "breakto", "continue"))
 
 
 def _statement_terminates(statement: Statement) -> bool:
@@ -124,4 +124,9 @@ if __name__ == "__main__":
     assert len([d for d in spawned if d.code == _CODE]) == 1, spawned
     caught = check_control_flow_text('try { exitWith {}; } catch { throw 1; }; hint "never";')
     assert len([d for d in caught if d.code == _CODE]) == 1, caught
+    for terminator in ("breakOut", "breakTo", "throw"):
+        diagnostics = check_control_flow_text(f'{terminator} "scope"; hint "never";')
+        assert len([d for d in diagnostics if d.code == _CODE]) == 1, (terminator, diagnostics)
+    continued = check_control_flow_text('continue; hint "never";')
+    assert len([d for d in continued if d.code == _CODE]) == 1, continued
     print("control_flow self-test passed")
