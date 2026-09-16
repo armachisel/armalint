@@ -141,6 +141,22 @@ def _infer_expression(
     function_return_types: dict[str, str] | None = None,
 ) -> str | None:
     """Infer a few common composed expressions used in assignments."""
+    if start < len(tokens) and tokens[start].type == "lparen":
+        depth = 0
+        for close in range(start, len(tokens)):
+            if tokens[close].type == "lparen":
+                depth += 1
+            elif tokens[close].type == "rparen":
+                depth -= 1
+                if depth == 0:
+                    inner = _infer_expression(tokens[start + 1:close], 0, variables)
+                    j = close + 1
+                    while j < len(tokens) and tokens[j].type in _TRIVIA:
+                        j += 1
+                    if (inner == "Array" and j < len(tokens)
+                            and tokens[j].value.lower() == "select"):
+                        return "Number" if j + 1 < len(tokens) and tokens[j + 1].type == "number" else None
+                    return inner
     if start < len(tokens) and tokens[start].type == "operator" and tokens[start].value in ("+", "-"):
         # Unary + preserves the operand type (commonly used to copy arrays);
         # unary - is numeric.
@@ -161,6 +177,15 @@ def _infer_expression(
     operand_end = start + 1
     while operand_end < len(tokens) and tokens[operand_end].type in _TRIVIA:
         operand_end += 1
+    if start < len(tokens) and tokens[start].value.lower() in {
+        "getpos", "getposasl", "getposatl", "getposworld", "getposvisual",
+    }:
+        select = operand_end + 1
+        while select < len(tokens) and tokens[select].type in _TRIVIA:
+            select += 1
+        if (select < len(tokens) and tokens[select].value.lower() == "select"
+                and select + 1 < len(tokens) and tokens[select + 1].type == "number"):
+            return "Number"
     if operand_end < len(tokens) and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES:
         return _COMMAND_RETURN_TYPES[tokens[operand_end].value.lower()]
     if operand_end < len(tokens) and tokens[operand_end].value.lower() == "getvariable":
@@ -510,6 +535,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
     assert check_argument_types_text('_ok = 1 > 0; sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_ok = (1 > 0); sleep _ok;')[0].code == _CODE
+    assert check_argument_types_text('_alt = round (((getPosATL player) select 2) max 0);') == []
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", 1]; sleep _delay;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", "soon"]; sleep _delay;')[0].code == _CODE
