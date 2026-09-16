@@ -44,6 +44,14 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "arrayintersect": (frozenset(("Array",)), "Array"),
+    "setpos": (frozenset(("Array",)), "Array"),
+    "setposasl": (frozenset(("Array",)), "Array"),
+    "setposatl": (frozenset(("Array",)), "Array"),
+    "setvelocity": (frozenset(("Array",)), "Array"),
+    "setvectordir": (frozenset(("Array",)), "Array"),
+    "setvectorup": (frozenset(("Array",)), "Array"),
+    "setdir": (frozenset(("Number",)), "Number"),
+    "setdamage": (frozenset(("Number",)), "Number"),
 }
 
 _RETURN_TYPES = {
@@ -376,6 +384,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
+    assert check_argument_types_text('player setPos [0, 0, 0]; player setDir 90;') == []
+    assert check_argument_types_text('player setPos 42;')[0].code == _CODE
     assert check_argument_types(
         tokenize('_d = [] call ALT_fnc_distanceToRoute; round _d;'),
         function_return_types={"ALT_fnc_distanceToRoute": "Number"},
