@@ -42,9 +42,11 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "atan": (frozenset(("Number",)), "Number"),
     "selectrandom": (frozenset(("Array",)), "Array"),
     "count": (frozenset(("String", "Array", "Config", "HashMap")), "String, Array, Config or HashMap"),
+    "getroadinfo": (frozenset(("Object",)), "Object"),
 }
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
+    "get": (frozenset(("Number", "Boolean", "Array", "String", "Namespace", "Code", "Side", "Config")), "Number, Bool, Array, String, Namespace, Code, Side or Config entry"),
     "arrayintersect": (frozenset(("Array",)), "Array"),
     "setpos": (frozenset(("Array",)), "Array"),
     "setposasl": (frozenset(("Array",)), "Array"),
@@ -487,6 +489,16 @@ def check_argument_types(
                 if inferred:
                     variables[left.name.value.lower()] = inferred
     _collect_foreach_element_types(tokens, variables)
+    # Infer local parameter types from unambiguous unary command uses before
+    # checking binary commands such as HashMap get.
+    for i, tok in enumerate(tokens):
+        rule = _SIGNATURES.get(tok.value.lower()) if tok.type == "ident" else None
+        if rule is None:
+            continue
+        j = i + 1
+        while j < len(tokens) and tokens[j].type in _TRIVIA: j += 1
+        if j < len(tokens) and tokens[j].type == "local" and len(rule[0]) == 1:
+            variables.setdefault(tokens[j].value.lower(), next(iter(rule[0])))
 
     for i, tok in enumerate(tokens):
         if tok.type != "ident":
@@ -596,6 +608,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_ok = (1 > 0); sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_alt = round (((getPosATL player) select 2) max 0);') == []
     assert check_argument_types_text('_aimDir = player weaponDirection "rifle"; _desiredDir = [0,0,0] vectorFromTo [1,0,0]; acos (_aimDir vectorCos _desiredDir);') == []
+    bad_hash_key = check_argument_types_text('params ["_road"]; private _cache = createHashMap; _cached = _cache get _road; _info = getRoadInfo _road;')
+    assert any(item.code == _CODE and "get expects" in item.message for item in bad_hash_key), bad_hash_key
     assert check_argument_types_text('_v = [1,0,0] vectorAdd [0,1,0]; _d = _v vectorDotProduct [1,1,0]; acos (_d);') == []
     assert check_argument_types_text('_n = (1 max 0); sleep _n;') == []
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
