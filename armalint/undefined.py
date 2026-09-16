@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
+from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Statement, SwitchStatement, parse
 from .tokenizer import Token, tokenize
 
 _CODE = "W101"
@@ -110,13 +111,13 @@ def _collect_params_names(
     return names, k
 
 
-def check_undefined(tokens: list[Token]) -> list[Diagnostic]:
+def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[list[Diagnostic], set[str]]:
     """Return W101 warnings for script-local variables used before definition.
 
-    A single flat ``defined`` set is used for the whole file (no nested block
-    scoping) as a deliberate approximation.
+    ``defined`` is supplied by the structured walker so each branch can be
+    analyzed independently before definitions are merged at control-flow joins.
     """
-    defined: set[str] = set()
+    defined = set() if defined is None else set(defined)
     diags: list[Diagnostic] = []
     n = len(tokens)
     i = 0
@@ -187,6 +188,64 @@ def check_undefined(tokens: list[Token]) -> list[Diagnostic]:
 
         i += 1
 
+    return diags, defined
+
+
+def _walk_node(node: Node, incoming: set[str]) -> tuple[list[Diagnostic], set[str]]:
+    """Analyze structured nodes and conservatively merge branch definitions."""
+    if isinstance(node, Statement):
+        return _scan_tokens(node.tokens, incoming)
+    if isinstance(node, Block):
+        diags: list[Diagnostic] = []
+        defined = set(incoming)
+        for child in node.statements:
+            child_diags, defined = _walk_node(child, defined)
+            diags.extend(child_diags)
+        return diags, defined
+    if isinstance(node, IfStatement):
+        diags, _ = _scan_tokens(node.condition, incoming)
+        then_diags, then_defined = _walk_node(node.then_block, set(incoming)) if node.then_block else ([], set(incoming))
+        diags.extend(then_diags)
+        if node.else_block is None:
+            return diags, set(incoming)
+        else_diags, else_defined = _walk_node(node.else_block, set(incoming))
+        diags.extend(else_diags)
+        return diags, then_defined & else_defined
+    if isinstance(node, LoopStatement):
+        loop_in = set(incoming)
+        if node.kind == "for":
+            for token in node.header:
+                if token.type == "string" and token.value.startswith("_"):
+                    loop_in.add(token.value)
+                    break
+        diags, _ = _scan_tokens(node.header, loop_in)
+        if node.body:
+            body_diags, _ = _walk_node(node.body, loop_in)
+            diags.extend(body_diags)
+        return diags, set(incoming)
+    if isinstance(node, ExitWithStatement):
+        return _walk_node(node.body, set(incoming)) if node.body else ([], set(incoming))
+    if isinstance(node, SwitchStatement):
+        diags, _ = _scan_tokens(node.expression, incoming)
+        branches: list[set[str]] = [set(incoming)]
+        for case in node.cases:
+            if case.body:
+                case_diags, case_defined = _walk_node(case.body, set(incoming))
+                diags.extend(case_diags)
+                branches.append(case_defined)
+        merged = set.intersection(*branches) if branches else set(incoming)
+        return diags, merged
+    return [], set(incoming)
+
+
+def check_undefined(tokens: list[Token]) -> list[Diagnostic]:
+    """Return W101 warnings with conservative branch-aware definition merging."""
+    tree = parse(tokens)
+    diags: list[Diagnostic] = []
+    defined: set[str] = set()
+    for node in tree.statements:
+        node_diags, defined = _walk_node(node, defined)
+        diags.extend(node_diags)
     return diags
 
 
@@ -227,5 +286,10 @@ if __name__ == "__main__":
     diags = check_undefined_text('params ["_a", ["_b", 0]]; hint str _missing;')
     assert len(diags) == 1, diags
     assert diags[0].message == "possible undefined variable: _missing", diags
+
+    # Definitions are merged only when both branches provide them.
+    assert check_undefined_text('if (true) then { _value = 1; } else { _value = 2; }; hint str _value;') == []
+    branch_only = check_undefined_text('if (true) then { _value = 1; }; hint str _value;')
+    assert len(branch_only) == 1 and "_value" in branch_only[0].message, branch_only
 
     print("undefined self-test passed")
