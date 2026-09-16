@@ -19,6 +19,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from armalint.linter import lint_text
+from analysis_cases import CASES as ANALYSIS_CASES
 
 TESTS_DIR = PROJECT_ROOT / "tests"
 FIXTURES_DIR = TESTS_DIR / "fixtures"
@@ -84,6 +85,20 @@ def main() -> int:
 
     print(f"project root : {PROJECT_ROOT}")
     print("--- module self-tests ---")
+
+    print("--- counted parser/analysis cases ---")
+    for name, case in ANALYSIS_CASES:
+        total += 1
+        try:
+            ok = bool(case())
+        except Exception as exc:
+            ok = False
+            failures.append(f"analysis case {name} raised {exc!r}")
+        print(f"[{'PASS' if ok else 'FAIL'}] {name}")
+        if ok:
+            passed += 1
+        elif not any(f"analysis case {name}" in item for item in failures):
+            failures.append(f"analysis case failed: {name}")
 
     total += 1
     type_diags = lint_text(

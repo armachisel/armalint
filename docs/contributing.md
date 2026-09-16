@@ -11,9 +11,12 @@ uv build
 ```
 
 The complete test runner includes the module self-tests and the command-line
-fixtures. If you change a diagnostic, add a small fixture or a focused module
-test that demonstrates the case. Small examples are easier to reason about
-when a later change breaks one.
+fixtures. It also runs the counted parser/analysis case matrix in
+`tests/analysis_cases.py`; add a named case there when you add a parser,
+control-flow, scope, type, or suppression behavior. If you change a
+diagnostic, add a small fixture or a focused module test that demonstrates the
+case. Small examples are easier to reason about when a later change breaks
+one.
 
 To work on the documentation locally:
 
