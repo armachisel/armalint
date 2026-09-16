@@ -137,6 +137,7 @@ def _infer_ast_expression(expr: Expression | None, variables: dict[str, str], fu
     if isinstance(expr, ArrayExpression):
         return "Array"
     if isinstance(expr, UnaryExpression):
+        if expr.operator.value in ("!", "not"): return "Boolean"
         return _infer_ast_expression(expr.operand, variables, function_return_types) if expr.operator.value == "+" else "Number"
     if isinstance(expr, BinaryExpression):
         if expr.operator.value == "=": return _infer_ast_expression(expr.right, variables, function_return_types)
@@ -688,6 +689,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('{ sin _x; cos _x; } forEach [18, 15];') == []
     assert check_argument_types_text('{ sin _x; cos _x; } forEach ([18, 15]);') == []
     assert check_argument_types_text('if (_value isEqualType []) then { count _value; };') == []
+    assert check_argument_types_text('_flag = not true; allowDamage _flag;') == []
     assert check_argument_types_text('{ count _x; } forEach (fullCrew player);') == []
     assert check_argument_types_text('{ getRoadInfo _x; } forEach (roadsConnectedTo player);') == []
     assert check_argument_types_text('_v = [1,0,0] vectorAdd [0,1,0]; _d = _v vectorDotProduct [1,1,0]; acos (_d);') == []
