@@ -191,7 +191,24 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     return diags, defined
 
 
-def _walk_node(node: Node, incoming: set[str]) -> tuple[list[Diagnostic], set[str]]:
+def _private_names(nodes: list[Node]) -> set[str]:
+    names: set[str] = set()
+    for node in nodes:
+        if not isinstance(node, Statement):
+            continue
+        tokens = node.tokens
+        for i, token in enumerate(tokens):
+            if token.type != "keyword" or token.value.lower() != "private":
+                continue
+            j = _next_significant(tokens, i)
+            if j < len(tokens) and tokens[j].type == "local":
+                names.add(tokens[j].value)
+            elif j < len(tokens) and tokens[j].type == "lbracket":
+                names.update(name for name in _collect_string_names(tokens, j, True)[0])
+    return names
+
+
+def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[list[Diagnostic], set[str]]:
     """Analyze structured nodes and conservatively merge branch definitions."""
     if isinstance(node, Statement):
         return _scan_tokens(node.tokens, incoming)
@@ -199,16 +216,18 @@ def _walk_node(node: Node, incoming: set[str]) -> tuple[list[Diagnostic], set[st
         diags: list[Diagnostic] = []
         defined = set(incoming)
         for child in node.statements:
-            child_diags, defined = _walk_node(child, defined)
+            child_diags, defined = _walk_node(child, defined, isinstance(child, Block))
             diags.extend(child_diags)
+        if scoped:
+            defined.difference_update(_private_names(node.statements) - incoming)
         return diags, defined
     if isinstance(node, IfStatement):
         diags, _ = _scan_tokens(node.condition, incoming)
-        then_diags, then_defined = _walk_node(node.then_block, set(incoming)) if node.then_block else ([], set(incoming))
+        then_diags, then_defined = _walk_node(node.then_block, set(incoming), True) if node.then_block else ([], set(incoming))
         diags.extend(then_diags)
         if node.else_block is None:
             return diags, set(incoming)
-        else_diags, else_defined = _walk_node(node.else_block, set(incoming))
+        else_diags, else_defined = _walk_node(node.else_block, set(incoming), True)
         diags.extend(else_diags)
         return diags, then_defined & else_defined
     if isinstance(node, LoopStatement):
@@ -220,17 +239,17 @@ def _walk_node(node: Node, incoming: set[str]) -> tuple[list[Diagnostic], set[st
                     break
         diags, _ = _scan_tokens(node.header, loop_in)
         if node.body:
-            body_diags, _ = _walk_node(node.body, loop_in)
+            body_diags, _ = _walk_node(node.body, loop_in, True)
             diags.extend(body_diags)
         return diags, set(incoming)
     if isinstance(node, ExitWithStatement):
-        return _walk_node(node.body, set(incoming)) if node.body else ([], set(incoming))
+        return _walk_node(node.body, set(incoming), True) if node.body else ([], set(incoming))
     if isinstance(node, SwitchStatement):
         diags, _ = _scan_tokens(node.expression, incoming)
         branches: list[set[str]] = [set(incoming)]
         for case in node.cases:
             if case.body:
-                case_diags, case_defined = _walk_node(case.body, set(incoming))
+                case_diags, case_defined = _walk_node(case.body, set(incoming), True)
                 diags.extend(case_diags)
                 branches.append(case_defined)
         merged = set.intersection(*branches) if branches else set(incoming)
@@ -291,5 +310,8 @@ if __name__ == "__main__":
     assert check_undefined_text('if (true) then { _value = 1; } else { _value = 2; }; hint str _value;') == []
     branch_only = check_undefined_text('if (true) then { _value = 1; }; hint str _value;')
     assert len(branch_only) == 1 and "_value" in branch_only[0].message, branch_only
+    assert check_undefined_text('if (true) then { private _inner; _inner = 1; hint str _inner; };') == []
+    private_leak = check_undefined_text('if (true) then { private _inner; _inner = 1; }; hint str _inner;')
+    assert len(private_leak) == 1 and "_inner" in private_leak[0].message, private_leak
 
     print("undefined self-test passed")
