@@ -14,6 +14,7 @@ from .symbols import SymbolIndex
 from .tokenizer import Token, tokenize
 
 _CODE = "W201"
+_NON_CODE = "W205"
 
 # Token types that are transparent to reference detection.
 _TRIVIA = frozenset(("comment", "preprocessor"))
@@ -76,6 +77,16 @@ def check_functions(tokens: list[Token], index: SymbolIndex | None = None) -> li
         if ttype in ("lbrace", "lparen"):
             continue
 
+        if ttype in ("number", "lbracket") or (ttype == "keyword" and nxt.value.lower() in ("true", "false", "nil")):
+            diags.append(Diagnostic(
+                Severity.WARNING,
+                _NON_CODE,
+                f"{tok.value} target is a value, not code",
+                nxt.line,
+                nxt.column,
+            ))
+            continue
+
         if ttype == "local":
             # A local variable holding code; "call _fnc" invokes the code in
             # the variable, not a resolvable function name. Never a W201.
@@ -127,6 +138,8 @@ if __name__ == "__main__":
     assert check_functions_text('call "BIS_fnc_param";') == []
     assert check_functions_text('call "script.sqf";') == []
     assert check_functions_text("call (someExpression);") == []
+    assert check_functions_text("call 42;")[0].code == _NON_CODE
+    assert check_functions_text("spawn [1, 2];")[0].code == _NON_CODE
     # A local variable holding code is never a resolvable function name.
     assert check_functions_text("call _someLocal;") == []
     assert check_functions_text('_fnc = { hint "x"; }; call _fnc;') == []
