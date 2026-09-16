@@ -6,8 +6,14 @@ build-backend = "setuptools.build_meta"
 name = "armalint"
 version = "0.1.0"
 description = "Arma 3 SQF linter"
+readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
+
+[project.scripts]
+armalint = "armalint.__main__:_main"
+armalint-update = "armalint.update:main"
+armalint-update-commands = "armalint.update_commands:main"
 
 [tool.setuptools.packages.find]
 include = ["armalint*"]
