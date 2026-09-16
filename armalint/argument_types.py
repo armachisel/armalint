@@ -369,7 +369,10 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
                 if node.then_block: collect_loop(node.then_block)
                 if node.else_block: collect_loop(node.else_block)
             return
-        producer = next((t.value.lower() for t in node.header if t.value.lower() in _ARRAY_ELEMENT_TYPES), None)
+        producer = next((
+            t.value.lower() for t in node.header
+            if t.type in ("ident", "keyword") and t.value.lower() in _ARRAY_ELEMENT_TYPES
+        ), None)
         if producer and node.body:
             collect_body(node.body, _ARRAY_ELEMENT_TYPES[producer])
         if node.body:
@@ -552,6 +555,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_nearest = []; { _nearest = _x; } forEach ([0, 0, 0] nearRoads 10); count _nearest;')[0].code == _CODE
     assert check_argument_types_text('_unit = objNull; { _unit = _x; } forEach allUnits; count _unit;')[0].code == _CODE
     assert check_argument_types_text('_thing = objNull; { _thing = _x; } forEach allDead; count _thing;')[0].code == _CODE
+    assert check_argument_types_text('_allPlayers = ["a"]; { _item = _x; } forEach _allPlayers; count _item;') == []
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
