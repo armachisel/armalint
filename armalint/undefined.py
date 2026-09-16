@@ -22,16 +22,16 @@ _ALWAYS_DEFINED = frozenset(
 _TRIVIA = frozenset(("comment", "preprocessor"))
 
 
-def _constant_condition(tokens: list[Token]) -> bool | None:
+def _constant_condition(tokens: list[Token], negated: bool = False) -> bool | None:
     """Return a literal boolean condition when its value is unambiguous."""
     visible = [token for token in tokens if token.type not in _TRIVIA]
     if len(visible) != 1 or visible[0].type != "keyword":
         return None
     value = visible[0].value.lower()
     if value == "true":
-        return True
+        return not negated
     if value in ("false", "nil"):
-        return False
+        return negated
     return None
 
 
@@ -244,7 +244,7 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
         return diags, defined
     if isinstance(node, IfStatement):
         diags, _ = _scan_tokens(node.condition, incoming)
-        constant = _constant_condition(node.condition)
+        constant = _constant_condition(node.condition, node.negated)
         if constant is True and node.then_block:
             then_diags, then_defined = _walk_node(node.then_block, set(incoming), True)
             diags.extend(then_diags)
@@ -318,6 +318,7 @@ if __name__ == "__main__":
     assert check_undefined_text("hint str _this;") == []
     assert check_undefined_text('if (true) then { _a = 1; }; hint str _a;') == []
     assert len(check_undefined_text('if (false) then { _a = 1; }; hint str _a;')) == 1
+    assert len(check_undefined_text('if !(true) then { _a = 1; }; hint str _a;')) == 1
 
     # Arma 3 event-handler magic variables are always defined.
     assert check_undefined_text("hint str _thisArgs; hint str _thisEventHandler;") == []
