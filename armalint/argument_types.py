@@ -60,6 +60,7 @@ _COMMAND_RETURN_TYPES = {
     "velocity": "Array", "vectorup": "Array", "vectordir": "Array",
     "nearroads": "Array", "getroadinfo": "Array",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
+    "min": "Number", "max": "Number", "mod": "Number",
     "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
     "isclass": "Boolean", "isequaltype": "Boolean", "find": "Number",
 }
@@ -111,6 +112,19 @@ def _infer_expression(
     if operand_end < len(tokens) and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES:
         return _COMMAND_RETURN_TYPES[tokens[operand_end].value.lower()]
     direct = _infer_operand(tokens, start, variables)
+    # A small amount of arithmetic inference is safe when both operands have
+    # already-known numeric types. SQF also uses ``min``/``max`` as binary
+    # numeric commands; those are covered by the command return table above.
+    if direct == "Number":
+        op = start + 1
+        while op < len(tokens) and tokens[op].type in _TRIVIA:
+            op += 1
+        if op < len(tokens) and tokens[op].type == "operator" and tokens[op].value in ("+", "-", "*", "/", "%"):
+            rhs = op + 1
+            while rhs < len(tokens) and tokens[rhs].type in _TRIVIA:
+                rhs += 1
+            if _infer_operand(tokens, rhs, variables) == "Number":
+                return "Number"
     if direct != "Array" or start >= len(tokens):
         return direct
     split = _array_items(tokens, start)
@@ -265,6 +279,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_d = getDir player; sin _d;') == []
     assert check_argument_types_text('_p = [0, 0, 0] getPosASL objNull; count _p;') == []
     assert check_argument_types_text('_roads = [0, 0, 0] nearRoads 8; count _roads;') == []
+    assert check_argument_types_text('_a = 10; _b = 2; _c = _a - _b; sqrt _c;') == []
+    assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
     assert check_argument_types(
         tokenize('_d = [] call ALT_fnc_distanceToRoute; round _d;'),
         function_return_types={"ALT_fnc_distanceToRoute": "Number"},
