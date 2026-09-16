@@ -58,10 +58,12 @@ def filter_suppressed(
 if __name__ == "__main__":
     from .diagnostic import Severity
 
-    source = "// armalint: disable-next-line W206\nif (true) then {};\n// armalint: disable-line W101\nhint str _x;\n// armalint: disable W201\ncall missing;\n// armalint: enable W201\ncall other;"
+    source = "// armalint: disable-next-line W206 W101\nif (true) then {};\n// armalint: disable-line W101 W201\nhint str _x;\n// armalint: disable W201 W206\ncall missing;\n// armalint: enable W201 W206\ncall other;"
     diagnostics = [
         Diagnostic(Severity.WARNING, "W206", "constant", 2, 1),
+        Diagnostic(Severity.WARNING, "W101", "next-line", 2, 1),
         Diagnostic(Severity.WARNING, "W101", "undefined", 3, 1),
+        Diagnostic(Severity.WARNING, "W201", "same-line", 3, 1),
         Diagnostic(Severity.WARNING, "W201", "missing", 6, 1),
         Diagnostic(Severity.WARNING, "W201", "other", 8, 1),
     ]
