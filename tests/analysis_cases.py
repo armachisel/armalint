@@ -35,6 +35,17 @@ def _control_flow_try() -> bool:
     return len([item for item in diagnostics if item.code == "W104"]) == 1
 
 
+def _control_flow_terminators() -> bool:
+    for source in (
+        'breakOut "scope"; hint "never";',
+        'breakTo "scope"; hint "never";',
+        'continue; hint "never";',
+    ):
+        if len([item for item in check_control_flow_text(source) if item.code == "W104"]) != 1:
+            return False
+    return True
+
+
 def _undefined_wait_until() -> bool:
     diagnostics = check_undefined_text("waitUntil { hint str _ready; };")
     return len(diagnostics) == 1 and "_ready" in diagnostics[0].message
@@ -105,6 +116,7 @@ CASES = (
     ("AST embedded spawn block", _ast_spawn_block),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
+    ("loop terminator unreachable code", _control_flow_terminators),
     ("undefined variable in waitUntil", _undefined_wait_until),
     ("try/catch definition merge", _undefined_try_branch),
     ("Config and HashMap type inference", _types_config_hashmap),

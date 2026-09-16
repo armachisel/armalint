@@ -22,6 +22,7 @@ _KEYWORDS = frozenset(
         "for", "while", "waituntil", "do", "switch", "case", "default", "foreach",
         "from", "to", "step", "and", "or", "not", "exitwith", "throw",
         "try", "catch", "call", "spawn", "execvm", "compile", "select",
+        "breakout", "breakto", "continue",
         "format",
     )
 )
