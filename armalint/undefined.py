@@ -288,6 +288,8 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
         diags, _ = _scan_tokens(node.expression, incoming)
         branches: list[set[str]] = [set(incoming)]
         for case in node.cases:
+            case_diags, _ = _scan_tokens(case.condition, incoming)
+            diags.extend(case_diags)
             if case.body:
                 case_diags, case_defined = _walk_node(case.body, set(incoming), True)
                 diags.extend(case_diags)
@@ -369,5 +371,7 @@ if __name__ == "__main__":
     assert len(spawned) == 1 and "_missingInSpawn" in spawned[0].message, spawned
     caught = check_undefined_text('try { _tryValue = 1; } catch { _catchValue = 2; }; hint str _tryValue;')
     assert any("_tryValue" in item.message for item in caught), caught
+    switch_case = check_undefined_text('switch (_value) do { case _missingCase: { hint "case"; }; default { hint "default"; }; };')
+    assert len([item for item in switch_case if "_missingCase" in item.message]) == 1, switch_case
 
     print("undefined self-test passed")
