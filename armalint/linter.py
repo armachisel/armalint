@@ -12,6 +12,7 @@ from .diagnostic import Diagnostic
 from .functions import check_functions
 from .preprocessor import preprocess
 from .symbols import SymbolIndex
+from .suppression import filter_suppressed
 from .syntax import check_syntax
 from .tokenizer import tokenize
 from .undefined import check_undefined
@@ -44,6 +45,7 @@ def lint_text(
     source: str, filename: str = "", index: SymbolIndex | None = None,
     function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
+    ignored_rules: set[str] | frozenset[str] | None = None,
 ) -> list[Diagnostic]:
     """Run all analyzers over ``source`` and return their diagnostics.
 
@@ -71,13 +73,14 @@ def lint_text(
     for d in diags:
         d.file = filename
 
-    return _deduplicate(diags)
+    return _deduplicate(filter_suppressed(diags, source, ignored_rules))
 
 
 def lint_file(
     path: str, index: SymbolIndex | None = None,
     function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
+    ignored_rules: set[str] | frozenset[str] | None = None,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -112,7 +115,7 @@ def lint_file(
         else:
             d.file = path
 
-    return _deduplicate(diags)
+    return _deduplicate(filter_suppressed(diags, source, ignored_rules))
 
 
 def build_symbol_index(file_paths: list[str]) -> SymbolIndex:

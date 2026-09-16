@@ -44,3 +44,13 @@ unrelated to the problem you are trying to find.
 
 Config files are handled as config files. SQF embedded in code-valued config
 properties is linted, while the class hierarchy itself is not treated as SQF.
+
+## Suppressing rules
+
+Use `--ignore-rule W206` to suppress a rule for one command invocation. A
+mission's `armalint.json` can apply suppression to the whole mission with
+`{"ignoreRules": ["W206"]}`. In source, use
+`// armalint: disable-next-line W206` or
+`// armalint: disable-line W206`; use paired `disable` and `enable` comments
+for a file or section-wide exception. Omitting rule codes disables or enables
+all rules.
