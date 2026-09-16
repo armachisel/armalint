@@ -37,6 +37,15 @@ class IfStatement(Node):
 
 
 @dataclass
+class LoopStatement(Node):
+    """A loop with a structured code body and an unparsed header."""
+
+    kind: str = "loop"
+    header: list[Token] = field(default_factory=list)
+    body: Block | None = None
+
+
+@dataclass
 class Program:
     statements: list[Node] = field(default_factory=list)
 
@@ -83,6 +92,10 @@ class Parser:
             return Block(tok, self.tokens[close], statements), close + 1
         if tok.type == "keyword" and tok.value.lower() == "if":
             return self._if_node(pos, limit)
+        if tok.type == "keyword" and tok.value.lower() in ("while", "for"):
+            loop = self._loop_node(pos, limit)
+            if loop is not None:
+                return loop
 
         depth = 0
         end = pos
@@ -97,6 +110,58 @@ class Parser:
                 return Statement(tok, self.tokens[end], self.tokens[pos:end], ";"), end + 1
             end += 1
         return Statement(tok, self.tokens[end - 1], self.tokens[pos:end], None), end
+
+    def _loop_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
+        """Parse ``while {...} do {...}`` and ``for ... do {...}`` forms."""
+        kind = self.tokens[pos].value.lower()
+        body_start: int | None = None
+        header_end: int | None = None
+        if kind == "while":
+            condition_start = pos + 1
+            if condition_start >= limit or self.tokens[condition_start].type != "lbrace":
+                return None
+            condition_close = _matching(self.tokens, condition_start, "lbrace", "rbrace")
+            if condition_close is None or condition_close + 1 >= limit:
+                return None
+            do_token = self.tokens[condition_close + 1]
+            if do_token.type != "keyword" or do_token.value.lower() != "do":
+                return None
+            body_start = condition_close + 2
+            header_end = condition_close
+        else:
+            # The ``for`` header ends at the first top-level ``do`` keyword.
+            depth = 0
+            for i in range(pos + 1, limit):
+                token_type = self.tokens[i].type
+                if token_type in ("lparen", "lbracket", "lbrace"):
+                    depth += 1
+                elif token_type in ("rparen", "rbracket", "rbrace"):
+                    depth = max(0, depth - 1)
+                elif depth == 0 and token_type == "keyword" and self.tokens[i].value.lower() == "do":
+                    header_end = i - 1
+                    body_start = i + 1
+                    break
+            if body_start is None:
+                return None
+        if body_start >= limit or self.tokens[body_start].type != "lbrace":
+            return None
+        body_close = _matching(self.tokens, body_start, "lbrace", "rbrace")
+        if body_close is None or body_close >= limit:
+            return None
+        body_node, next_pos = self._node(body_start, limit)
+        if not isinstance(body_node, Block):
+            return None
+        end = body_node.end
+        if next_pos < limit and self.tokens[next_pos].type == "semicolon":
+            end = self.tokens[next_pos]
+            next_pos += 1
+        return LoopStatement(
+            start=self.tokens[pos],
+            end=end,
+            kind=kind,
+            header=self.tokens[pos + 1:header_end + 1],
+            body=body_node,
+        ), next_pos
 
     def _if_node(self, pos: int, limit: int) -> tuple[Node | None, int]:
         condition_start = pos + 1
@@ -142,4 +207,6 @@ if __name__ == "__main__":
     assert tree.statements[0].then_block is not None
     assert len(tree.statements) == 1
     assert tree.statements[0].end.type == "semicolon"
+    loop = parse('while { _x > 0 } do { exitWith {}; };').statements[0]
+    assert isinstance(loop, LoopStatement) and loop.body is not None
     print("ast self-test passed")
