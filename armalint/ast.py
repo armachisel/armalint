@@ -22,6 +22,7 @@ class Node:
 class Statement(Node):
     tokens: list[Token] = field(default_factory=list)
     terminator: str | None = None
+    embedded: list[Node] = field(default_factory=list)
 
 
 @dataclass
@@ -136,9 +137,34 @@ class Parser:
                 if depth > 0:
                     depth -= 1
             elif kind == "semicolon" and depth == 0:
-                return Statement(tok, self.tokens[end], self.tokens[pos:end], ";"), end + 1
+                statement_tokens = self.tokens[pos:end]
+                return Statement(tok, self.tokens[end], statement_tokens, ";", self._embedded(statement_tokens)), end + 1
             end += 1
-        return Statement(tok, self.tokens[end - 1], self.tokens[pos:end], None), end
+        statement_tokens = self.tokens[pos:end]
+        return Statement(tok, self.tokens[end - 1], statement_tokens, None, self._embedded(statement_tokens)), end
+
+    def _embedded(self, tokens: list[Token]) -> list[Node]:
+        """Find structured ``{...} forEach`` nodes embedded in expressions."""
+        result: list[Node] = []
+        for i, token in enumerate(tokens):
+            if token.type != "lbrace":
+                continue
+            close = _matching(tokens, i, "lbrace", "rbrace")
+            if close is None or close + 1 >= len(tokens):
+                continue
+            foreach = tokens[close + 1]
+            if foreach.type != "keyword" or foreach.value.lower() != "foreach":
+                continue
+            body_statements, _ = Parser(tokens[i + 1:close])._sequence(0, close - i - 1, stop=None)
+            body = Block(token, tokens[close], body_statements)
+            result.append(LoopStatement(
+                start=token,
+                end=tokens[-1],
+                kind="foreach",
+                header=tokens[close + 2:],
+                body=body,
+            ))
+        return result
 
     def _foreach_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
         """Parse the valid ``{ ... } forEach expression`` form."""
