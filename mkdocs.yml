@@ -14,6 +14,7 @@ nav:
   - Getting started: getting-started.md
   - CLI reference: cli.md
   - Rules and analysis: rules.md
+  - Function indexes: indexes.md
   - Contributing: contributing.md
 
 strict: true

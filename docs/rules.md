@@ -1,25 +1,43 @@
 # Rules and analysis
 
-The rule codes are deliberately stable. They are intended to be useful in a
-terminal, in an editor, and in a script that wants to make sense of JSON
-output.
+The rule codes are stable. They are useful in a terminal, in an editor, and
+in JSON consumed by another tool.
 
-The syntax checks cover the usual small disasters: unbalanced brackets,
-unterminated strings, trailing commas, missing commas in arrays, malformed
-`if`/`else` forms, and reversed `forEach` syntax. There are also checks for
-unknown call targets, locals used before they are defined, unreachable code,
-and missing statement terminators in the cases where a boundary can be
-identified without guessing.
+## Syntax errors
 
-The type checker is intentionally cautious. Literal values and simple local
-assignments are useful evidence. A complicated expression is not. When there
-is not enough information to say something sensible, the checker stays quiet.
-That means it will miss some errors. It also means it should not fill a build
-with warnings that turn out to be unrelated to the problem you are trying to
-find.
+These are errors and make the command exit with status 1.
 
-Function names and signatures can come from the built-in registry, mission
-functions, Arma and DLC data, or installed mods discovered by the updater.
-The updater only uses data it can actually find on the machine; it does not
-pretend that an unknown mod function is valid just because its namespace looks
-familiar.
+| Code | Check |
+| --- | --- |
+| `E001` | Unmatched or unclosed `(`, `[`, or `{`. |
+| `E002` | Unterminated string literal. |
+| `E003` | Trailing comma in an array, such as `[1, 2,]`. |
+| `E004` | An `if` condition is not followed by `then`. This also understands the valid `if (...) exitWith {...}` form. |
+| `E005` | `else` is not followed by a code block or another `if`. |
+| `E006` | Adjacent literal values in an array are missing a comma. |
+| `E007` | Reversed `forEach` syntax; the code block must come before `forEach`. |
+| `E008` | A code block is followed by a statement that needs a semicolon in a case where the boundary is clear. The check is deliberately conservative because a final semicolon before `}` is optional in SQF. |
+
+## Analysis warnings
+
+Warnings do not make the command fail, but they are often where the useful
+mistakes are found.
+
+| Code | Check |
+| --- | --- |
+| `W101` | A script-local variable is used before Armalint can find a definition, `params`, or `param` declaration. |
+| `W104` | Code is unreachable after an unconditional `exitWith`, `throw`, `breakOut`, `continue`, or a pair of terminating branches. |
+| `W201` | A name used as a `call` or `spawn` target is not in the built-in, mission, or indexed function registry. |
+| `W202` | A direct command name is not in the built-in command registry. |
+| `W203` | A known command or indexed function receives an argument whose statically inferred type is incompatible with its signature. |
+
+## How cautious is the analysis?
+
+Literal values and simple assignments are useful evidence. A complicated
+expression is not. When there is not enough information to say something
+sensible, the checker stays quiet. That means it will miss some errors. It
+also means it should not fill a build with warnings that turn out to be
+unrelated to the problem you are trying to find.
+
+Config files are handled as config files. SQF embedded in code-valued config
+properties is linted, while the class hierarchy itself is not treated as SQF.
