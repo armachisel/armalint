@@ -185,6 +185,11 @@ def _types_mission_record_patterns() -> bool:
     return all(not any(item.code == "W203" for item in check_argument_types_text(source)) for source in snippets)
 
 
+def _types_selected_fields_stay_unknown() -> bool:
+    source = 'private _route = []; private _wp = _route select 2; count _wp; private _spawn = []; setPosASL player _spawn; setDir player (_spawn select 1);'
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -227,6 +232,7 @@ CASES = (
     ("HashMap rejects object key", _types_hashmap_object_key),
     ("isEqualType guard narrowing", _types_is_equal_type_guard),
     ("mission record type patterns", _types_mission_record_patterns),
+    ("selected fields stay unknown", _types_selected_fields_stay_unknown),
     ("multi-code suppression", _suppression_multi_code),
 )
 

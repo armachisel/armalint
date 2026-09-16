@@ -560,6 +560,8 @@ def check_argument_types(
             j += 1
         if j >= len(tokens):
             continue
+        if any(t.value.lower() == "select" for t in tokens[j:]):
+            continue
         if tokens[j].type == "local" and tokens[j].value.lower() == "_x":
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
@@ -578,6 +580,8 @@ def check_argument_types(
         while j < len(tokens) and tokens[j].type in _TRIVIA:
             j += 1
         if j >= len(tokens):
+            continue
+        if any(t.value.lower() == "select" for t in tokens[j:]):
             continue
         actual = _infer_operand(tokens, j, variables)
         accepted, expected = rule
