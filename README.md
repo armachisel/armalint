@@ -142,7 +142,7 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W101 | warning  | Possible undefined local variable (used before definition).         |
 | W201 | warning  | Unknown function/command name after `call` or `spawn`.              |
 | W203 | warning  | Known built-in unary command received a statically incompatible value.|
-| W204 | warning  | Indexed function received the wrong number of arguments.              |
+| W204 | warning  | Indexed function received more arguments than its signature allows.   |
 
 `W203` currently checks common built-ins `hint`, `hintSilent`, `sleep`,
 `uiSleep`, `systemChat`, `parseNumber`, `toArray`, and `count`. It infers types
