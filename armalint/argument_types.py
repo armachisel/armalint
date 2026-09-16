@@ -63,6 +63,8 @@ _COMMAND_RETURN_TYPES = {
     "getposworld": "Array", "getposvisual": "Array",
     "velocity": "Array", "vectorup": "Array", "vectordir": "Array",
     "nearroads": "Array", "getroadinfo": "Array",
+    "arrayintersect": "Array", "pushback": "Number", "pushbackunique": "Number",
+    "findif": "Number",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
     "min": "Number", "max": "Number", "mod": "Number",
     "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
@@ -350,6 +352,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_roads = [0, 0, 0] nearRoads 8; count _roads;') == []
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a - _b; sqrt _c;') == []
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
+    assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
+    assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types(
         tokenize('_d = [] call ALT_fnc_distanceToRoute; round _d;'),
         function_return_types={"ALT_fnc_distanceToRoute": "Number"},
