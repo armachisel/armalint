@@ -49,7 +49,7 @@ def _ast_chained_command_expression() -> bool:
 
 
 def _ast_malformed_expression_recovery() -> bool:
-    return parse_expression(tokenize('[1,]')) is None
+    return parse_expression(tokenize('[1,')) is None
 
 
 def _control_flow_spawn() -> bool:
