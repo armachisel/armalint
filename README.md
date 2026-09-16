@@ -45,7 +45,7 @@ engine command data.
 ## Usage
 
 ```text
-python -m armalint [--json] [--ignore GLOB] [--rules RULE] [--version] <paths>...
+python -m armalint [--json] [--ignore GLOB] [--ignore-rule RULE] [--version] <paths>...
 python -m armalint --file PATH [--json]
 python -m armalint --snippet SOURCE [--json]
 python -m armalint --mission PATH --snippet SOURCE [--json]
@@ -60,7 +60,6 @@ python -m armalint --mission PATH --snippet SOURCE [--json]
 | `--json`        | Emit a single JSON array of diagnostic objects instead of text.     |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
-| `--rules RULE`  | Accepted for forward compatibility; currently ignored. Repeatable. |
 | `--version`     | Print the version and exit.                                        |
 
 When given a directory, Armalint walks it recursively and lints files ending
@@ -140,43 +139,42 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | E005 | error    | Invalid token after `else`.                                         |
 | E006 | error    | Missing comma between adjacent literal array elements.              |
 | E007 | error    | Reversed `forEach` form.                                             |
+| E008 | error    | Missing semicolon after a code block where the statement boundary is clear. |
 | W101 | warning  | Possible undefined local variable (used before definition).         |
+| W104 | warning  | Unreachable code after unconditional control flow.                   |
 | W201 | warning  | Unknown function/command name after `call` or `spawn`.              |
+| W202 | warning  | Unknown direct command name.                                         |
 | W203 | warning  | Known built-in unary command received a statically incompatible value.|
 | W204 | warning  | Indexed function received more arguments than its signature allows.   |
 | W205 | warning  | `call` or `spawn` targeted a literal value rather than code.           |
 | W206 | warning  | `if` condition is a literal value and is always truthy or falsey.    |
 
-`W203` currently checks common built-ins `hint`, `hintSilent`, `sleep`,
-`uiSleep`, `systemChat`, `parseNumber`, `toArray`, and `count`. It infers types
-from literals and simple local assignments; unknown expressions are left alone.
-The signature table is intentionally small and can be extended as more built-in
-command signatures are added. Mission-defined function parameters are not yet
-checked.
+`W203` checks common built-in commands, binary commands, indexed function
+signatures, and extracted mod or mission signatures. It infers types from
+literals, assignments, selected array elements, known command results, and
+structured loop producers. Unknown expressions are left alone. `W204` checks
+excess arguments against known indexed signatures; shorter calls remain valid
+because extracted `params` declarations can contain optional arguments.
 
 Error (`E*`) diagnostics make the CLI exit non-zero; warnings (`W*`) do not.
 
 ## Known limitations
 
-- **No nested block scoping for variables.** Undefined-variable analysis
-  (`W101`) uses a single flat "defined" set for the whole file. A variable
-  assigned inside one `{ ... }` block is treated as defined everywhere after it,
-  so shadowing and scope leakage are not modeled.
-- **`params` nested-default entries are not auto-defined.** Only top-level
-  strings are registered by `params`. For `params ["_a", ["_b", 2]]`, `_a` is
-  treated as defined but the nested default `_b` is not.
-- **Direct command-call detection is not implemented.** `W201` only inspects
-  named references that follow `call`/`spawn` (e.g. `call BIS_fnc_param` or
-  `call "BIS_fnc_param"`). Standalone command calls like `hint "x"` are not
-  checked against the registry.
-- **No statement-boundary/semicolon checks.** Because the final semicolon
-  before a closing `}` is optional in SQF, statement boundaries cannot be
-  inferred reliably from semicolons alone. Checking for missing semicolons and
-  related statement-boundary issues is not currently implemented (future work).
-- **Preprocessor directives are tokenized but not expanded.** `#define`,
-  `#include`, `#ifdef`, and friends are emitted as opaque `preprocessor` tokens
-  and are transparent to every check. No macro expansion or conditional
-  compilation is performed.
+- **Type inference is conservative.** Complicated expressions, dynamic command
+  names, and values that cross unknown function calls are left untyped rather
+  than guessed.
+- **Function metadata depends on indexing.** Built-in and mod signatures that
+  are not present in the selected game/mod data cannot be checked until the
+  mission is indexed again.
+- **Preprocessor directives are not expanded.** File linting resolves includes
+  for symbol and scope analysis, but macro expansion and conditional
+  compilation are not performed.
+- **Runtime behavior is outside the linter's scope.** It does not execute SQF,
+  evaluate dynamic control flow, or know values created only in the game.
+
+Use `--ignore-rule`, `armalint.json`'s `ignoreRules`, or inline
+`// armalint: disable...` comments when a deliberate project pattern should
+be quiet. See the [CLI reference](docs/cli.md) for the exact forms.
 
 ## Extending the known-name registry
 
