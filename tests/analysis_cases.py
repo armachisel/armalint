@@ -166,6 +166,11 @@ def _types_vector_producers() -> bool:
     return check_argument_types_text(source) == []
 
 
+def _types_hashmap_object_key() -> bool:
+    source = 'params ["_road"]; private _cache = createHashMap; _cached = _cache get _road; _info = getRoadInfo _road;'
+    return any(item.code == "W203" and "get expects" in item.message for item in check_argument_types_text(source))
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -205,6 +210,7 @@ CASES = (
     ("common object collection inference", _types_common_object_collections),
     ("vector angle inference", _types_vector_angle),
     ("vector producer inference", _types_vector_producers),
+    ("HashMap rejects object key", _types_hashmap_object_key),
     ("multi-code suppression", _suppression_multi_code),
 )
 
