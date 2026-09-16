@@ -144,6 +144,7 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W203 | warning  | Known built-in unary command received a statically incompatible value.|
 | W204 | warning  | Indexed function received more arguments than its signature allows.   |
 | W205 | warning  | `call` or `spawn` targeted a literal value rather than code.           |
+| W206 | warning  | `if` condition is a literal value and is always truthy or falsey.    |
 
 `W203` currently checks common built-ins `hint`, `hintSilent`, `sleep`,
 `uiSleep`, `systemChat`, `parseNumber`, `toArray`, and `count`. It infers types
