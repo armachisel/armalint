@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from armalint.argument_types import check_argument_types_text
-from armalint.ast import BinaryExpression, Block, CallExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, walk_expression
+from armalint.ast import BinaryExpression, Block, CallExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
+from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
 from armalint.suppression import filter_suppressed
 from armalint.undefined import check_undefined_text
@@ -48,8 +49,7 @@ def _ast_chained_command_expression() -> bool:
 
 
 def _ast_malformed_expression_recovery() -> bool:
-    nodes = parse('_value = [1,]; hint "after";').statements
-    return len(nodes) == 2 and getattr(nodes[0], "expression", None) is None
+    return parse_expression(tokenize('[1,]')) is None
 
 
 def _control_flow_spawn() -> bool:
