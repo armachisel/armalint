@@ -8,6 +8,7 @@ checker; unknown expressions and mission functions remain unchecked.
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
+from .ast import Block, IfStatement, LoopStatement, Node, Statement, parse
 from .tokenizer import Token, tokenize
 
 _CODE = "W203"
@@ -293,19 +294,46 @@ def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None
 
 
 def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str]) -> None:
-    """Infer the implicit ``_x`` type for well-known array-producing loops."""
-    for i, token in enumerate(tokens):
-        if token.type != "keyword" or token.value.lower() != "foreach":
-            continue
-        context = [t.value.lower() for t in tokens[max(0, i - 32):min(len(tokens), i + 32)]]
-        if not any(command in context for command in _ARRAY_ELEMENT_TYPES):
-            continue
-        element_type = next(command for command in _ARRAY_ELEMENT_TYPES if command in context)
-        for j in range(max(0, i - 32), i):
-            if (tokens[j].type == "local" and j + 2 < i
-                    and tokens[j + 1].type == "operator" and tokens[j + 1].value == "="
-                    and tokens[j + 2].type == "local" and tokens[j + 2].value.lower() == "_x"):
-                variables[tokens[j].value.lower()] = _ARRAY_ELEMENT_TYPES[element_type]
+    """Infer loop element types from AST headers and body spans."""
+    def collect_body(node: Node, element_type: str) -> None:
+        if isinstance(node, Statement):
+            for i, token in enumerate(node.tokens[:-2]):
+                if (token.type == "local" and node.tokens[i + 1].type == "operator"
+                        and node.tokens[i + 1].value == "="
+                        and node.tokens[i + 2].type == "local"
+                        and node.tokens[i + 2].value.lower() == "_x"):
+                    variables[token.value.lower()] = element_type
+            for embedded in node.embedded:
+                collect_loop(embedded)
+        elif isinstance(node, Block):
+            for child in node.statements:
+                collect_body(child, element_type)
+        elif isinstance(node, IfStatement):
+            if node.then_block:
+                collect_body(node.then_block, element_type)
+            if node.else_block:
+                collect_body(node.else_block, element_type)
+
+    def collect_loop(node: Node) -> None:
+        if not isinstance(node, LoopStatement):
+            if isinstance(node, Statement):
+                for embedded in node.embedded:
+                    collect_loop(embedded)
+            elif isinstance(node, Block):
+                for child in node.statements:
+                    collect_loop(child)
+            elif isinstance(node, IfStatement):
+                if node.then_block: collect_loop(node.then_block)
+                if node.else_block: collect_loop(node.else_block)
+            return
+        producer = next((t.value.lower() for t in node.header if t.value.lower() in _ARRAY_ELEMENT_TYPES), None)
+        if producer and node.body:
+            collect_body(node.body, _ARRAY_ELEMENT_TYPES[producer])
+        if node.body:
+            collect_loop(node.body)
+
+    for node in parse(tokens).statements:
+        collect_loop(node)
 
 
 def _merge_types(previous: str | None, inferred: str | None) -> str | None:
