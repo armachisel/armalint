@@ -252,6 +252,13 @@ def _infer_expression(
                 if len(items) > 1:
                     return _simple_item_type(items[1], variables)
     direct = _infer_operand(tokens, start, variables)
+    # A selected field from a non-literal record has no reliable type without
+    # a producer schema; keep it unknown instead of guessing from the record.
+    if start < len(tokens) and tokens[start].type == "local":
+        command = start + 1
+        while command < len(tokens) and tokens[command].type in _TRIVIA: command += 1
+        if command < len(tokens) and tokens[command].value.lower() == "select":
+            return None
     # A small amount of arithmetic inference is safe when both operands have
     # already-known numeric types. SQF also uses ``min``/``max`` as binary
     # numeric commands; those are covered by the command return table above.
