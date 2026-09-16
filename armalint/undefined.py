@@ -333,6 +333,7 @@ if __name__ == "__main__":
     assert check_undefined_text('if (true) then { _a = 1; }; hint str _a;') == []
     assert len(check_undefined_text('if (false) then { _a = 1; }; hint str _a;')) == 1
     assert len(check_undefined_text('if !(true) then { _a = 1; }; hint str _a;')) == 1
+    assert len(check_undefined_text('if (!true) then { _a = 1; }; hint str _a;')) == 1
 
     # Arma 3 event-handler magic variables are always defined.
     assert check_undefined_text("hint str _thisArgs; hint str _thisEventHandler;") == []

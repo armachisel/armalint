@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Program, Statement, SwitchStatement, TryCatchStatement, parse
 from .diagnostic import Diagnostic, Severity
+from .tokenizer import Token
 
 _CODE = "W104"
 _CONSTANT_CONDITION = "W206"
 _TERMINATORS = frozenset(("exitwith", "throw", "breakout", "breakto", "continue"))
+
+
+def _constant_condition(tokens: list[Token]) -> bool:
+    visible = [t for t in tokens if t.type not in ("comment", "preprocessor")]
+    if len(visible) == 2 and visible[0].type == "operator" and visible[0].value == "!":
+        visible = visible[1:]
+    return len(visible) == 1 and (visible[0].type in ("number", "string") or
+        (visible[0].type == "keyword" and visible[0].value.lower() in ("true", "false", "nil")))
 
 
 def _statement_terminates(statement: Statement) -> bool:
@@ -83,8 +92,7 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
 def _walk_if(node: IfStatement, diags: list[Diagnostic]) -> None:
     """Walk an else-if chain without dropping its nested else branch."""
     condition = [t for t in node.condition if t.type not in ("comment", "preprocessor")]
-    if len(condition) == 1 and (condition[0].type in ("number", "string")
-                                 or (condition[0].type == "keyword" and condition[0].value.lower() in ("true", "false", "nil"))):
+    if _constant_condition(node.condition):
         diags.append(Diagnostic(Severity.WARNING, _CONSTANT_CONDITION,
                                 "if condition is constant", condition[0].line, condition[0].column))
     if node.then_block:
@@ -117,6 +125,8 @@ if __name__ == "__main__":
     assert any(d.code == _CODE for d in both), both
     literal = check_control_flow_text('if (false) then { hint "never"; };')
     assert len([d for d in literal if d.code == _CONSTANT_CONDITION]) == 1, literal
+    negated_literal = check_control_flow_text('if (!true) then { hint "never"; };')
+    assert len([d for d in negated_literal if d.code == _CONSTANT_CONDITION]) == 1, negated_literal
     assert check_control_flow_text('if (_condition) then { exitWith {}; }; hint "maybe";') == []
     embedded = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded
