@@ -389,13 +389,10 @@ def check_argument_types(
         signature = signatures.get(tokens[j].value.lower())
         if signature is None:
             continue
-        if len(items) != len(signature):
-            relation = "expects" if len(items) < len(signature) else "received"
+        if len(items) > len(signature):
             expected = len(signature)
             actual = len(items)
-            message = (f"{tokens[j].value} expects {expected} argument(s), got {actual}"
-                       if relation == "expects" else
-                       f"{tokens[j].value} received {actual} argument(s), signature has {expected}")
+            message = f"{tokens[j].value} received {actual} argument(s), signature has {expected}"
             diags.append(Diagnostic(
                 Severity.WARNING, _ARITY_CODE, message,
                 tokens[j].line, tokens[j].column,
@@ -466,7 +463,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_value = 1; _value = "x"; sleep _value;') == []
     assert check_argument_types(tokenize('[42, "ok"] call acme_fnc_route;'), {"acme_fnc_route": ["Object", "String"]})[0].message == "acme_fnc_route argument 1 expects Object, got Number"
     assert check_argument_types(tokenize('[player, "ok"] call acme_fnc_route;'), {"ACME_fnc_route": ["Object", "String"]}) == []
-    assert check_argument_types(tokenize('[player] call acme_fnc_route;'), {"acme_fnc_route": ["Object", "String"]})[0].code == _ARITY_CODE
+    assert check_argument_types(tokenize('[player] call acme_fnc_route;'), {"acme_fnc_route": ["Object", "String"]}) == []
     assert check_argument_types(tokenize('[player, "ok", 1] call acme_fnc_route;'), {"acme_fnc_route": ["Object", "String"]})[0].code == _ARITY_CODE
     assert check_argument_types(tokenize('[true] spawn acme_fnc_route;'), {"acme_fnc_route": ["Number"]})[0].code == _CODE
     print("argument_types self-test passed")
