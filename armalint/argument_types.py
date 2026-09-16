@@ -84,6 +84,7 @@ _COMMAND_RETURN_TYPES = {
     "nearroads": "Array", "getroadinfo": "Array",
     "arrayintersect": "Array", "pushback": "Number", "pushbackunique": "Number",
     "findif": "Number",
+    "nearestobjects": "Array", "nearestterrainobjects": "Array",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
     "min": "Number", "max": "Number", "mod": "Number",
     "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
@@ -97,6 +98,7 @@ _ARRAY_ELEMENT_TYPES = {
     "allvehicles": "Object", "allmissionobjects": "Object", "allgroups": "Group",
     "alldead": "Object", "alldeadmen": "Object", "allturrets": "Object",
     "allsimpleobjects": "Object",
+    "nearestobjects": "Object", "nearestterrainobjects": "Object",
 }
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
@@ -556,6 +558,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_unit = objNull; { _unit = _x; } forEach allUnits; count _unit;')[0].code == _CODE
     assert check_argument_types_text('_thing = objNull; { _thing = _x; } forEach allDead; count _thing;')[0].code == _CODE
     assert check_argument_types_text('_allPlayers = ["a"]; { _item = _x; } forEach _allPlayers; count _item;') == []
+    assert check_argument_types_text('_thing = 0; { _thing = _x; } forEach (nearestObjects [player, ["Car"], 50]); count _thing;')[0].code == _CODE
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
