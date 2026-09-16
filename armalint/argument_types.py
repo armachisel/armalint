@@ -150,6 +150,20 @@ def _infer_expression(
                 rhs += 1
             if _infer_operand(tokens, rhs, variables) == "Number":
                 return "Number"
+    # Comparisons and boolean composition always produce Boolean values when
+    # their operands are statically understood. This is useful for assignments
+    # later consumed by condition-oriented commands or guards.
+    op = start + 1
+    while op < len(tokens) and tokens[op].type in _TRIVIA:
+        op += 1
+    if op < len(tokens) and tokens[op].type == "operator" and tokens[op].value in (
+        "<", ">", "<=", ">=", "==", "!=", "&&", "||",
+    ):
+        rhs = op + 1
+        while rhs < len(tokens) and tokens[rhs].type in _TRIVIA:
+            rhs += 1
+        if _infer_operand(tokens, rhs, variables) is not None:
+            return "Boolean"
     if direct != "Array" or start >= len(tokens):
         return direct
     split = _array_items(tokens, start)
@@ -386,6 +400,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_roads = [0, 0, 0] nearRoads 8; count _roads;') == []
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a - _b; sqrt _c;') == []
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
+    assert check_argument_types_text('_ok = 1 > 0; sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
