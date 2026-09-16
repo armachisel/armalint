@@ -5,11 +5,11 @@ fairly unambitious goal of catching the mistakes that are easy to make and
 annoying to find in game: one missing bracket, a forgotten comma, or a function
 name that is almost right.
 
-It has grown from there. It now checks a small amount of control flow and type
-information, and it can read function information from the base game, DLC, and
-installed mods. It is still a static checker. When the type of an expression
-cannot be worked out safely, it leaves it alone. That is generally more useful
-than confidently reporting nonsense.
+It has grown from there. It now parses structured control flow such as
+`if`/`else`, loops, `switch`, `waitUntil`, `exitWith`, and embedded `call` or
+`spawn` blocks. It also checks built-in, mission, DLC, and mod function
+signatures when those facts are available. It is still a static checker. When
+an expression cannot be worked out safely, it leaves it alone.
 
 ## Install
 

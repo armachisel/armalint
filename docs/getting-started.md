@@ -49,5 +49,8 @@ armalint-update --mission C:\path\to\MyMission.Altis --clear-cache
 ```
 
 The cache is per mission. A second mission gets its own list and its own scan
-cache. An `armalint.json` file can add optional mods, broad function tags, and
-project-specific argument types.
+cache. An `armalint.json` file can add optional mods, broad function tags,
+project-specific argument types, and mission-wide rule suppression with
+`"ignoreRules": ["W206"]`. For one run, use
+`armalint --ignore-rule W206 <path>`; source comments can suppress a single
+line or section.

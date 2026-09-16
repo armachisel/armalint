@@ -3,7 +3,7 @@
 ## `armalint`
 
 ```text
-armalint [--json] [--ignore GLOB] [--config PATH] [--version] PATH ...
+armalint [--json] [--ignore GLOB] [--ignore-rule RULE] [--config PATH] [--version] PATH ...
 armalint --file PATH [--json]
 armalint --snippet 'sleep "soon";' [--json]
 armalint --mission PATH --snippet 'sleep _delay;' [--json]
