@@ -88,6 +88,7 @@ class IfStatement(Node):
     then_block: Block | None = None
     else_block: Block | "IfStatement" | None = None
     negated: bool = False
+    condition_ast: Expression | None = None
 
 
 @dataclass
@@ -97,6 +98,7 @@ class LoopStatement(Node):
     kind: str = "loop"
     header: list[Token] = field(default_factory=list)
     body: Block | None = None
+    header_ast: Expression | None = None
 
 
 @dataclass
@@ -110,6 +112,7 @@ class SwitchCase(Node):
 class SwitchStatement(Node):
     expression: list[Token] = field(default_factory=list)
     cases: list[SwitchCase] = field(default_factory=list)
+    expression_ast: Expression | None = None
 
 
 @dataclass
@@ -321,6 +324,7 @@ class Parser:
                 kind="foreach",
                 header=tokens[close + 2:header_end],
                 body=body,
+                header_ast=parse_expression(tokens[close + 2:header_end]),
             ))
         return result
 
@@ -354,6 +358,7 @@ class Parser:
             kind="foreach",
             header=self.tokens[body_close + 2:end],
             body=body_node,
+            header_ast=parse_expression(self.tokens[body_close + 2:end]),
         ), next_pos
 
     def _loop_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
@@ -409,6 +414,7 @@ class Parser:
             kind=kind,
             header=self.tokens[pos + 1:header_end + 1],
             body=body_node,
+            header_ast=parse_expression(self.tokens[pos + 1:header_end + 1]),
         ), next_pos
 
     def _switch_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
@@ -485,6 +491,7 @@ class Parser:
             end=end,
             expression=self.tokens[expression_start + 1:expression_close],
             cases=cases,
+            expression_ast=parse_expression(self.tokens[expression_start + 1:expression_close]),
         ), next_pos
 
     def _exit_with_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
@@ -558,7 +565,8 @@ class Parser:
         if next_pos < limit and self.tokens[next_pos].type == "semicolon":
             end = self.tokens[next_pos]
             next_pos += 1
-        return IfStatement(start=self.tokens[pos], end=end, condition=self.tokens[condition_start + 1:close], then_block=then_node, else_block=else_node, negated=negated), next_pos
+        condition = self.tokens[condition_start + 1:close]
+        return IfStatement(start=self.tokens[pos], end=end, condition=condition, then_block=then_node, else_block=else_node, negated=negated, condition_ast=parse_expression(condition)), next_pos
 
 
 def parse(source_or_tokens: str | list[Token]) -> Program:
@@ -599,6 +607,10 @@ if __name__ == "__main__":
     assert isinstance(terminator, TerminatorStatement) and terminator.command == "breakout"
     expr = parse('_value = 1 + 2;').statements[0]
     assert isinstance(expr, Statement) and isinstance(expr.expression, BinaryExpression)
+    conditional = parse('if (1 == 1) then {};').statements[0]
+    assert isinstance(conditional, IfStatement) and isinstance(conditional.condition_ast, BinaryExpression)
+    switched = parse('switch (1) do { default {}; };').statements[0]
+    assert isinstance(switched, SwitchStatement) and isinstance(switched.expression_ast, LiteralExpression)
     command_expr = parse('_value = player weaponDirection "rifle";').statements[0]
     assert isinstance(command_expr, Statement) and isinstance(command_expr.expression, BinaryExpression)
     code_expr = parse('_handle = call { hint "x"; };').statements[0]
