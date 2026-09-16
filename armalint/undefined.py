@@ -22,6 +22,19 @@ _ALWAYS_DEFINED = frozenset(
 _TRIVIA = frozenset(("comment", "preprocessor"))
 
 
+def _constant_condition(tokens: list[Token]) -> bool | None:
+    """Return a literal boolean condition when its value is unambiguous."""
+    visible = [token for token in tokens if token.type not in _TRIVIA]
+    if len(visible) != 1 or visible[0].type != "keyword":
+        return None
+    value = visible[0].value.lower()
+    if value == "true":
+        return True
+    if value in ("false", "nil"):
+        return False
+    return None
+
+
 def _next_significant(tokens: list[Token], index: int) -> int:
     """Index of the first non-trivia token after ``index`` (or ``len(tokens)``)."""
     j = index + 1
@@ -231,6 +244,17 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
         return diags, defined
     if isinstance(node, IfStatement):
         diags, _ = _scan_tokens(node.condition, incoming)
+        constant = _constant_condition(node.condition)
+        if constant is True and node.then_block:
+            then_diags, then_defined = _walk_node(node.then_block, set(incoming), True)
+            diags.extend(then_diags)
+            return diags, then_defined
+        if constant is False:
+            if node.else_block is not None:
+                else_diags, else_defined = _walk_node(node.else_block, set(incoming), True)
+                diags.extend(else_diags)
+                return diags, else_defined
+            return diags, set(incoming)
         then_diags, then_defined = _walk_node(node.then_block, set(incoming), True) if node.then_block else ([], set(incoming))
         diags.extend(then_diags)
         if node.else_block is None:
@@ -292,6 +316,8 @@ if __name__ == "__main__":
 
     assert check_undefined_text("private _a; hint str _a;") == []
     assert check_undefined_text("hint str _this;") == []
+    assert check_undefined_text('if (true) then { _a = 1; }; hint str _a;') == []
+    assert len(check_undefined_text('if (false) then { _a = 1; }; hint str _a;')) == 1
 
     # Arma 3 event-handler magic variables are always defined.
     assert check_undefined_text("hint str _thisArgs; hint str _thisEventHandler;") == []
@@ -316,8 +342,8 @@ if __name__ == "__main__":
 
     # Definitions are merged only when both branches provide them.
     assert check_undefined_text('if (true) then { _value = 1; } else { _value = 2; }; hint str _value;') == []
-    branch_only = check_undefined_text('if (true) then { _value = 1; }; hint str _value;')
-    assert len(branch_only) == 1 and "_value" in branch_only[0].message, branch_only
+    branch_only = check_undefined_text('if (_condition) then { _value = 1; }; hint str _value;')
+    assert sum("_value" in diagnostic.message for diagnostic in branch_only) == 1, branch_only
     assert check_undefined_text('if (true) then { private _inner; _inner = 1; hint str _inner; };') == []
     private_leak = check_undefined_text('if (true) then { private _inner; _inner = 1; }; hint str _inner;')
     assert len(private_leak) == 1 and "_inner" in private_leak[0].message, private_leak
