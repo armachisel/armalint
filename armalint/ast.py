@@ -123,6 +123,12 @@ class Parser:
             elif next_pos < limit and self.tokens[next_pos].type == "lbrace":
                 else_node, next_pos = self._node(next_pos, limit)
         end = else_node.end if isinstance(else_node, Node) else then_node.end
+        # The semicolon after an if/else statement belongs to the statement
+        # just parsed. Consuming it here prevents the parser from manufacturing
+        # a separate statement whose only token is ``;``.
+        if next_pos < limit and self.tokens[next_pos].type == "semicolon":
+            end = self.tokens[next_pos]
+            next_pos += 1
         return IfStatement(start=self.tokens[pos], end=end, condition=self.tokens[condition_start + 1:close], then_block=then_node, else_block=else_node), next_pos
 
 
@@ -134,4 +140,6 @@ if __name__ == "__main__":
     tree = parse('if !(x > 0) then { hint "no"; } else { hint "yes"; };')
     assert isinstance(tree.statements[0], IfStatement)
     assert tree.statements[0].then_block is not None
+    assert len(tree.statements) == 1
+    assert tree.statements[0].end.type == "semicolon"
     print("ast self-test passed")
