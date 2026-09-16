@@ -25,6 +25,20 @@ _TRIVIA = frozenset(("comment", "preprocessor"))
 def _constant_condition(tokens: list[Token], negated: bool = False) -> bool | None:
     """Return a literal boolean condition when its value is unambiguous."""
     visible = [token for token in tokens if token.type not in _TRIVIA]
+    if len(visible) == 3 and visible[1].type == "operator" and visible[1].value in ("==", "!=", "<", ">", "<=", ">="):
+        left, right = visible[0], visible[2]
+        if left.type == right.type and left.type in ("number", "string", "keyword"):
+            try:
+                lvalue = float(left.value) if left.type == "number" else left.value.lower() if left.type == "keyword" else left.value
+                rvalue = float(right.value) if right.type == "number" else right.value.lower() if right.type == "keyword" else right.value
+                result = {"==": lvalue == rvalue, "!=": lvalue != rvalue, "<": lvalue < rvalue,
+                          ">": lvalue > rvalue, "<=": lvalue <= rvalue, ">=": lvalue >= rvalue}[visible[1].value]
+                return not result if negated else result
+            except (TypeError, ValueError):
+                return None
+    if len(visible) == 2 and visible[0].type == "operator" and visible[0].value == "!":
+        negated = not negated
+        visible = visible[1:]
     if len(visible) != 1 or visible[0].type != "keyword":
         return None
     value = visible[0].value.lower()
@@ -334,6 +348,7 @@ if __name__ == "__main__":
     assert len(check_undefined_text('if (false) then { _a = 1; }; hint str _a;')) == 1
     assert len(check_undefined_text('if !(true) then { _a = 1; }; hint str _a;')) == 1
     assert len(check_undefined_text('if (!true) then { _a = 1; }; hint str _a;')) == 1
+    assert check_undefined_text('if (1 == 1) then { _a = 1; }; hint str _a;') == []
 
     # Arma 3 event-handler magic variables are always defined.
     assert check_undefined_text("hint str _thisArgs; hint str _thisEventHandler;") == []
