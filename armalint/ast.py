@@ -157,11 +157,12 @@ class Parser:
                 continue
             body_statements, _ = Parser(tokens[i + 1:close])._sequence(0, close - i - 1, stop=None)
             body = Block(token, tokens[close], body_statements)
+            header_end = len(tokens) - 1 if tokens and tokens[-1].type == "rparen" else len(tokens)
             result.append(LoopStatement(
                 start=token,
-                end=tokens[-1],
+                end=tokens[max(close + 2, header_end - 1)],
                 kind="foreach",
-                header=tokens[close + 2:],
+                header=tokens[close + 2:header_end],
                 body=body,
             ))
         return result
@@ -392,7 +393,7 @@ if __name__ == "__main__":
     assert isinstance(embedded, Statement) and len(embedded.embedded) == 1
     assert isinstance(embedded.embedded[0], LoopStatement)
     embedded_loop = embedded.embedded[0]
-    assert embedded_loop.start.type == "lbrace" and embedded_loop.end.value == ")"
+    assert embedded_loop.start.type == "lbrace" and embedded_loop.end.value.lower() == "allunits"
     assert any(token.value.lower() == "allunits" for token in embedded_loop.header)
     assert embedded_loop.body is not None and embedded_loop.body.start.type == "lbrace"
     switch = parse('switch (_x) do { case 1: { hint "one"; }; default { hint "other"; }; };').statements[0]
