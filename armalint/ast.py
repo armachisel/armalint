@@ -63,6 +63,15 @@ class BinaryExpression(Expression):
 
 
 @dataclass
+class CommandExpression(Expression):
+    """A unary or binary SQF command applied to an expression."""
+
+    command: Token = None  # type: ignore[assignment]
+    left: Expression | None = None
+    right: Expression | None = None
+
+
+@dataclass
 class Statement(Node):
     tokens: list[Token] = field(default_factory=list)
     terminator: str | None = None
@@ -205,7 +214,7 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
             pos += 1
             right = primary()
             if right is None: return None
-            left = BinaryExpression(left.start, right.end, left, op, right)
+            left = CommandExpression(left.start, right.end, op, left, right)
         return left
 
     result = expression(0)
@@ -612,7 +621,7 @@ if __name__ == "__main__":
     switched = parse('switch (1) do { default {}; };').statements[0]
     assert isinstance(switched, SwitchStatement) and isinstance(switched.expression_ast, LiteralExpression)
     command_expr = parse('_value = player weaponDirection "rifle";').statements[0]
-    assert isinstance(command_expr, Statement) and isinstance(command_expr.expression, BinaryExpression)
+    assert isinstance(command_expr, Statement) and isinstance(command_expr.expression, BinaryExpression) and isinstance(command_expr.expression.right, CommandExpression)
     code_expr = parse('_handle = call { hint "x"; };').statements[0]
     assert isinstance(code_expr, Statement) and isinstance(code_expr.expression, BinaryExpression) and isinstance(code_expr.expression.right, CallExpression)
     print("ast self-test passed")
