@@ -6,7 +6,7 @@ annoying to find in game: one missing bracket, a forgotten comma, or a function
 name that is almost right.
 
 It has grown from there. It now parses structured control flow such as
-`if`/`else`, loops, `switch`, `waitUntil`, `exitWith`, and embedded `call` or
+`if`/`else`, loops, `switch`, `waitUntil`, `try`/`catch`, `exitWith`, and embedded `call` or
 `spawn` blocks. It also checks built-in, mission, DLC, and mod function
 signatures when those facts are available. It is still a static checker. When
 an expression cannot be worked out safely, it leaves it alone.

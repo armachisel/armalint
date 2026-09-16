@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Statement, SwitchStatement, parse
+from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Statement, SwitchStatement, TryCatchStatement, parse
 from .tokenizer import Token, tokenize
 
 _CODE = "W101"
@@ -286,6 +286,10 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
                 branches.append(case_defined)
         merged = set.intersection(*branches) if branches else set(incoming)
         return diags, merged
+    if isinstance(node, TryCatchStatement):
+        try_diags, try_defined = _walk_node(node.try_block, set(incoming), True) if node.try_block else ([], set(incoming))
+        catch_diags, catch_defined = _walk_node(node.catch_block, set(incoming), True) if node.catch_block else ([], set(incoming))
+        return try_diags + catch_diags, try_defined & catch_defined
     return [], set(incoming)
 
 
@@ -353,5 +357,7 @@ if __name__ == "__main__":
     assert len(embedded_loop) == 1 and "_missingInLoop" in embedded_loop[0].message, embedded_loop
     spawned = check_undefined_text('spawn { hint str _missingInSpawn; };')
     assert len(spawned) == 1 and "_missingInSpawn" in spawned[0].message, spawned
+    caught = check_undefined_text('try { _tryValue = 1; } catch { _catchValue = 2; }; hint str _tryValue;')
+    assert any("_tryValue" in item.message for item in caught), caught
 
     print("undefined self-test passed")

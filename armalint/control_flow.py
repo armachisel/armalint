@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Program, Statement, SwitchStatement, parse
+from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Program, Statement, SwitchStatement, TryCatchStatement, parse
 from .diagnostic import Diagnostic, Severity
 
 _CODE = "W104"
@@ -32,6 +32,9 @@ def _node_terminates(node: Node) -> bool:
         return bool(node.cases) and any(case.is_default for case in node.cases) and all(
             case.body is not None and _block_terminates(case.body) for case in node.cases
         )
+    if isinstance(node, TryCatchStatement):
+        return (node.try_block is not None and node.catch_block is not None
+                and _block_terminates(node.try_block) and _block_terminates(node.catch_block))
     return False
 
 
@@ -79,6 +82,11 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
             for case in node.cases:
                 if case.body:
                     _walk_block(case.body, diags)
+        elif isinstance(node, TryCatchStatement):
+            if node.try_block:
+                _walk_block(node.try_block, diags)
+            if node.catch_block:
+                _walk_block(node.catch_block, diags)
         elif isinstance(node, ExitWithStatement) and node.body:
             _walk_block(node.body, diags)
         if _node_terminates(node):

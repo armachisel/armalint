@@ -66,6 +66,12 @@ class ExitWithStatement(Node):
 
 
 @dataclass
+class TryCatchStatement(Node):
+    try_block: Block | None = None
+    catch_block: Block | None = None
+
+
+@dataclass
 class Program:
     statements: list[Node] = field(default_factory=list)
 
@@ -127,6 +133,10 @@ class Parser:
             exit_with = self._exit_with_node(pos, limit)
             if exit_with is not None:
                 return exit_with
+        if tok.type == "keyword" and tok.value.lower() == "try":
+            try_catch = self._try_catch_node(pos, limit)
+            if try_catch is not None:
+                return try_catch
 
         depth = 0
         end = pos
@@ -364,6 +374,30 @@ class Parser:
             next_pos += 1
         return ExitWithStatement(start=self.tokens[pos], end=end, body=body), next_pos
 
+    def _try_catch_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
+        """Parse ``try { ... } catch { ... }``."""
+        try_start = pos + 1
+        if try_start >= limit or self.tokens[try_start].type != "lbrace":
+            return None
+        try_node, next_pos = self._node(try_start, limit)
+        if not isinstance(try_node, Block):
+            return None
+        if next_pos < limit and self.tokens[next_pos].type == "semicolon":
+            next_pos += 1
+        if next_pos >= limit or self.tokens[next_pos].type != "keyword" or self.tokens[next_pos].value.lower() != "catch":
+            return None
+        catch_start = next_pos + 1
+        if catch_start >= limit or self.tokens[catch_start].type != "lbrace":
+            return None
+        catch_node, next_pos = self._node(catch_start, limit)
+        if not isinstance(catch_node, Block):
+            return None
+        end = catch_node.end
+        if next_pos < limit and self.tokens[next_pos].type == "semicolon":
+            end = self.tokens[next_pos]
+            next_pos += 1
+        return TryCatchStatement(self.tokens[pos], end, try_node, catch_node), next_pos
+
     def _if_node(self, pos: int, limit: int) -> tuple[Node | None, int]:
         condition_start = pos + 1
         negated = False
@@ -432,4 +466,6 @@ if __name__ == "__main__":
     assert isinstance(switch, SwitchStatement) and len(switch.cases) == 2
     exit_with = parse('exitWith { hint "done"; };').statements[0]
     assert isinstance(exit_with, ExitWithStatement) and exit_with.body is not None
+    caught = parse('try { hint str _value; } catch { hint str _exception; };').statements[0]
+    assert isinstance(caught, TryCatchStatement) and caught.try_block is not None and caught.catch_block is not None
     print("ast self-test passed")

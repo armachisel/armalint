@@ -46,7 +46,7 @@ Config files are handled as config files. SQF embedded in code-valued config
 properties is linted, while the class hierarchy itself is not treated as SQF.
 
 The parser builds source-spanned nodes for `if`/`else`, `for`, `while`,
-`waitUntil`, `switch`, `exitWith`, `forEach`, and direct `call`/`spawn` code
+`waitUntil`, `try`/`catch`, `switch`, `exitWith`, `forEach`, and direct `call`/`spawn` code
 blocks. Scope and type analysis use those nodes where the syntax is
 unambiguous; dynamic expressions remain unchecked.
 
