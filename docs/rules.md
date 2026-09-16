@@ -27,6 +27,7 @@ mistakes are found.
 | --- | --- |
 | `W101` | A script-local variable is used before Armalint can find a definition, `params`, or `param` declaration. |
 | `W104` | Code is unreachable after an unconditional `exitWith`, `throw`, `breakOut`, `continue`, or a pair of terminating branches. |
+| `W206` | An `if` condition is a literal value and therefore always has the same truth value. |
 | `W201` | A name used as a `call` or `spawn` target is not in the built-in, mission, or indexed function registry. |
 | `W202` | A direct command name is not in the built-in command registry. |
 | `W203` | A known command or indexed function receives an argument whose statically inferred type is incompatible with its signature. |

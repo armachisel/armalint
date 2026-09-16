@@ -6,6 +6,7 @@ from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Pro
 from .diagnostic import Diagnostic, Severity
 
 _CODE = "W104"
+_CONSTANT_CONDITION = "W206"
 _TERMINATORS = frozenset(("exitwith", "throw", "breakout", "continue"))
 
 
@@ -56,6 +57,14 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
         elif isinstance(node, Block):
             _walk_block(node, diags)
         elif isinstance(node, IfStatement):
+            condition = [t for t in node.condition if t.type not in ("comment", "preprocessor")]
+            if len(condition) == 1 and (condition[0].type in ("number", "string")
+                                         or (condition[0].type == "keyword" and condition[0].value.lower() in ("true", "false", "nil"))):
+                diags.append(Diagnostic(
+                    Severity.WARNING, _CONSTANT_CONDITION,
+                    "if condition is constant",
+                    condition[0].line, condition[0].column,
+                ))
             if node.then_block:
                 _walk_block(node.then_block, diags)
             if isinstance(node.else_block, Block):
@@ -91,8 +100,12 @@ def check_control_flow_text(source: str) -> list[Diagnostic]:
 
 if __name__ == "__main__":
     assert check_control_flow_text('exitWith {}; hint "never";')[0].code == _CODE
-    assert check_control_flow_text('if (true) then { exitWith {}; } else { throw 1; }; hint "never";')[0].code == _CODE
-    assert check_control_flow_text('if (true) then { exitWith {}; }; hint "maybe";') == []
+    both = check_control_flow_text('if (true) then { exitWith {}; } else { throw 1; }; hint "never";')
+    assert any(d.code == _CONSTANT_CONDITION for d in both), both
+    assert any(d.code == _CODE for d in both), both
+    literal = check_control_flow_text('if (false) then { hint "never"; };')
+    assert len([d for d in literal if d.code == _CONSTANT_CONDITION]) == 1, literal
+    assert check_control_flow_text('if (_condition) then { exitWith {}; }; hint "maybe";') == []
     embedded = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded
     embedded_exit = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
