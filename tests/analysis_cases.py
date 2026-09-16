@@ -47,6 +47,11 @@ def _ast_chained_command_expression() -> bool:
     return bool(getattr(node, "expression", None) and len(list(walk_expression(node.expression))) >= 3)
 
 
+def _ast_malformed_expression_recovery() -> bool:
+    nodes = parse('_value = [1,]; hint "after";').statements
+    return len(nodes) == 2 and getattr(nodes[0], "expression", None) is None
+
+
 def _control_flow_spawn() -> bool:
     diagnostics = check_control_flow_text('spawn { exitWith {}; hint "never"; };')
     return len([item for item in diagnostics if item.code == "W104"]) == 1
@@ -229,6 +234,7 @@ CASES = (
     ("AST nested spawn expression", _ast_nested_spawn_expression),
     ("AST expression walker", _ast_expression_walker),
     ("AST chained command expression", _ast_chained_command_expression),
+    ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
     ("loop terminator unreachable code", _control_flow_terminators),
