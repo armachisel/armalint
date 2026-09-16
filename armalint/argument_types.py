@@ -50,6 +50,19 @@ _RETURN_TYPES = {
     "asin": "Number", "acos": "Number", "atan": "Number",
     "selectrandom": None,
 }
+
+# Return types for common engine commands. These are used when a command is
+# part of an assignment or a larger expression, rather than as a checked
+# unary argument.
+_COMMAND_RETURN_TYPES = {
+    "getdir": "Number", "getnumber": "Number", "gettext": "String",
+    "getpos": "Array", "getposasl": "Array", "getposatl": "Array",
+    "velocity": "Array", "vectorup": "Array", "vectordir": "Array",
+    "nearroads": "Array", "getroadinfo": "Array",
+    "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
+    "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
+    "isclass": "Boolean", "isequaltype": "Boolean", "find": "Number",
+}
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
@@ -87,6 +100,13 @@ def _infer_expression(tokens: list[Token], start: int, variables: dict[str, str]
         # unary - is numeric.
         return (_infer_operand(tokens, start + 1, variables)
                 if tokens[start].value == "+" else "Number")
+    if start < len(tokens) and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
+        return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
+    operand_end = start + 1
+    while operand_end < len(tokens) and tokens[operand_end].type in _TRIVIA:
+        operand_end += 1
+    if operand_end < len(tokens) and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES:
+        return _COMMAND_RETURN_TYPES[tokens[operand_end].value.lower()]
     direct = _infer_operand(tokens, start, variables)
     if direct != "Array" or start >= len(tokens):
         return direct
@@ -97,6 +117,16 @@ def _infer_expression(tokens: list[Token], start: int, variables: dict[str, str]
     j = close + 1
     while j < len(tokens) and tokens[j].type in _TRIVIA:
         j += 1
+    if j < len(tokens) and tokens[j].value.lower() in _COMMAND_RETURN_TYPES:
+        return _COMMAND_RETURN_TYPES[tokens[j].value.lower()]
+    if j < len(tokens) and tokens[j].type == "keyword" and tokens[j].value.lower() in ("call", "spawn"):
+        # An argument array is not the result of the function call. Without a
+        # known return signature, leave the result unknown rather than calling
+        # it an Array and producing a false W203 later.
+        target = j + 1
+        while target < len(tokens) and tokens[target].type in _TRIVIA:
+            target += 1
+        return None
     if j < len(tokens) and tokens[j].value.lower() == "select":
         j += 1
         if j < len(tokens) and tokens[j].type == "number":
@@ -225,6 +255,10 @@ if __name__ == "__main__":
     assert check_argument_types_text('toLower 42;')[0].code == _CODE
     assert check_argument_types_text('selectRandom "not an array";')[0].code == _CODE
     assert check_argument_types_text('abs -2; toUpper "ok";') == []
+    assert check_argument_types_text('_d = [0, 0, []] call unknown_fnc; round _d;') == []
+    assert check_argument_types_text('_d = getDir player; sin _d;') == []
+    assert check_argument_types_text('_p = [0, 0, 0] getPosASL objNull; count _p;') == []
+    assert check_argument_types_text('_roads = [0, 0, 0] nearRoads 8; count _roads;') == []
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(
