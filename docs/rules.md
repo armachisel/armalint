@@ -31,6 +31,7 @@ mistakes are found.
 | `W202` | A direct command name is not in the built-in command registry. |
 | `W203` | A known command or indexed function receives an argument whose statically inferred type is incompatible with its signature. |
 | `W204` | A statically indexed function receives more arguments than its indexed signature declares. Shorter calls are allowed because extracted signatures may include optional parameters. |
+| `W205` | `call` or `spawn` is targeting a literal value known not to contain code. |
 
 ## How cautious is the analysis?
 
