@@ -52,6 +52,11 @@ _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "setvectorup": (frozenset(("Array",)), "Array"),
     "setdir": (frozenset(("Number",)), "Number"),
     "setdamage": (frozenset(("Number",)), "Number"),
+    "setfuel": (frozenset(("Number",)), "Number"),
+    "setcaptive": (frozenset(("Boolean",)), "Boolean"),
+    "allowdamage": (frozenset(("Boolean",)), "Boolean"),
+    "setbehaviour": (frozenset(("String",)), "String"),
+    "setunitpos": (frozenset(("String",)), "String"),
 }
 
 _RETURN_TYPES = {
@@ -386,6 +391,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
     assert check_argument_types_text('player setPos [0, 0, 0]; player setDir 90;') == []
     assert check_argument_types_text('player setPos 42;')[0].code == _CODE
+    assert check_argument_types_text('player setFuel 0.5; player allowDamage true; player setBehaviour "COMBAT";') == []
+    assert check_argument_types_text('player setFuel "full";')[0].code == _CODE
     assert check_argument_types(
         tokenize('_d = [] call ALT_fnc_distanceToRoute; round _d;'),
         function_return_types={"ALT_fnc_distanceToRoute": "Number"},
