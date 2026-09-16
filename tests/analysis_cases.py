@@ -66,6 +66,11 @@ def _undefined_params_scope() -> bool:
     return len([item for item in diagnostics if item.code == "W101" and "_inner" in item.message]) == 1
 
 
+def _undefined_switch_case() -> bool:
+    diagnostics = check_undefined_text('switch (_value) do { case _missingCase: { hint "case"; }; default { hint "default"; }; };')
+    return len([item for item in diagnostics if item.code == "W101" and "_missingCase" in item.message]) == 1
+
+
 def _types_config_hashmap() -> bool:
     return check_argument_types_text("count configFile; count createHashMap;") == []
 
@@ -131,6 +136,7 @@ CASES = (
     ("undefined variable in waitUntil", _undefined_wait_until),
     ("try/catch definition merge", _undefined_try_branch),
     ("params lexical scope", _undefined_params_scope),
+    ("undefined switch case local", _undefined_switch_case),
     ("Config and HashMap type inference", _types_config_hashmap),
     ("object array loop type inference", _types_near_roads),
     ("engine object collection inference", _types_engine_object_collection),
