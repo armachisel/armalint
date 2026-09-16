@@ -48,6 +48,7 @@ engine command data.
 python -m armalint [--json] [--ignore GLOB] [--rules RULE] [--version] <paths>...
 python -m armalint --file PATH [--json]
 python -m armalint --snippet SOURCE [--json]
+python -m armalint --mission PATH --snippet SOURCE [--json]
 ```
 
 | Option          | Description                                                        |
@@ -55,6 +56,7 @@ python -m armalint --snippet SOURCE [--json]
 | `paths`         | One or more files or directories to lint (positional, required).    |
 | `--file PATH`   | Lint one explicit file; repeatable.                                 |
 | `--snippet SOURCE` | Lint inline SQF without creating a file.                          |
+| `--mission PATH` | Use mission symbols/configuration with `--snippet` or `--file`.      |
 | `--json`        | Emit a single JSON array of diagnostic objects instead of text.     |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--rules RULE`  | Accepted for forward compatibility; currently ignored. Repeatable. |
@@ -72,6 +74,12 @@ python -m armalint --snippet 'params [["_delay", 0]]; sleep _delay;' --json
 
 Snippet diagnostics use `<snippet>` as their file name. A snippet cannot be
 combined with positional paths or `--file`.
+
+Use a mission as context when checking a function call or local signature:
+
+```powershell
+python -m armalint --mission MyMission.Altis --snippet 'ALT_fnc_start call [];'
+```
 
 ### Examples
 
