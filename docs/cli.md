@@ -49,6 +49,8 @@ hint str _value;
 Use `// armalint: disable W206` and `// armalint: enable W206` around a
 file-level or section-wide exception. A mission's `armalint.json` can set
 `{"ignoreRules": ["W206", "W101"]}` for every file in that mission.
+Command-line and mission-configured rule suppressions also apply to diagnostics
+from files pulled in through `#include`.
 
 ## `armalint-update`
 

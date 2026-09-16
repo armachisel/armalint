@@ -145,7 +145,7 @@ class Parser:
         return Statement(tok, self.tokens[end - 1], statement_tokens, None, self._embedded(statement_tokens)), end
 
     def _embedded(self, tokens: list[Token]) -> list[Node]:
-        """Find structured ``{...} forEach`` nodes embedded in expressions."""
+        """Find structured code blocks embedded in expressions."""
         result: list[Node] = []
         for i, token in enumerate(tokens):
             if token.type == "keyword" and token.value.lower() == "exitwith":
@@ -159,6 +159,13 @@ class Parser:
                             end=tokens[close],
                             body=Block(tokens[body_start], tokens[close], body_statements),
                         ))
+                continue
+            if (token.type == "keyword" and token.value.lower() in ("call", "spawn")
+                    and i + 1 < len(tokens) and tokens[i + 1].type == "lbrace"):
+                close = _matching(tokens, i + 1, "lbrace", "rbrace")
+                if close is not None:
+                    body_statements, _ = Parser(tokens[i + 2:close])._sequence(0, close - i - 2, stop=None)
+                    result.append(Block(tokens[i + 1], tokens[close], body_statements))
                 continue
             if token.type != "lbrace":
                 continue
@@ -419,6 +426,8 @@ if __name__ == "__main__":
     assert embedded_loop.body is not None and embedded_loop.body.start.type == "lbrace"
     early = parse('_result = ({ exitWith {}; } forEach allUnits);').statements[0]
     assert isinstance(early, Statement) and any(isinstance(node, ExitWithStatement) for node in early.embedded)
+    spawned = parse('_handle = spawn { hint str _missing; };').statements[0]
+    assert isinstance(spawned, Statement) and isinstance(spawned.embedded[0], Block)
     switch = parse('switch (_x) do { case 1: { hint "one"; }; default { hint "other"; }; };').statements[0]
     assert isinstance(switch, SwitchStatement) and len(switch.cases) == 2
     exit_with = parse('exitWith { hint "done"; };').statements[0]
