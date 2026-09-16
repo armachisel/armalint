@@ -168,6 +168,13 @@ def _infer_expression(
         return direct
     split = _array_items(tokens, start)
     if split is None:
+        # An array variable followed by ``select`` yields the element type,
+        # which cannot be recovered from the container type alone.
+        command = start + 1
+        while command < len(tokens) and tokens[command].type in _TRIVIA:
+            command += 1
+        if command < len(tokens) and tokens[command].value.lower() == "select":
+            return None
         return direct
     _items, close = split
     j = close + 1
@@ -401,6 +408,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a - _b; sqrt _c;') == []
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
     assert check_argument_types_text('_ok = 1 > 0; sleep _ok;')[0].code == _CODE
+    assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
