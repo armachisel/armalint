@@ -170,6 +170,10 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
             pos += 1
             target = primary()
             return CallExpression(command, target.end if target else command, command, target) if target else None
+        if token.type == "keyword" and token.value.lower() == "not":
+            pos += 1
+            item = primary()
+            return UnaryExpression(token, item.end if item else token, token, item) if item else None
         if token.type in ("number", "string") or (token.type == "keyword" and token.value.lower() in ("true", "false", "nil")):
             pos += 1; return LiteralExpression(token, token, token)
         if token.type in ("ident", "local", "keyword"):
@@ -630,4 +634,6 @@ if __name__ == "__main__":
     assert isinstance(code_expr.expression.right.target, CodeExpression) and code_expr.expression.right.target.body is not None
     variable_call = parse('call _fnc;').statements[0]
     assert isinstance(variable_call, Statement) and isinstance(variable_call.expression, CallExpression)
+    negated = parse('not _condition;').statements[0]
+    assert isinstance(negated, Statement) and isinstance(negated.expression, UnaryExpression)
     print("ast self-test passed")
