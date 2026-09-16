@@ -85,6 +85,11 @@ def _types_common_object_collections() -> bool:
     return True
 
 
+def _types_vector_angle() -> bool:
+    source = '_aimDir = player weaponDirection "rifle"; _desiredDir = [0,0,0] vectorFromTo [1,0,0]; acos (_aimDir vectorCos _desiredDir);'
+    return check_argument_types_text(source) == []
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -109,6 +114,7 @@ CASES = (
     ("nearest object collection inference", _types_nearest_objects),
     ("near entity collection inference", _types_near_entities),
     ("common object collection inference", _types_common_object_collections),
+    ("vector angle inference", _types_vector_angle),
     ("multi-code suppression", _suppression_multi_code),
 )
 
