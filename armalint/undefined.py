@@ -25,6 +25,17 @@ _TRIVIA = frozenset(("comment", "preprocessor"))
 def _constant_condition(tokens: list[Token], negated: bool = False) -> bool | None:
     """Return a literal boolean condition when its value is unambiguous."""
     visible = [token for token in tokens if token.type not in _TRIVIA]
+    while len(visible) >= 2 and visible[0].type == "lparen" and visible[-1].type == "rparen":
+        depth = 0
+        for index, token in enumerate(visible):
+            depth += token.type == "lparen"
+            depth -= token.type == "rparen"
+            if depth == 0 and index != len(visible) - 1:
+                break
+        else:
+            visible = visible[1:-1]
+            continue
+        break
     if len(visible) == 3 and visible[1].type == "operator" and visible[1].value in ("==", "!=", "<", ">", "<=", ">="):
         left, right = visible[0], visible[2]
         literal_keywords = {"true", "false", "nil"}

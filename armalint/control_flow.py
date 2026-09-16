@@ -17,6 +17,17 @@ def _constant_condition(tokens: list[Token]) -> bool:
             token.type == "keyword" and token.value.lower() in ("true", "false", "nil")
         )
     visible = [t for t in tokens if t.type not in ("comment", "preprocessor")]
+    while len(visible) >= 2 and visible[0].type == "lparen" and visible[-1].type == "rparen":
+        depth = 0
+        for index, token in enumerate(visible):
+            depth += token.type == "lparen"
+            depth -= token.type == "rparen"
+            if depth == 0 and index != len(visible) - 1:
+                break
+        else:
+            visible = visible[1:-1]
+            continue
+        break
     if len(visible) == 2 and visible[0].type == "operator" and visible[0].value == "!":
         visible = visible[1:]
     if len(visible) == 1:
@@ -140,6 +151,8 @@ if __name__ == "__main__":
     assert len([d for d in comparison_literal if d.code == _CONSTANT_CONDITION]) == 1, comparison_literal
     unknown_comparison = check_control_flow_text('if (1 == then) then { hint "unknown"; };')
     assert not any(d.code == _CONSTANT_CONDITION for d in unknown_comparison), unknown_comparison
+    grouped_comparison = check_control_flow_text('if ((1 == 1)) then { hint "constant"; };')
+    assert len([d for d in grouped_comparison if d.code == _CONSTANT_CONDITION]) == 1, grouped_comparison
     assert check_control_flow_text('if (_condition) then { exitWith {}; }; hint "maybe";') == []
     embedded = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded
