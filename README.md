@@ -46,11 +46,15 @@ engine command data.
 
 ```text
 python -m armalint [--json] [--ignore GLOB] [--rules RULE] [--version] <paths>...
+python -m armalint --file PATH [--json]
+python -m armalint --snippet SOURCE [--json]
 ```
 
 | Option          | Description                                                        |
 | --------------- | ------------------------------------------------------------------ |
 | `paths`         | One or more files or directories to lint (positional, required).    |
+| `--file PATH`   | Lint one explicit file; repeatable.                                 |
+| `--snippet SOURCE` | Lint inline SQF without creating a file.                          |
 | `--json`        | Emit a single JSON array of diagnostic objects instead of text.     |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--rules RULE`  | Accepted for forward compatibility; currently ignored. Repeatable. |
@@ -59,6 +63,15 @@ python -m armalint [--json] [--ignore GLOB] [--rules RULE] [--version] <paths>..
 When given a directory, Armalint walks it recursively and lints files ending
 in `.sqf`, `.sqs`, `.hpp`, and `.ext`. The exit code is `0` when there are no
 `error`-severity diagnostics and `1` otherwise.
+
+For a quick expression check, lint a snippet directly:
+
+```powershell
+python -m armalint --snippet 'params [["_delay", 0]]; sleep _delay;' --json
+```
+
+Snippet diagnostics use `<snippet>` as their file name. A snippet cannot be
+combined with positional paths or `--file`.
 
 ### Examples
 

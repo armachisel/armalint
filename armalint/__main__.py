@@ -20,7 +20,7 @@ from .config import (
 )
 from .config_lint import lint_config
 from .diagnostic import Severity, format_diagnostic
-from .linter import build_symbol_index, lint_file
+from .linter import build_symbol_index, lint_file, lint_text
 from .mods import load_mod_cache
 from .mods import load_mod_type_cache
 
@@ -73,7 +73,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         prog="armalint", description="Arma 3 SQF linter"
     )
     parser.add_argument(
-        "paths", nargs="+", help="files or directories to lint"
+        "paths", nargs="*", help="files or directories to lint"
+    )
+    parser.add_argument(
+        "--file", dest="files", action="append", default=[], metavar="PATH",
+        help="lint one specific file (repeatable; equivalent to a positional file)",
+    )
+    parser.add_argument(
+        "--snippet", metavar="SOURCE",
+        help="lint an inline SQF snippet instead of files",
     )
     parser.add_argument(
         "--json",
@@ -108,8 +116,31 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def _main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
+    if args.snippet is not None and (args.paths or args.files):
+        _build_arg_parser().error("--snippet cannot be combined with files or directories")
+    if args.snippet is None and not (args.paths or args.files):
+        _build_arg_parser().error("provide a file/directory, --file PATH, or --snippet SOURCE")
+
+    input_paths = [*args.paths, *args.files]
+
+    if args.snippet is not None:
+        all_diags = lint_text(args.snippet, filename="<snippet>")
+        linted_files = ["<snippet>"]
+        if args.json:
+            payload = [
+                {"file": d.file, "line": d.line, "column": d.column,
+                 "severity": d.severity.value, "code": d.code, "message": d.message}
+                for d in all_diags
+            ]
+            print(json.dumps(payload))
+        else:
+            for d in all_diags:
+                print(format_diagnostic(d))
+            print(f"{len(linted_files)} snippet(s) linted, {len(all_diags)} diagnostic(s)")
+        return 1 if any(d.severity is Severity.ERROR for d in all_diags) else 0
+
     files: list[str] = []
-    for path in args.paths:
+    for path in input_paths:
         files.extend(_collect_files(path, args.ignore))
 
     # De-duplicate while preserving determinism, then sort.
@@ -126,7 +157,7 @@ def _main(argv: list[str] | None = None) -> int:
         function_signatures = extract_function_type_signatures(loaded_config)
         function_return_types = extract_function_return_types(loaded_config)
     else:
-        for path in args.paths:
+        for path in input_paths:
             cfg_path = find_config(path)
             if cfg_path:
                 loaded_config = load_config_file(cfg_path)
@@ -146,7 +177,7 @@ def _main(argv: list[str] | None = None) -> int:
     # so mod-provided functions are recognized by exact name. Caches are
     # discovered by walking up from each lint path; multiple caches are unioned.
     mod_cache_paths: set[str] = set()
-    for path in args.paths:
+    for path in input_paths:
         cache_path = find_mod_cache(path)
         if cache_path:
             mod_cache_paths.add(cache_path)
@@ -154,7 +185,7 @@ def _main(argv: list[str] | None = None) -> int:
         for name in load_mod_cache(cache_path):
             index.add_function(name)
     mod_type_cache_paths = {
-        path for path in (find_mod_type_cache(target) for target in args.paths)
+        path for path in (find_mod_type_cache(target) for target in input_paths)
         if path
     }
     for cache_path in sorted(mod_type_cache_paths):
