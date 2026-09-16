@@ -115,7 +115,7 @@ class Parser:
             return Block(tok, self.tokens[close], statements), close + 1
         if tok.type == "keyword" and tok.value.lower() == "if":
             return self._if_node(pos, limit)
-        if tok.type == "keyword" and tok.value.lower() in ("while", "for"):
+        if tok.type == "keyword" and tok.value.lower() in ("while", "for", "waituntil"):
             loop = self._loop_node(pos, limit)
             if loop is not None:
                 return loop
@@ -217,7 +217,10 @@ class Parser:
         kind = self.tokens[pos].value.lower()
         body_start: int | None = None
         header_end: int | None = None
-        if kind == "while":
+        if kind == "waituntil":
+            body_start = pos + 1
+            header_end = pos
+        elif kind == "while":
             condition_start = pos + 1
             if condition_start >= limit or self.tokens[condition_start].type != "lbrace":
                 return None
@@ -403,6 +406,8 @@ if __name__ == "__main__":
     assert tree.statements[0].end.type == "semicolon"
     loop = parse('while { _x > 0 } do { exitWith {}; };').statements[0]
     assert isinstance(loop, LoopStatement) and loop.body is not None
+    wait = parse('waitUntil { _ready; };').statements[0]
+    assert isinstance(wait, LoopStatement) and wait.kind == "waituntil" and wait.body is not None
     foreach = parse('{ hint str _x; } forEach _items;').statements[0]
     assert isinstance(foreach, LoopStatement) and foreach.kind == "foreach"
     embedded = parse('_result = ({ _result pushBack _x; } forEach allUnits);').statements[0]

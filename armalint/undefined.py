@@ -328,6 +328,7 @@ if __name__ == "__main__":
     assert check_undefined_text('private ["_a", "_b"]; hint str _a; hint str _b;') == []
     assert check_undefined_text('params ["_a", ["_b", 2]]; hint str _a;') == []
     assert check_undefined_text('for "_i" from 0 to 1 do { hint str _i; };') == []
+    assert len(check_undefined_text('waitUntil { hint str _ready; };')) == 1
     assert check_undefined_text("_x = _x + 1;") == []
 
     diags = check_undefined_text("hint str _z; _z = 5;")
