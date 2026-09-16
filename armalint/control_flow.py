@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .ast import Block, IfStatement, Node, Program, Statement, parse
+from .ast import Block, IfStatement, LoopStatement, Node, Program, Statement, parse
 from .diagnostic import Diagnostic, Severity
 
 _CODE = "W104"
@@ -23,6 +23,8 @@ def _node_terminates(node: Node) -> bool:
         return (node.then_block is not None and _block_terminates(node.then_block)
                 and isinstance(node.else_block, (Block, IfStatement))
                 and _node_terminates(node.else_block))
+    if isinstance(node, LoopStatement):
+        return False
     return False
 
 
@@ -49,6 +51,8 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
                 _walk_block(node.else_block, diags)
             elif isinstance(node.else_block, IfStatement) and node.else_block.then_block:
                 _walk_block(node.else_block.then_block, diags)
+        elif isinstance(node, LoopStatement) and node.body:
+            _walk_block(node.body, diags)
         if _node_terminates(node):
             unreachable = True
 
