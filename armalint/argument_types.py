@@ -136,6 +136,16 @@ def _infer_expression(
         operand_end += 1
     if operand_end < len(tokens) and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES:
         return _COMMAND_RETURN_TYPES[tokens[operand_end].value.lower()]
+    if operand_end < len(tokens) and tokens[operand_end].value.lower() == "getvariable":
+        default_start = operand_end + 1
+        while default_start < len(tokens) and tokens[default_start].type in _TRIVIA:
+            default_start += 1
+        if default_start < len(tokens) and tokens[default_start].type == "lbracket":
+            split = _array_items(tokens, default_start)
+            if split:
+                items, _close = split
+                if len(items) > 1:
+                    return _simple_item_type(items[1], variables)
     direct = _infer_operand(tokens, start, variables)
     # A small amount of arithmetic inference is safe when both operands have
     # already-known numeric types. SQF also uses ``min``/``max`` as binary
@@ -409,6 +419,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
     assert check_argument_types_text('_ok = 1 > 0; sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
+    assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", 1]; sleep _delay;') == []
+    assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", "soon"]; sleep _delay;')[0].code == _CODE
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
