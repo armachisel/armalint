@@ -106,6 +106,17 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
     if i >= len(tokens):
         return None
     tok = tokens[i]
+    if tok.type == "lparen":
+        depth = 0
+        for end in range(i, len(tokens)):
+            if tokens[end].type == "lparen":
+                depth += 1
+            elif tokens[end].type == "rparen":
+                depth -= 1
+                if depth == 0:
+                    inner = [t for t in tokens[i + 1:end] if t.type not in _TRIVIA]
+                    return _infer_expression(inner, 0, variables) if inner else None
+        return None
     if tok.type == "operator" and tok.value == "!":
         return "Boolean"
     if tok.type == "number":
@@ -498,6 +509,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a - _b; sqrt _c;') == []
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
     assert check_argument_types_text('_ok = 1 > 0; sleep _ok;')[0].code == _CODE
+    assert check_argument_types_text('_ok = (1 > 0); sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", 1]; sleep _delay;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", "soon"]; sleep _delay;')[0].code == _CODE
