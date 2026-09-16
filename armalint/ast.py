@@ -388,6 +388,9 @@ if __name__ == "__main__":
     assert isinstance(loop, LoopStatement) and loop.body is not None
     foreach = parse('{ hint str _x; } forEach _items;').statements[0]
     assert isinstance(foreach, LoopStatement) and foreach.kind == "foreach"
+    embedded = parse('_result = ({ _result pushBack _x; } forEach allUnits);').statements[0]
+    assert isinstance(embedded, Statement) and len(embedded.embedded) == 1
+    assert isinstance(embedded.embedded[0], LoopStatement)
     switch = parse('switch (_x) do { case 1: { hint "one"; }; default { hint "other"; }; };').statements[0]
     assert isinstance(switch, SwitchStatement) and len(switch.cases) == 2
     exit_with = parse('exitWith { hint "done"; };').statements[0]
