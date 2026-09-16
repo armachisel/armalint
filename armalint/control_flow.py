@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Program, Statement, SwitchStatement, TryCatchStatement, parse
+from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Program, Statement, SwitchStatement, TerminatorStatement, TryCatchStatement, parse
 from .diagnostic import Diagnostic, Severity
 from .tokenizer import Token
 
@@ -32,6 +32,8 @@ def _statement_terminates(statement: Statement) -> bool:
 
 
 def _node_terminates(node: Node) -> bool:
+    if isinstance(node, TerminatorStatement):
+        return True
     if isinstance(node, Statement):
         return _statement_terminates(node)
     if isinstance(node, ExitWithStatement):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from armalint.argument_types import check_argument_types_text
-from armalint.ast import Block, LoopStatement, TryCatchStatement, parse
+from armalint.ast import Block, LoopStatement, TerminatorStatement, TryCatchStatement, parse
 from armalint.control_flow import check_control_flow_text
 from armalint.suppression import filter_suppressed
 from armalint.undefined import check_undefined_text
@@ -23,6 +23,11 @@ def _ast_try_catch() -> bool:
 def _ast_spawn_block() -> bool:
     node = parse("spawn { hint str _missing; };").statements[0]
     return bool(getattr(node, "embedded", None)) and isinstance(node.embedded[0], Block)
+
+
+def _ast_terminator_node() -> bool:
+    node = parse('breakOut "scope";').statements[0]
+    return isinstance(node, TerminatorStatement) and node.command == "breakout"
 
 
 def _control_flow_spawn() -> bool:
@@ -149,6 +154,7 @@ CASES = (
     ("AST waitUntil node", _ast_wait_until),
     ("AST try/catch node", _ast_try_catch),
     ("AST embedded spawn block", _ast_spawn_block),
+    ("AST terminator node", _ast_terminator_node),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
     ("loop terminator unreachable code", _control_flow_terminators),

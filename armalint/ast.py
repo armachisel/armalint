@@ -26,6 +26,13 @@ class Statement(Node):
 
 
 @dataclass
+class TerminatorStatement(Statement):
+    """A statement that unconditionally exits or changes control flow."""
+
+    command: str = ""
+
+
+@dataclass
 class Block(Node):
     statements: list[Node] = field(default_factory=list)
 
@@ -110,6 +117,12 @@ class Parser:
 
     def _node(self, pos: int, limit: int) -> tuple[Node | None, int]:
         tok = self.tokens[pos]
+        if tok.type == "keyword" and tok.value.lower() in ("throw", "breakout", "breakto", "continue"):
+            end = pos
+            while end < limit and self.tokens[end].type != "semicolon":
+                end += 1
+            final = self.tokens[end] if end < limit else self.tokens[end - 1]
+            return TerminatorStatement(tok, final, self.tokens[pos:end], ";" if end < limit else None, [], tok.value.lower()), end + 1 if end < limit else end
         if tok.type == "lbrace":
             foreach = self._foreach_node(pos, limit)
             if foreach is not None:
@@ -468,4 +481,6 @@ if __name__ == "__main__":
     assert isinstance(exit_with, ExitWithStatement) and exit_with.body is not None
     caught = parse('try { hint str _value; } catch { hint str _exception; };').statements[0]
     assert isinstance(caught, TryCatchStatement) and caught.try_block is not None and caught.catch_block is not None
+    terminator = parse('breakOut "scope";').statements[0]
+    assert isinstance(terminator, TerminatorStatement) and terminator.command == "breakout"
     print("ast self-test passed")
