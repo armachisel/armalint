@@ -466,6 +466,16 @@ def _narrowed_type(tokens: list[Token], index: int, variables: dict[str, str]) -
     return None
 
 
+def _collect_type_guards(tokens: list[Token], variables: dict[str, str]) -> None:
+    """Collect explicit ``isEqualType`` guards for flow-sensitive narrowing."""
+    for i in range(len(tokens) - 2):
+        if tokens[i].type != "local" or tokens[i + 1].value.lower() != "isequaltype":
+            continue
+        sample = _infer_operand(tokens, i + 2, variables)
+        if sample:
+            variables[tokens[i].value.lower()] = sample
+
+
 def check_argument_types(
     tokens: list[Token], function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
@@ -506,6 +516,7 @@ def check_argument_types(
                 if inferred:
                     variables[left.name.value.lower()] = inferred
     _collect_foreach_element_types(tokens, variables)
+    _collect_type_guards(tokens, variables)
     # Infer local parameter types from unambiguous unary command uses before
     # checking binary commands such as HashMap get.
     for i, tok in enumerate(tokens):
@@ -629,6 +640,7 @@ if __name__ == "__main__":
     assert any(item.code == _CODE and "get expects" in item.message for item in bad_hash_key), bad_hash_key
     assert check_argument_types_text('private _state = "run"; allowDamage (_state in ["run", "freeflight"]);') == []
     assert check_argument_types_text('{ sin _x; cos _x; } forEach [18, 15];') == []
+    assert check_argument_types_text('if (_value isEqualType []) then { count _value; };') == []
     assert check_argument_types_text('_v = [1,0,0] vectorAdd [0,1,0]; _d = _v vectorDotProduct [1,1,0]; acos (_d);') == []
     assert check_argument_types_text('_n = (1 max 0); sleep _n;') == []
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
