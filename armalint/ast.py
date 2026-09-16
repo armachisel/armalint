@@ -165,7 +165,7 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
         nonlocal pos
         if pos >= len(visible): return None
         token = visible[pos]
-        if token.type == "keyword" and token.value.lower() in ("call", "spawn") and pos + 1 < len(visible) and visible[pos + 1].type == "lbrace":
+        if token.type == "keyword" and token.value.lower() in ("call", "spawn") and pos + 1 < len(visible):
             command = token
             pos += 1
             target = primary()
@@ -628,4 +628,6 @@ if __name__ == "__main__":
     code_expr = parse('_handle = call { hint "x"; };').statements[0]
     assert isinstance(code_expr, Statement) and isinstance(code_expr.expression, BinaryExpression) and isinstance(code_expr.expression.right, CallExpression)
     assert isinstance(code_expr.expression.right.target, CodeExpression) and code_expr.expression.right.target.body is not None
+    variable_call = parse('call _fnc;').statements[0]
+    assert isinstance(variable_call, Statement) and isinstance(variable_call.expression, CallExpression)
     print("ast self-test passed")
