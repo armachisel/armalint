@@ -59,6 +59,11 @@ class SwitchStatement(Node):
 
 
 @dataclass
+class ExitWithStatement(Node):
+    body: Block | None = None
+
+
+@dataclass
 class Program:
     statements: list[Node] = field(default_factory=list)
 
@@ -116,6 +121,10 @@ class Parser:
             switch = self._switch_node(pos, limit)
             if switch is not None:
                 return switch
+        if tok.type == "keyword" and tok.value.lower() == "exitwith":
+            exit_with = self._exit_with_node(pos, limit)
+            if exit_with is not None:
+                return exit_with
 
         depth = 0
         end = pos
@@ -291,6 +300,20 @@ class Parser:
             cases=cases,
         ), next_pos
 
+    def _exit_with_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
+        """Parse a standalone ``exitWith { ... }`` statement."""
+        body_start = pos + 1
+        if body_start >= limit or self.tokens[body_start].type != "lbrace":
+            return None
+        body, next_pos = self._node(body_start, limit)
+        if not isinstance(body, Block):
+            return None
+        end = body.end
+        if next_pos < limit and self.tokens[next_pos].type == "semicolon":
+            end = self.tokens[next_pos]
+            next_pos += 1
+        return ExitWithStatement(start=self.tokens[pos], end=end, body=body), next_pos
+
     def _if_node(self, pos: int, limit: int) -> tuple[Node | None, int]:
         condition_start = pos + 1
         if condition_start < limit and self.tokens[condition_start].type == "operator" and self.tokens[condition_start].value == "!":
@@ -341,4 +364,6 @@ if __name__ == "__main__":
     assert isinstance(foreach, LoopStatement) and foreach.kind == "foreach"
     switch = parse('switch (_x) do { case 1: { hint "one"; }; default { hint "other"; }; };').statements[0]
     assert isinstance(switch, SwitchStatement) and len(switch.cases) == 2
+    exit_with = parse('exitWith { hint "done"; };').statements[0]
+    assert isinstance(exit_with, ExitWithStatement) and exit_with.body is not None
     print("ast self-test passed")
