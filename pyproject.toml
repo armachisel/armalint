@@ -7,6 +7,17 @@ name = "armalint"
 version = "0.1.0"
 description = "Arma 3 SQF linter"
 readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["arma 3", "sqf", "linter", "static analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+]
 requires-python = ">=3.9"
 dependencies = []
 
