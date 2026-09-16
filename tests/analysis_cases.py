@@ -56,6 +56,11 @@ def _constant_negated_condition() -> bool:
     return len([item for item in diagnostics if item.code == "W206"]) == 1
 
 
+def _constant_comparison_condition() -> bool:
+    diagnostics = check_control_flow_text('if (1 == 1) then { hint "constant"; };')
+    return len([item for item in diagnostics if item.code == "W206"]) == 1
+
+
 def _undefined_wait_until() -> bool:
     diagnostics = check_undefined_text("waitUntil { hint str _ready; };")
     return len(diagnostics) == 1 and "_ready" in diagnostics[0].message
@@ -139,6 +144,7 @@ CASES = (
     ("loop terminator unreachable code", _control_flow_terminators),
     ("nested else-if control flow", _control_flow_nested_else_if),
     ("negated constant condition", _constant_negated_condition),
+    ("literal comparison condition", _constant_comparison_condition),
     ("undefined variable in waitUntil", _undefined_wait_until),
     ("try/catch definition merge", _undefined_try_branch),
     ("params lexical scope", _undefined_params_scope),
