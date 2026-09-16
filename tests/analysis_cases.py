@@ -61,6 +61,11 @@ def _undefined_try_branch() -> bool:
     return any("_tryValue" in item.message for item in diagnostics)
 
 
+def _undefined_params_scope() -> bool:
+    diagnostics = check_undefined_text('if (true) then { params ["_inner"]; hint str _inner; }; hint str _inner;')
+    return len([item for item in diagnostics if item.code == "W101" and "_inner" in item.message]) == 1
+
+
 def _types_config_hashmap() -> bool:
     return check_argument_types_text("count configFile; count createHashMap;") == []
 
@@ -125,6 +130,7 @@ CASES = (
     ("nested else-if control flow", _control_flow_nested_else_if),
     ("undefined variable in waitUntil", _undefined_wait_until),
     ("try/catch definition merge", _undefined_try_branch),
+    ("params lexical scope", _undefined_params_scope),
     ("Config and HashMap type inference", _types_config_hashmap),
     ("object array loop type inference", _types_near_roads),
     ("engine object collection inference", _types_engine_object_collection),
