@@ -228,6 +228,26 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
     return result if result is not None and pos == len(visible) else None
 
 
+def walk_expression(expression: Expression | None):
+    """Yield an expression and all nested expression nodes depth-first."""
+    if expression is None:
+        return
+    yield expression
+    if isinstance(expression, (UnaryExpression,)):
+        yield from walk_expression(expression.operand)
+    elif isinstance(expression, (BinaryExpression, CommandExpression)):
+        yield from walk_expression(expression.left)
+        yield from walk_expression(expression.right)
+    elif isinstance(expression, ArrayExpression):
+        for item in expression.items:
+            yield from walk_expression(item)
+    elif isinstance(expression, CallExpression):
+        yield from walk_expression(expression.target)
+    elif isinstance(expression, CodeExpression) and expression.body:
+        for statement in expression.body.statements:
+            yield from walk_expression(getattr(statement, "expression", None))
+
+
 class Parser:
     def __init__(self, tokens: list[Token]):
         self.tokens = [t for t in tokens if t.type not in ("comment", "preprocessor", "eof")]

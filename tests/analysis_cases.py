@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from armalint.argument_types import check_argument_types_text
-from armalint.ast import Block, CallExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse
+from armalint.ast import BinaryExpression, Block, CallExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, walk_expression
 from armalint.control_flow import check_control_flow_text
 from armalint.suppression import filter_suppressed
 from armalint.undefined import check_undefined_text
@@ -34,6 +34,12 @@ def _ast_nested_spawn_expression() -> bool:
     node = parse('_handle = spawn { _result = 1 + 2; };').statements[0]
     expr = getattr(node, "expression", None)
     return bool(expr and isinstance(getattr(expr, "right", None), CallExpression))
+
+
+def _ast_expression_walker() -> bool:
+    node = parse('_handle = spawn { _result = 1 + 2; };').statements[0]
+    names = list(walk_expression(getattr(node, "expression", None)))
+    return len(names) >= 5 and any(isinstance(item, BinaryExpression) for item in names)
 
 
 def _control_flow_spawn() -> bool:
@@ -211,6 +217,7 @@ CASES = (
     ("AST embedded spawn block", _ast_spawn_block),
     ("AST terminator node", _ast_terminator_node),
     ("AST nested spawn expression", _ast_nested_spawn_expression),
+    ("AST expression walker", _ast_expression_walker),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
     ("loop terminator unreachable code", _control_flow_terminators),
