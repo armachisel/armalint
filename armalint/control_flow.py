@@ -62,20 +62,7 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
         elif isinstance(node, Block):
             _walk_block(node, diags)
         elif isinstance(node, IfStatement):
-            condition = [t for t in node.condition if t.type not in ("comment", "preprocessor")]
-            if len(condition) == 1 and (condition[0].type in ("number", "string")
-                                         or (condition[0].type == "keyword" and condition[0].value.lower() in ("true", "false", "nil"))):
-                diags.append(Diagnostic(
-                    Severity.WARNING, _CONSTANT_CONDITION,
-                    "if condition is constant",
-                    condition[0].line, condition[0].column,
-                ))
-            if node.then_block:
-                _walk_block(node.then_block, diags)
-            if isinstance(node.else_block, Block):
-                _walk_block(node.else_block, diags)
-            elif isinstance(node.else_block, IfStatement) and node.else_block.then_block:
-                _walk_block(node.else_block.then_block, diags)
+            _walk_if(node, diags)
         elif isinstance(node, LoopStatement) and node.body:
             _walk_block(node.body, diags)
         elif isinstance(node, SwitchStatement):
@@ -91,6 +78,21 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
             _walk_block(node.body, diags)
         if _node_terminates(node):
             unreachable = True
+
+
+def _walk_if(node: IfStatement, diags: list[Diagnostic]) -> None:
+    """Walk an else-if chain without dropping its nested else branch."""
+    condition = [t for t in node.condition if t.type not in ("comment", "preprocessor")]
+    if len(condition) == 1 and (condition[0].type in ("number", "string")
+                                 or (condition[0].type == "keyword" and condition[0].value.lower() in ("true", "false", "nil"))):
+        diags.append(Diagnostic(Severity.WARNING, _CONSTANT_CONDITION,
+                                "if condition is constant", condition[0].line, condition[0].column))
+    if node.then_block:
+        _walk_block(node.then_block, diags)
+    if isinstance(node.else_block, Block):
+        _walk_block(node.else_block, diags)
+    elif isinstance(node.else_block, IfStatement):
+        _walk_if(node.else_block, diags)
 
 
 def check_control_flow(tree: Program) -> list[Diagnostic]:
@@ -129,4 +131,6 @@ if __name__ == "__main__":
         assert len([d for d in diagnostics if d.code == _CODE]) == 1, (terminator, diagnostics)
     continued = check_control_flow_text('continue; hint "never";')
     assert len([d for d in continued if d.code == _CODE]) == 1, continued
+    nested = check_control_flow_text('if (_a) then { exitWith {}; } else if (_b) then { throw 1; } else { breakOut "scope"; }; hint "never";')
+    assert len([d for d in nested if d.code == _CODE]) == 1, nested
     print("control_flow self-test passed")
