@@ -46,6 +46,19 @@ class LoopStatement(Node):
 
 
 @dataclass
+class SwitchCase(Node):
+    condition: list[Token] = field(default_factory=list)
+    body: Block | None = None
+    is_default: bool = False
+
+
+@dataclass
+class SwitchStatement(Node):
+    expression: list[Token] = field(default_factory=list)
+    cases: list[SwitchCase] = field(default_factory=list)
+
+
+@dataclass
 class Program:
     statements: list[Node] = field(default_factory=list)
 
@@ -99,6 +112,10 @@ class Parser:
             loop = self._loop_node(pos, limit)
             if loop is not None:
                 return loop
+        if tok.type == "keyword" and tok.value.lower() == "switch":
+            switch = self._switch_node(pos, limit)
+            if switch is not None:
+                return switch
 
         depth = 0
         end = pos
@@ -198,6 +215,82 @@ class Parser:
             body=body_node,
         ), next_pos
 
+    def _switch_node(self, pos: int, limit: int) -> tuple[Node | None, int] | None:
+        """Parse ``switch (expression) do { case ...; default ... }``."""
+        expression_start = pos + 1
+        if expression_start >= limit or self.tokens[expression_start].type != "lparen":
+            return None
+        expression_close = _matching(self.tokens, expression_start, "lparen", "rparen")
+        if expression_close is None or expression_close + 2 >= limit:
+            return None
+        do_token = self.tokens[expression_close + 1]
+        body_start = expression_close + 2
+        if do_token.type != "keyword" or do_token.value.lower() != "do":
+            return None
+        if self.tokens[body_start].type != "lbrace":
+            return None
+        body_close = _matching(self.tokens, body_start, "lbrace", "rbrace")
+        if body_close is None or body_close >= limit:
+            return None
+
+        cases: list[SwitchCase] = []
+        cursor = body_start + 1
+        while cursor < body_close:
+            token = self.tokens[cursor]
+            if token.type not in ("keyword",) or token.value.lower() not in ("case", "default"):
+                cursor += 1
+                continue
+            is_default = token.value.lower() == "default"
+            condition_start = cursor + 1
+            if is_default and condition_start < body_close and self.tokens[condition_start].type == "lbrace":
+                colon = cursor
+                body_start = condition_start
+            else:
+                body_start = None
+                colon = condition_start
+                depth = 0
+                while colon < body_close:
+                    current = self.tokens[colon]
+                    if current.type in ("lparen", "lbracket"):
+                        depth += 1
+                    elif current.type in ("rparen", "rbracket"):
+                        depth = max(0, depth - 1)
+                    elif current.type == "operator" and current.value == ":" and depth == 0:
+                        break
+                    colon += 1
+                if colon < body_close:
+                    body_start = colon + 1
+            if body_start is None or body_start >= body_close or self.tokens[body_start].type != "lbrace":
+                cursor += 1
+                continue
+            case_body, next_cursor = self._node(body_start, body_close)
+            if not isinstance(case_body, Block):
+                cursor += 1
+                continue
+            case_end = case_body.end
+            if next_cursor < body_close and self.tokens[next_cursor].type == "semicolon":
+                case_end = self.tokens[next_cursor]
+                next_cursor += 1
+            cases.append(SwitchCase(
+                start=token,
+                end=case_end,
+                condition=[] if is_default else self.tokens[condition_start:colon],
+                body=case_body,
+                is_default=is_default,
+            ))
+            cursor = next_cursor
+        next_pos = body_close + 1
+        end = self.tokens[body_close]
+        if next_pos < limit and self.tokens[next_pos].type == "semicolon":
+            end = self.tokens[next_pos]
+            next_pos += 1
+        return SwitchStatement(
+            start=self.tokens[pos],
+            end=end,
+            expression=self.tokens[expression_start + 1:expression_close],
+            cases=cases,
+        ), next_pos
+
     def _if_node(self, pos: int, limit: int) -> tuple[Node | None, int]:
         condition_start = pos + 1
         if condition_start < limit and self.tokens[condition_start].type == "operator" and self.tokens[condition_start].value == "!":
@@ -246,4 +339,6 @@ if __name__ == "__main__":
     assert isinstance(loop, LoopStatement) and loop.body is not None
     foreach = parse('{ hint str _x; } forEach _items;').statements[0]
     assert isinstance(foreach, LoopStatement) and foreach.kind == "foreach"
+    switch = parse('switch (_x) do { case 1: { hint "one"; }; default { hint "other"; }; };').statements[0]
+    assert isinstance(switch, SwitchStatement) and len(switch.cases) == 2
     print("ast self-test passed")
