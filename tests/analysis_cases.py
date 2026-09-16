@@ -202,6 +202,11 @@ def _types_selected_fields_stay_unknown() -> bool:
     return not any(item.code == "W203" for item in check_argument_types_text(source))
 
 
+def _types_nested_scope_isolated() -> bool:
+    source = 'spawn { _value = 1; }; sleep _value;'
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -247,6 +252,7 @@ CASES = (
     ("isEqualType guard narrowing", _types_is_equal_type_guard),
     ("mission record type patterns", _types_mission_record_patterns),
     ("selected fields stay unknown", _types_selected_fields_stay_unknown),
+    ("nested type scope isolated", _types_nested_scope_isolated),
     ("multi-code suppression", _suppression_multi_code),
 )
 
