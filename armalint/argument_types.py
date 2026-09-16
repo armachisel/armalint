@@ -90,6 +90,10 @@ _COMMAND_RETURN_TYPES = {
     "isnumber": "Boolean", "isequaltype": "Boolean", "find": "Number",
     "isserver": "Boolean", "isdedicated": "Boolean", "hasinterface": "Boolean",
 }
+_ARRAY_ELEMENT_TYPES = {
+    "nearroads": "Object", "allplayers": "Object", "allunits": "Object",
+    "allvehicles": "Object", "allmissionobjects": "Object", "allgroups": "Group",
+}
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
@@ -288,6 +292,31 @@ def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None
             j += 1
 
 
+def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str]) -> None:
+    """Infer the implicit ``_x`` type for well-known array-producing loops."""
+    for i, token in enumerate(tokens):
+        if token.type != "keyword" or token.value.lower() != "foreach":
+            continue
+        context = [t.value.lower() for t in tokens[max(0, i - 32):min(len(tokens), i + 32)]]
+        if not any(command in context for command in _ARRAY_ELEMENT_TYPES):
+            continue
+        element_type = next(command for command in _ARRAY_ELEMENT_TYPES if command in context)
+        for j in range(max(0, i - 32), i):
+            if (tokens[j].type == "local" and j + 2 < i
+                    and tokens[j + 1].type == "operator" and tokens[j + 1].value == "="
+                    and tokens[j + 2].type == "local" and tokens[j + 2].value.lower() == "_x"):
+                variables[tokens[j].value.lower()] = _ARRAY_ELEMENT_TYPES[element_type]
+
+
+def _merge_types(previous: str | None, inferred: str | None) -> str | None:
+    if inferred is None:
+        return previous
+    if previous is None or previous == inferred:
+        return inferred
+    members = set(previous.split("|")) | set(inferred.split("|"))
+    return "|".join(sorted(members))
+
+
 def _narrowed_type(tokens: list[Token], index: int, variables: dict[str, str]) -> str | None:
     """Use a preceding ``x isEqualType literal`` guard for this operand.
 
@@ -319,6 +348,7 @@ def check_argument_types(
     diags: list[Diagnostic] = []
     variables: dict[str, str] = {}
     _collect_param_types(tokens, variables)
+    _collect_foreach_element_types(tokens, variables)
     # Collect simple literal assignments. If the same variable is assigned
     # values of different types, forget its type rather than guess.
     for i, tok in enumerate(tokens[:-2]):
@@ -332,6 +362,9 @@ def check_argument_types(
             variables[key] = inferred
         elif variables[key] != inferred:
             variables.pop(key, None)
+    # Re-apply precise loop-element facts after ordinary assignment collection;
+    # the loop body may otherwise look like a conflicting global assignment.
+    _collect_foreach_element_types(tokens, variables)
 
     for i, tok in enumerate(tokens):
         if tok.type != "ident":
@@ -346,7 +379,7 @@ def check_argument_types(
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
         accepted, expected = rule
-        if actual is not None and actual not in accepted:
+        if actual is not None and not all(member in accepted for member in actual.split("|")):
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 
     # A small set of binary commands has a stable right-hand operand type.
@@ -441,6 +474,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", 1]; sleep _delay;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", "soon"]; sleep _delay;')[0].code == _CODE
     assert check_argument_types_text('_delay = getVariable ["delay", 1]; sleep _delay;') == []
+    assert check_argument_types_text('_nearest = []; { _nearest = _x; } forEach ([0, 0, 0] nearRoads 10); count _nearest;')[0].code == _CODE
+    assert check_argument_types_text('_unit = objNull; { _unit = _x; } forEach allUnits; count _unit;')[0].code == _CODE
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
