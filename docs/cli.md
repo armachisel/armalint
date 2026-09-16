@@ -6,6 +6,7 @@
 armalint [--json] [--ignore GLOB] [--config PATH] [--version] PATH ...
 armalint --file PATH [--json]
 armalint --snippet 'sleep "soon";' [--json]
+armalint --mission PATH --snippet 'sleep _delay;' [--json]
 ```
 
 `PATH` can be a file or a directory. Directories are searched for `.sqf`,
@@ -19,6 +20,7 @@ The most useful options are:
 | `--json` | Print one JSON array of diagnostics. |
 | `--file PATH` | Lint one specific file; repeat the option for several files. |
 | `--snippet SOURCE` | Lint inline SQF and label diagnostics as `<snippet>`. |
+| `--mission PATH` | Use a mission's symbols and configuration while linting a snippet or file. |
 | `--ignore GLOB` | Skip matching files. Repeat it when needed. |
 | `--config PATH` | Use this `armalint.json` instead of discovering one. |
 | `--version` | Print the installed version. |
@@ -30,7 +32,9 @@ armalint --snippet 'params [["_delay", 0]]; sleep _delay;' --json
 ```
 
 Use `--file` when an explicit single-file option is more convenient than a
-positional path. A snippet cannot be combined with file or directory paths.
+positional path. Add `--mission` to resolve mission functions and signatures
+without linting every mission file. A snippet cannot be combined with file or
+directory paths.
 
 ## `armalint-update`
 

@@ -84,6 +84,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="lint an inline SQF snippet instead of files",
     )
     parser.add_argument(
+        "--mission", metavar="PATH",
+        help="use a mission directory/file as context for --snippet or --file",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="emit a JSON array of diagnostics",
@@ -117,14 +121,34 @@ def _main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
     if args.snippet is not None and (args.paths or args.files):
-        _build_arg_parser().error("--snippet cannot be combined with files or directories")
+        _build_arg_parser().error("--snippet cannot be combined with files or directories; use --mission for context")
     if args.snippet is None and not (args.paths or args.files):
-        _build_arg_parser().error("provide a file/directory, --file PATH, or --snippet SOURCE")
+        if not args.mission:
+            _build_arg_parser().error("provide a file/directory, --file PATH, or --snippet SOURCE")
 
     input_paths = [*args.paths, *args.files]
 
     if args.snippet is not None:
-        all_diags = lint_text(args.snippet, filename="<snippet>")
+        context_files = _collect_files(args.mission, args.ignore) if args.mission else []
+        context_index = build_symbol_index(context_files)
+        context_tags: set[str] = set()
+        context_signatures: dict[str, list[str]] = {}
+        context_returns: dict[str, str] = {}
+        if args.config:
+            context_config = load_config_file(args.config)
+        elif args.mission and (context_path := find_config(args.mission)):
+            context_config = load_config_file(context_path)
+        else:
+            context_config = {}
+        context_tags = extract_function_tags(context_config)
+        context_signatures = extract_function_type_signatures(context_config)
+        context_returns = extract_function_return_types(context_config)
+        for tag in context_tags:
+            context_index.add_tag(tag)
+        all_diags = lint_text(
+            args.snippet, filename="<snippet>", index=context_index,
+            function_signatures=context_signatures, function_return_types=context_returns,
+        )
         linted_files = ["<snippet>"]
         if args.json:
             payload = [
@@ -151,13 +175,14 @@ def _main(argv: list[str] | None = None) -> int:
     config_tags: set[str] = set()
     function_signatures: dict[str, list[str]] = {}
     function_return_types: dict[str, str] = {}
+    context_paths = [*input_paths, args.mission] if args.mission else input_paths
     if args.config:
         loaded_config = load_config_file(args.config)
         config_tags = extract_function_tags(loaded_config)
         function_signatures = extract_function_type_signatures(loaded_config)
         function_return_types = extract_function_return_types(loaded_config)
     else:
-        for path in input_paths:
+        for path in context_paths:
             cfg_path = find_config(path)
             if cfg_path:
                 loaded_config = load_config_file(cfg_path)
@@ -169,7 +194,10 @@ def _main(argv: list[str] | None = None) -> int:
 
     # Build a mission-wide symbol index so mission-defined functions are not
     # reported as unknown (W201) before linting each file.
-    index = build_symbol_index(files)
+    index_files = list(files)
+    if args.mission:
+        index_files.extend(_collect_files(args.mission, args.ignore))
+    index = build_symbol_index(sorted(set(index_files)))
     for tag in config_tags:
         index.add_tag(tag)
 
@@ -177,7 +205,7 @@ def _main(argv: list[str] | None = None) -> int:
     # so mod-provided functions are recognized by exact name. Caches are
     # discovered by walking up from each lint path; multiple caches are unioned.
     mod_cache_paths: set[str] = set()
-    for path in input_paths:
+    for path in context_paths:
         cache_path = find_mod_cache(path)
         if cache_path:
             mod_cache_paths.add(cache_path)
@@ -185,7 +213,7 @@ def _main(argv: list[str] | None = None) -> int:
         for name in load_mod_cache(cache_path):
             index.add_function(name)
     mod_type_cache_paths = {
-        path for path in (find_mod_type_cache(target) for target in input_paths)
+        path for path in (find_mod_type_cache(target) for target in context_paths)
         if path
     }
     for cache_path in sorted(mod_type_cache_paths):
