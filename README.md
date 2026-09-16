@@ -30,6 +30,18 @@ Optionally install it in editable mode so `armalint` is on your `PATH`
 pip install -e .
 ```
 
+For an isolated command-line installation, use `uv` or `pipx`:
+
+```powershell
+uv tool install .
+# or
+pipx install .
+```
+
+The package also installs `armalint-update` and
+`armalint-update-commands` entry points for refreshing the extracted mod and
+engine command data.
+
 ## Usage
 
 ```text
