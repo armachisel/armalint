@@ -393,9 +393,10 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
     """Infer loop element types from AST headers and body spans."""
     def collect_body(node: Node, element_type: str) -> None:
         if isinstance(node, Statement):
-            variables["_x"] = element_type
+            if element_type != "Unknown":
+                variables["_x"] = element_type
             for i, token in enumerate(node.tokens[:-2]):
-                if (token.type == "local" and node.tokens[i + 1].type == "operator"
+                if element_type != "Unknown" and (token.type == "local" and node.tokens[i + 1].type == "operator"
                         and node.tokens[i + 1].value == "="
                         and node.tokens[i + 2].type == "local"
                         and node.tokens[i + 2].value.lower() == "_x"):
@@ -432,8 +433,15 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
             values = [t for t in node.header[1:-1] if t.type in ("number", "string", "keyword")]
             if values and all(t.type == "number" for t in values):
                 element_type = "Number"
-        if element_type and node.body:
-            collect_body(node.body, element_type)
+        if node.body:
+            previous_x = variables.get("_x")
+            if element_type:
+                variables["_x"] = element_type
+            collect_body(node.body, element_type or "Unknown")
+            if previous_x is None:
+                variables.pop("_x", None)
+            else:
+                variables["_x"] = previous_x
         if node.body:
             collect_loop(node.body)
 
