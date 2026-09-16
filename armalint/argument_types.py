@@ -487,6 +487,8 @@ def _collect_type_guards(tokens: list[Token], variables: dict[str, str]) -> None
     for i in range(len(tokens) - 2):
         if tokens[i].type != "local" or tokens[i + 1].value.lower() != "isequaltype":
             continue
+        if tokens[i].value.lower() == "_x":
+            continue
         sample = _infer_operand(tokens, i + 2, variables)
         if sample:
             variables[tokens[i].value.lower()] = sample
@@ -557,6 +559,8 @@ def check_argument_types(
         while j < len(tokens) and tokens[j].type in _TRIVIA:
             j += 1
         if j >= len(tokens):
+            continue
+        if tokens[j].type == "local" and tokens[j].value.lower() == "_x":
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
         accepted, expected = rule
