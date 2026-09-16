@@ -73,6 +73,7 @@ def _looks_like_sqf(content: str) -> bool:
 def lint_config(
     source: str, filename: str = "", index: SymbolIndex | None = None,
     function_signatures: dict[str, list[str | None]] | None = None,
+    function_return_types: dict[str, str] | None = None,
 ) -> list[Diagnostic]:
     """Lint the SQF embedded in string-valued code fields of ``source``.
 
@@ -105,7 +106,7 @@ def lint_config(
             continue
 
         string_tok = tokens[k]
-        for d in lint_text(content, filename, index, function_signatures):
+        for d in lint_text(content, filename, index, function_signatures, function_return_types):
             orig_line = d.line
             if orig_line == 1:
                 # Same line as the opening quote: shift the column onto the

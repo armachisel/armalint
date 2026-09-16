@@ -93,7 +93,10 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
     return None
 
 
-def _infer_expression(tokens: list[Token], start: int, variables: dict[str, str]) -> str | None:
+def _infer_expression(
+    tokens: list[Token], start: int, variables: dict[str, str],
+    function_return_types: dict[str, str] | None = None,
+) -> str | None:
     """Infer a few common composed expressions used in assignments."""
     if start < len(tokens) and tokens[start].type == "operator" and tokens[start].value in ("+", "-"):
         # Unary + preserves the operand type (commonly used to copy arrays);
@@ -126,6 +129,8 @@ def _infer_expression(tokens: list[Token], start: int, variables: dict[str, str]
         target = j + 1
         while target < len(tokens) and tokens[target].type in _TRIVIA:
             target += 1
+        if target < len(tokens) and tokens[target].type == "ident":
+            return (function_return_types or {}).get(tokens[target].value.lower())
         return None
     if j < len(tokens) and tokens[j].value.lower() == "select":
         j += 1
@@ -166,7 +171,8 @@ def _simple_item_type(item: list[Token], variables: dict[str, str]) -> str | Non
 
 
 def check_argument_types(
-    tokens: list[Token], function_signatures: dict[str, list[str | None]] | None = None
+    tokens: list[Token], function_signatures: dict[str, list[str | None]] | None = None,
+    function_return_types: dict[str, str] | None = None,
 ) -> list[Diagnostic]:
     """Check built-in unary arguments and configured function argument types."""
     diags: list[Diagnostic] = []
@@ -176,7 +182,7 @@ def check_argument_types(
     for i, tok in enumerate(tokens[:-2]):
         if tok.type != "local" or tokens[i + 1].type != "operator" or tokens[i + 1].value != "=":
             continue
-        inferred = _infer_expression(tokens, i + 2, variables)
+        inferred = _infer_expression(tokens, i + 2, variables, function_return_types)
         key = tok.value.lower()
         if inferred is None:
             variables.pop(key, None)
@@ -259,6 +265,10 @@ if __name__ == "__main__":
     assert check_argument_types_text('_d = getDir player; sin _d;') == []
     assert check_argument_types_text('_p = [0, 0, 0] getPosASL objNull; count _p;') == []
     assert check_argument_types_text('_roads = [0, 0, 0] nearRoads 8; count _roads;') == []
+    assert check_argument_types(
+        tokenize('_d = [] call ALT_fnc_distanceToRoute; round _d;'),
+        function_return_types={"ALT_fnc_distanceToRoute": "Number"},
+    ) == []
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(

@@ -12,6 +12,7 @@ from . import __version__
 from .config import (
     extract_function_tags,
     extract_function_type_signatures,
+    extract_function_return_types,
     find_config,
     find_mod_cache,
     find_mod_type_cache,
@@ -118,10 +119,12 @@ def _main(argv: list[str] | None = None) -> int:
     # symbol index so mod-provided functions are not reported as unknown.
     config_tags: set[str] = set()
     function_signatures: dict[str, list[str]] = {}
+    function_return_types: dict[str, str] = {}
     if args.config:
         loaded_config = load_config_file(args.config)
         config_tags = extract_function_tags(loaded_config)
         function_signatures = extract_function_type_signatures(loaded_config)
+        function_return_types = extract_function_return_types(loaded_config)
     else:
         for path in args.paths:
             cfg_path = find_config(path)
@@ -130,6 +133,8 @@ def _main(argv: list[str] | None = None) -> int:
                 config_tags |= extract_function_tags(loaded_config)
                 for name, types in extract_function_type_signatures(loaded_config).items():
                     function_signatures.setdefault(name, types)
+                for name, return_type in extract_function_return_types(loaded_config).items():
+                    function_return_types.setdefault(name, return_type)
 
     # Build a mission-wide symbol index so mission-defined functions are not
     # reported as unknown (W201) before linting each file.
@@ -165,7 +170,7 @@ def _main(argv: list[str] | None = None) -> int:
     for f in files:
         if _is_sqf_file(f):
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -173,7 +178,7 @@ def _main(argv: list[str] | None = None) -> int:
             except OSError:
                 continue
             linted_files.append(f)
-            all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures))
+            all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types))
 
     if args.json:
         payload = [
