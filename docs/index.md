@@ -1,8 +1,15 @@
 # Armalint
 
-Armalint is a pure Python linter for Arma 3 SQF missions and scripts. It
-reports syntax errors, unknown functions, undefined locals, and statically
-detectable argument type mismatches without requiring Arma 3 to be running.
+Armalint is a linter for Arma 3 SQF missions and scripts. It started with the
+fairly unambitious goal of catching the mistakes that are easy to make and
+annoying to find in game: one missing bracket, a forgotten comma, or a function
+name that is almost right.
+
+It has grown from there. It now checks a small amount of control flow and type
+information, and it can read function information from the base game, DLC, and
+installed mods. It is still a static checker. When the type of an expression
+cannot be worked out safely, it leaves it alone. That is generally more useful
+than confidently reporting nonsense.
 
 ## Install
 
@@ -12,7 +19,7 @@ For an isolated command-line install:
 uv tool install armalint
 ```
 
-For development from a checkout:
+From a checkout, use:
 
 ```powershell
 uv sync
@@ -22,8 +29,9 @@ uv run armalint --version
 ## First lint
 
 ```powershell
-armalint path\to\mission
+armalint C:\path\to\mission
 ```
 
-See [Getting started](getting-started.md) for mission cache setup and
-[CLI reference](cli.md) for all commands.
+The [getting started guide](getting-started.md) covers the first mission scan.
+The [CLI reference](cli.md) has the options, and [rules and analysis](rules.md)
+explains what the diagnostics mean.

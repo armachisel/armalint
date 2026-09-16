@@ -1,7 +1,5 @@
 site_name: Armalint
 site_description: Static analysis for Arma 3 SQF missions
-repo_url: https://github.com/seanodonnell/armalint
-repo_name: seanodonnell/armalint
 
 theme:
   name: material
