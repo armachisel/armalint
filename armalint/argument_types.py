@@ -8,7 +8,7 @@ checker; unknown expressions and mission functions remain unchecked.
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .ast import ArrayExpression, BinaryExpression, Block, CallExpression, CodeExpression, CommandExpression, Expression, IfStatement, LiteralExpression, LoopStatement, NameExpression, Node, Statement, UnaryExpression, parse
+from .ast import ArrayExpression, BinaryExpression, Block, CallExpression, CodeExpression, CommandExpression, Expression, IfStatement, LiteralExpression, LoopStatement, NameExpression, Node, Statement, UnaryExpression, parse, walk_expression
 from .tokenizer import Token, tokenize
 
 _CODE = "W203"
@@ -494,6 +494,22 @@ def _collect_type_guards(tokens: list[Token], variables: dict[str, str]) -> None
             variables[tokens[i].value.lower()] = sample
 
 
+def _seed_ast_assignments(nodes: list[Node], variables: dict[str, str], function_return_types: dict[str, str] | None) -> None:
+    for node in nodes:
+        if isinstance(node, Statement):
+            for expression in walk_expression(node.expression):
+                if isinstance(expression, BinaryExpression) and expression.operator.value == "=" and isinstance(expression.left, NameExpression):
+                    inferred = _infer_ast_expression(expression.right, variables, function_return_types)
+                    if inferred and expression.left.name.value.lower() not in variables:
+                        variables[expression.left.name.value.lower()] = inferred
+        for child_name in ("body", "then_block", "else_block", "try_block", "catch_block"):
+            child = getattr(node, child_name, None)
+            if isinstance(child, Block):
+                _seed_ast_assignments(child.statements, variables, function_return_types)
+            elif isinstance(child, Node):
+                _seed_ast_assignments([child], variables, function_return_types)
+
+
 def check_argument_types(
     tokens: list[Token], function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
@@ -538,6 +554,7 @@ def check_argument_types(
     # unrelated loops in the same file.
     variables.pop("_x", None)
     _collect_type_guards(tokens, variables)
+    _seed_ast_assignments(parse(tokens).statements, variables, function_return_types)
     # Infer local parameter types from unambiguous unary command uses before
     # checking binary commands such as HashMap get.
     for i, tok in enumerate(tokens):
