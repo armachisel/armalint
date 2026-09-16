@@ -1,0 +1,16 @@
+class RscControlsGroup {
+    class Controls {
+        class MyButton {
+            idc = 1600;
+            text = "Click me";
+            onButtonClick = "hint 'clicked'; call thisFunctionDoesNotExist;";
+        };
+    };
+};
+class CfgFunctions {
+    class ALT {
+        class Core {
+            class formatTime { file = "scripts\fn_formatTime.sqf"; };
+        };
+    };
+};

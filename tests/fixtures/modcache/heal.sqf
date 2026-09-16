@@ -1,0 +1,3 @@
+call ace_medical_fnc_setUnconscious;
+call ace_hearing_fnc_putInEarplugs;
+call ace_medical_fnc_setUnconsious;

@@ -1,0 +1,6 @@
+class CfgFunctions {
+    class ALT {
+        class formatScore { file = "scripts\scoring\fn_formatScore.sqf"; };
+        class removeStatusOverlay { file = "scripts\ui\fn_removeStatusOverlay.sqf"; };
+    };
+};
