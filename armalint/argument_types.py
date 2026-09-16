@@ -42,6 +42,10 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "count": (frozenset(("String", "Array")), "String, Array, Config or HashMap"),
 }
 
+_BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
+    "arrayintersect": (frozenset(("Array",)), "Array"),
+}
+
 _RETURN_TYPES = {
     "str": "String", "format": "String", "parsetext": "Structured Text",
     "composetext": "Structured Text", "parsenumber": "Number",
@@ -290,6 +294,23 @@ def check_argument_types(
         if actual is not None and actual not in accepted:
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 
+    # A small set of binary commands has a stable right-hand operand type.
+    # Keep this separate from unary signatures until command metadata can
+    # describe arity and left/right operand rules generally.
+    for i, tok in enumerate(tokens):
+        rule = _BINARY_SIGNATURES.get(tok.value.lower()) if tok.type == "ident" else None
+        if rule is None:
+            continue
+        j = i + 1
+        while j < len(tokens) and tokens[j].type in _TRIVIA:
+            j += 1
+        if j >= len(tokens):
+            continue
+        actual = _infer_operand(tokens, j, variables)
+        accepted, expected = rule
+        if actual is not None and actual not in accepted:
+            diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
+
     # Project-configured functions, including mod functions, use the common
     # SQF form `[arg1, arg2] call tag_fnc_name;`. Verify each known argument.
     signatures = {name.lower(): types for name, types in (function_signatures or {}).items()}
@@ -354,6 +375,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_a = 10; _b = 2; _c = _a min _b; sin _c;') == []
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
+    assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
     assert check_argument_types(
         tokenize('_d = [] call ALT_fnc_distanceToRoute; round _d;'),
         function_return_types={"ALT_fnc_distanceToRoute": "Number"},
