@@ -393,8 +393,6 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
     """Infer loop element types from AST headers and body spans."""
     def collect_body(node: Node, element_type: str) -> None:
         if isinstance(node, Statement):
-            if element_type != "Unknown":
-                variables["_x"] = element_type
             for i, token in enumerate(node.tokens[:-2]):
                 if element_type != "Unknown" and (token.type == "local" and node.tokens[i + 1].type == "operator"
                         and node.tokens[i + 1].value == "="
@@ -438,8 +436,6 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
                 element_type = "Number"
         if node.body:
             previous_x = variables.get("_x")
-            if element_type:
-                variables["_x"] = element_type
             collect_body(node.body, element_type or "Unknown")
             if previous_x is None:
                 variables.pop("_x", None)
@@ -472,6 +468,8 @@ def _narrowed_type(tokens: list[Token], index: int, variables: dict[str, str]) -
     if index >= len(tokens) or tokens[index].type != "local":
         return None
     name = tokens[index].value.lower()
+    if name == "_x":
+        return None
     for i in range(index - 1, -1, -1):
         if tokens[i].type == "semicolon":
             break
@@ -534,6 +532,9 @@ def check_argument_types(
                 if inferred:
                     variables[left.name.value.lower()] = inferred
     _collect_foreach_element_types(tokens, variables)
+    # `_x` is an implicit loop-local and must never retain a type across
+    # unrelated loops in the same file.
+    variables.pop("_x", None)
     _collect_type_guards(tokens, variables)
     # Infer local parameter types from unambiguous unary command uses before
     # checking binary commands such as HashMap get.
