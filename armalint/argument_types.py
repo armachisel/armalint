@@ -110,11 +110,11 @@ _ARRAY_ELEMENT_TYPES = {
     "allvehicles": "Object", "allmissionobjects": "Object", "allgroups": "Group",
     "alldead": "Object", "alldeadmen": "Object", "allturrets": "Object",
     "allsimpleobjects": "Object",
-    "nearestobjects": "Object", "nearestterrainobjects": "Object",
+    "nearestobjects": "Object", "nearestterrainobjects": "Object", "roadsconnectedto": "Object",
     "nearobjects": "Object", "nearentities": "Object",
     "crew": "Object", "units": "Object", "allair": "Object", "allland": "Object",
     "allman": "Object", "allstaticobjects": "Object", "allstaticweapons": "Object",
-    "lineintersectswith": "Object",
+    "lineintersectswith": "Array", "lineintersectssurfaces": "Array", "fullcrew": "Array",
 }
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
@@ -641,6 +641,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('private _state = "run"; allowDamage (_state in ["run", "freeflight"]);') == []
     assert check_argument_types_text('{ sin _x; cos _x; } forEach [18, 15];') == []
     assert check_argument_types_text('if (_value isEqualType []) then { count _value; };') == []
+    assert check_argument_types_text('{ count _x; } forEach (fullCrew player);') == []
+    assert check_argument_types_text('{ getRoadInfo _x; } forEach (roadsConnectedTo player);') == []
     assert check_argument_types_text('_v = [1,0,0] vectorAdd [0,1,0]; _d = _v vectorDotProduct [1,1,0]; acos (_d);') == []
     assert check_argument_types_text('_n = (1 max 0); sleep _n;') == []
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
