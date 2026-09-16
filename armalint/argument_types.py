@@ -221,6 +221,29 @@ def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None
             j += 1
 
 
+def _narrowed_type(tokens: list[Token], index: int, variables: dict[str, str]) -> str | None:
+    """Use a preceding ``x isEqualType literal`` guard for this operand.
+
+    SQF commonly validates an argument with a short-circuit expression before
+    using it, for example ``_n isEqualType 0 && { abs _n < 10 }``.  The
+    assignment/params pass quite correctly sees the declared default type, but
+    within this guarded expression the operand has the checked type.
+    """
+    if index >= len(tokens) or tokens[index].type != "local":
+        return None
+    name = tokens[index].value.lower()
+    for i in range(index - 1, -1, -1):
+        if tokens[i].type == "semicolon":
+            break
+        if (tokens[i].type == "local" and tokens[i].value.lower() == name
+                and i + 2 < index
+                and tokens[i + 1].value.lower() == "isequaltype"):
+            sample = _infer_operand(tokens, i + 2, variables)
+            if sample:
+                return sample
+    return None
+
+
 def check_argument_types(
     tokens: list[Token], function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
@@ -254,7 +277,7 @@ def check_argument_types(
             j += 1
         if j >= len(tokens):
             continue
-        actual = _infer_operand(tokens, j, variables)
+        actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
         accepted, expected = rule
         if actual is not None and actual not in accepted:
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
@@ -325,6 +348,7 @@ if __name__ == "__main__":
     ) == []
     assert check_argument_types_text('params [["_delay", 0, [0]]]; sleep _delay;') == []
     assert check_argument_types_text('params [["_delay", "soon", [""]]]; sleep _delay;')[0].code == _CODE
+    assert check_argument_types_text('params [["_n", ""]]; { _n isEqualType 0 && { abs _n < 100 } };') == []
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(
