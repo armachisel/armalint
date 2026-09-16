@@ -20,6 +20,26 @@ from .undefined import check_undefined
 _CONFIG_EXTENSIONS = (".hpp", ".ext", ".cpp", ".cfg")
 
 
+def _deduplicate(diags: list[Diagnostic]) -> list[Diagnostic]:
+    """Drop identical findings emitted by overlapping analysis passes."""
+    result: list[Diagnostic] = []
+    seen: set[tuple[str, int, int, str, str, str]] = set()
+    for diagnostic in diags:
+        key = (
+            diagnostic.file,
+            diagnostic.line,
+            diagnostic.column,
+            diagnostic.severity.value,
+            diagnostic.code,
+            diagnostic.message,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(diagnostic)
+    return result
+
+
 def lint_text(
     source: str, filename: str = "", index: SymbolIndex | None = None,
     function_signatures: dict[str, list[str | None]] | None = None,
@@ -51,7 +71,7 @@ def lint_text(
     for d in diags:
         d.file = filename
 
-    return diags
+    return _deduplicate(diags)
 
 
 def lint_file(
@@ -92,7 +112,7 @@ def lint_file(
         else:
             d.file = path
 
-    return diags
+    return _deduplicate(diags)
 
 
 def build_symbol_index(file_paths: list[str]) -> SymbolIndex:
