@@ -41,6 +41,7 @@ class ArrayExpression(Expression):
 @dataclass
 class CodeExpression(Expression):
     tokens: list[Token] = field(default_factory=list)
+    body: Block | None = None
 
 
 @dataclass
@@ -179,7 +180,9 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
             if token.type == "lbrace":
                 raw_start = pos
                 pos = close + 1
-                return CodeExpression(token, visible[close], visible[raw_start:close + 1])
+                inner = visible[raw_start + 1:close]
+                body = Block(token, visible[close], Parser(inner).parse().statements)
+                return CodeExpression(token, visible[close], visible[raw_start:close + 1], body)
             start = pos; pos += 1; items = []
             while pos < close:
                 item = expression(0)
@@ -624,4 +627,5 @@ if __name__ == "__main__":
     assert isinstance(command_expr, Statement) and isinstance(command_expr.expression, BinaryExpression) and isinstance(command_expr.expression.right, CommandExpression)
     code_expr = parse('_handle = call { hint "x"; };').statements[0]
     assert isinstance(code_expr, Statement) and isinstance(code_expr.expression, BinaryExpression) and isinstance(code_expr.expression.right, CallExpression)
+    assert isinstance(code_expr.expression.right.target, CodeExpression) and code_expr.expression.right.target.body is not None
     print("ast self-test passed")
