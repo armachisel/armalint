@@ -120,4 +120,8 @@ if __name__ == "__main__":
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded
     embedded_exit = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert len([d for d in embedded_exit if d.code == _CODE]) == 1
+    spawned = check_control_flow_text('spawn { exitWith {}; hint "never"; };')
+    assert len([d for d in spawned if d.code == _CODE]) == 1, spawned
+    caught = check_control_flow_text('try { exitWith {}; } catch { throw 1; }; hint "never";')
+    assert len([d for d in caught if d.code == _CODE]) == 1, caught
     print("control_flow self-test passed")
