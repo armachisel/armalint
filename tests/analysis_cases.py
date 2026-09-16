@@ -59,6 +59,10 @@ def _types_engine_object_collection() -> bool:
     return any(item.code == "W203" for item in diagnostics)
 
 
+def _types_local_array_named_like_collection() -> bool:
+    return check_argument_types_text('_allPlayers = ["a"]; { _item = _x; } forEach _allPlayers; count _item;') == []
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -79,6 +83,7 @@ CASES = (
     ("Config and HashMap type inference", _types_config_hashmap),
     ("object array loop type inference", _types_near_roads),
     ("engine object collection inference", _types_engine_object_collection),
+    ("local array is not engine collection", _types_local_array_named_like_collection),
     ("multi-code suppression", _suppression_multi_code),
 )
 
