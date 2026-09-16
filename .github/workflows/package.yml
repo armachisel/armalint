@@ -1,0 +1,31 @@
+name: Package
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install packaging tools
+        run: python -m pip install --upgrade pip build
+      - name: Build distributions
+        run: python -m build
+      - name: Install wheel
+        run: python -m pip install --no-deps dist/*.whl
+      - name: Verify console scripts
+        shell: bash
+        run: |
+          armalint --version
+          armalint-update --help
+          armalint-update-commands --help
+          armalint --json tests/fixtures/clean.sqf
