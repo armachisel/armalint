@@ -19,7 +19,7 @@ class Token:
 _KEYWORDS = frozenset(
     (
         "true", "false", "nil", "private", "params", "if", "then", "else",
-        "for", "while", "do", "switch", "case", "default", "foreach",
+        "for", "while", "waituntil", "do", "switch", "case", "default", "foreach",
         "from", "to", "step", "and", "or", "not", "exitwith", "throw",
         "try", "catch", "call", "spawn", "execvm", "compile", "select",
         "format",
