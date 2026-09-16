@@ -12,16 +12,18 @@ _TERMINATORS = frozenset(("exitwith", "throw", "breakout", "breakto", "continue"
 
 
 def _constant_condition(tokens: list[Token]) -> bool:
+    def literal(token: Token) -> bool:
+        return token.type in ("number", "string") or (
+            token.type == "keyword" and token.value.lower() in ("true", "false", "nil")
+        )
     visible = [t for t in tokens if t.type not in ("comment", "preprocessor")]
     if len(visible) == 2 and visible[0].type == "operator" and visible[0].value == "!":
         visible = visible[1:]
     if len(visible) == 1:
-        return visible[0].type in ("number", "string") or (
-            visible[0].type == "keyword" and visible[0].value.lower() in ("true", "false", "nil")
-        )
-    return len(visible) == 3 and visible[0].type in ("number", "string", "keyword") and \
+        return literal(visible[0])
+    return len(visible) == 3 and literal(visible[0]) and \
         visible[1].type == "operator" and visible[1].value in ("==", "!=", "<", ">", "<=", ">=") and \
-        visible[2].type in ("number", "string", "keyword")
+        literal(visible[2])
 
 
 def _statement_terminates(statement: Statement) -> bool:
@@ -134,6 +136,8 @@ if __name__ == "__main__":
     assert len([d for d in negated_literal if d.code == _CONSTANT_CONDITION]) == 1, negated_literal
     comparison_literal = check_control_flow_text('if (1 == 1) then { hint "constant"; };')
     assert len([d for d in comparison_literal if d.code == _CONSTANT_CONDITION]) == 1, comparison_literal
+    unknown_comparison = check_control_flow_text('if (1 == then) then { hint "unknown"; };')
+    assert not any(d.code == _CONSTANT_CONDITION for d in unknown_comparison), unknown_comparison
     assert check_control_flow_text('if (_condition) then { exitWith {}; }; hint "maybe";') == []
     embedded = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded

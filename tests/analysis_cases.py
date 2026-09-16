@@ -66,6 +66,11 @@ def _undefined_constant_comparison() -> bool:
     return not any(item.code == "W101" and "_assigned" in item.message for item in diagnostics)
 
 
+def _unknown_keyword_not_constant() -> bool:
+    diagnostics = check_control_flow_text('if (1 == then) then { hint "unknown"; };')
+    return not any(item.code == "W206" for item in diagnostics)
+
+
 def _undefined_wait_until() -> bool:
     diagnostics = check_undefined_text("waitUntil { hint str _ready; };")
     return len(diagnostics) == 1 and "_ready" in diagnostics[0].message
@@ -151,6 +156,7 @@ CASES = (
     ("negated constant condition", _constant_negated_condition),
     ("literal comparison condition", _constant_comparison_condition),
     ("constant comparison branch", _undefined_constant_comparison),
+    ("unknown keyword is not constant", _unknown_keyword_not_constant),
     ("undefined variable in waitUntil", _undefined_wait_until),
     ("try/catch definition merge", _undefined_try_branch),
     ("params lexical scope", _undefined_params_scope),

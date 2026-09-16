@@ -27,7 +27,10 @@ def _constant_condition(tokens: list[Token], negated: bool = False) -> bool | No
     visible = [token for token in tokens if token.type not in _TRIVIA]
     if len(visible) == 3 and visible[1].type == "operator" and visible[1].value in ("==", "!=", "<", ">", "<=", ">="):
         left, right = visible[0], visible[2]
-        if left.type == right.type and left.type in ("number", "string", "keyword"):
+        literal_keywords = {"true", "false", "nil"}
+        left_literal = left.type in ("number", "string") or (left.type == "keyword" and left.value.lower() in literal_keywords)
+        right_literal = right.type in ("number", "string") or (right.type == "keyword" and right.value.lower() in literal_keywords)
+        if left.type == right.type and left_literal and right_literal:
             try:
                 lvalue = float(left.value) if left.type == "number" else left.value.lower() if left.type == "keyword" else left.value
                 rvalue = float(right.value) if right.type == "number" else right.value.lower() if right.type == "keyword" else right.value
