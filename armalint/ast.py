@@ -39,6 +39,17 @@ class ArrayExpression(Expression):
 
 
 @dataclass
+class CodeExpression(Expression):
+    tokens: list[Token] = field(default_factory=list)
+
+
+@dataclass
+class CallExpression(Expression):
+    command: Token = None  # type: ignore[assignment]
+    target: Expression = None  # type: ignore[assignment]
+
+
+@dataclass
 class UnaryExpression(Expression):
     operator: Token = None  # type: ignore[assignment]
     operand: Expression = None  # type: ignore[assignment]
@@ -141,13 +152,22 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
         nonlocal pos
         if pos >= len(visible): return None
         token = visible[pos]
+        if token.type == "keyword" and token.value.lower() in ("call", "spawn") and pos + 1 < len(visible) and visible[pos + 1].type == "lbrace":
+            command = token
+            pos += 1
+            target = primary()
+            return CallExpression(command, target.end if target else command, command, target) if target else None
         if token.type in ("number", "string") or (token.type == "keyword" and token.value.lower() in ("true", "false", "nil")):
             pos += 1; return LiteralExpression(token, token, token)
         if token.type in ("ident", "local", "keyword"):
             pos += 1; return NameExpression(token, token, token)
-        if token.type == "lbracket":
-            close = _matching(visible, pos, "lbracket", "rbracket")
+        if token.type in ("lbracket", "lbrace"):
+            close = _matching(visible, pos, token.type, "rbracket" if token.type == "lbracket" else "rbrace")
             if close is None: return None
+            if token.type == "lbrace":
+                raw_start = pos
+                pos = close + 1
+                return CodeExpression(token, visible[close], visible[raw_start:close + 1])
             start = pos; pos += 1; items = []
             while pos < close:
                 item = expression(0)
@@ -175,6 +195,12 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
             precedence = _EXPR_PRECEDENCE.get(op.value) if op.type == "operator" else None
             if precedence is None or precedence < minimum: break
             pos += 1; right = expression(precedence + 1)
+            if right is None: return None
+            left = BinaryExpression(left.start, right.end, left, op, right)
+        while pos < len(visible) and visible[pos].type in ("ident", "keyword"):
+            op = visible[pos]
+            pos += 1
+            right = primary()
             if right is None: return None
             left = BinaryExpression(left.start, right.end, left, op, right)
         return left
@@ -573,4 +599,8 @@ if __name__ == "__main__":
     assert isinstance(terminator, TerminatorStatement) and terminator.command == "breakout"
     expr = parse('_value = 1 + 2;').statements[0]
     assert isinstance(expr, Statement) and isinstance(expr.expression, BinaryExpression)
+    command_expr = parse('_value = player weaponDirection "rifle";').statements[0]
+    assert isinstance(command_expr, Statement) and isinstance(command_expr.expression, BinaryExpression)
+    code_expr = parse('_handle = call { hint "x"; };').statements[0]
+    assert isinstance(code_expr, Statement) and isinstance(code_expr.expression, BinaryExpression) and isinstance(code_expr.expression.right, CallExpression)
     print("ast self-test passed")
