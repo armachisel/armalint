@@ -184,6 +184,43 @@ def _simple_item_type(item: list[Token], variables: dict[str, str]) -> str | Non
     return _infer_operand(visible, 0, variables)
 
 
+def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None:
+    """Infer locals from ``params [[name, default, [validators]], ...]``."""
+    for i, token in enumerate(tokens):
+        if token.type != "keyword" or token.value.lower() != "params":
+            continue
+        start = i + 1
+        while start < len(tokens) and tokens[start].type in _TRIVIA:
+            start += 1
+        if start >= len(tokens) or tokens[start].type != "lbracket":
+            continue
+        depth = 0
+        j = start
+        while j < len(tokens):
+            if tokens[j].type == "lbracket":
+                depth += 1
+                if depth == 2:
+                    name = j + 1
+                    while name < len(tokens) and tokens[name].type in _TRIVIA:
+                        name += 1
+                    if name < len(tokens) and tokens[name].type == "string" and tokens[name].value.startswith("_"):
+                        comma = name + 1
+                        while comma < len(tokens) and tokens[comma].type not in ("comma", "rbracket"):
+                            comma += 1
+                        if comma < len(tokens) and tokens[comma].type == "comma":
+                            default = comma + 1
+                            while default < len(tokens) and tokens[default].type in _TRIVIA:
+                                default += 1
+                            inferred = _infer_operand(tokens, default, variables)
+                            if inferred:
+                                variables[tokens[name].value.lower()] = inferred
+            elif tokens[j].type == "rbracket":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+
+
 def check_argument_types(
     tokens: list[Token], function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
@@ -191,6 +228,7 @@ def check_argument_types(
     """Check built-in unary arguments and configured function argument types."""
     diags: list[Diagnostic] = []
     variables: dict[str, str] = {}
+    _collect_param_types(tokens, variables)
     # Collect simple literal assignments. If the same variable is assigned
     # values of different types, forget its type rather than guess.
     for i, tok in enumerate(tokens[:-2]):
@@ -285,6 +323,8 @@ if __name__ == "__main__":
         tokenize('_d = [] call ALT_fnc_distanceToRoute; round _d;'),
         function_return_types={"ALT_fnc_distanceToRoute": "Number"},
     ) == []
+    assert check_argument_types_text('params [["_delay", 0, [0]]]; sleep _delay;') == []
+    assert check_argument_types_text('params [["_delay", "soon", [""]]]; sleep _delay;')[0].code == _CODE
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(
