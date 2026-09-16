@@ -175,6 +175,16 @@ def _types_is_equal_type_guard() -> bool:
     return check_argument_types_text('if (_value isEqualType []) then { count _value; };') == []
 
 
+def _types_mission_record_patterns() -> bool:
+    snippets = (
+        '{ sin _x; cos _x; } forEach ([0, 60, 120, 180, 240, 300]);',
+        'private _route = []; private _wp = _route select 2; count _wp;',
+        'private _hit = []; private _normal = _hit select 1; count _hit;',
+        'private _center = []; private _z = _center select 2; abs _z;',
+    )
+    return all(not any(item.code == "W203" for item in check_argument_types_text(source)) for source in snippets)
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -216,6 +226,7 @@ CASES = (
     ("vector producer inference", _types_vector_producers),
     ("HashMap rejects object key", _types_hashmap_object_key),
     ("isEqualType guard narrowing", _types_is_equal_type_guard),
+    ("mission record type patterns", _types_mission_record_patterns),
     ("multi-code suppression", _suppression_multi_code),
 )
 
