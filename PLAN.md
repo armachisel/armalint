@@ -1,0 +1,65 @@
+# Armalint roadmap
+
+This roadmap is ordered by impact on correctness and false-positive reduction.
+
+## Priority 1: parser and control flow
+
+- [x] Add an AST/control-flow foundation while retaining the current token passes.
+- [x] Add conservative unreachable-code diagnostics after unconditional terminators.
+- [ ] Parse expressions, statements, blocks, `if`/`else`, loops, `switch`, and `exitWith` with source spans.
+- [ ] Make undefined-variable analysis scope-aware and merge definitions across branches.
+- [ ] Add unreachable-code diagnostics after `exitWith`, `throw`, `breakOut`, and `continue`.
+- [ ] Replace heuristic statement-boundary checks with AST statement termination rules.
+- [ ] Model `private`, `params`, loop variables, and nested code blocks as lexical scopes.
+
+## Priority 2: semantic and type analysis
+
+- [ ] Expand built-in command signatures, arity checks, and return types.
+- [ ] Infer types through arithmetic, comparisons, array operations, `select`, and namespace access.
+- [ ] Check statically known mission/mod function argument counts and types for `call` and `spawn`.
+- [ ] Distinguish unary, binary, and nular command usage using command metadata.
+- [ ] Detect calls to values that are known not to contain code.
+- [ ] Report duplicate function definitions, suspicious overwrites, constant conditions, and unused locals.
+
+## Priority 3: preprocessor and config coverage
+
+- [ ] Expand `#define`, conditional compilation, nested includes, and include guards.
+- [ ] Make CfgFunctions inheritance and custom `file` mappings fully parser-based.
+- [ ] Improve callback discovery through event handlers and namespace variables.
+
+## Priority 4: registry and updater quality
+
+- [ ] Generate built-in, DLC, and mod signatures with versioned metadata.
+- [ ] Invalidate scan caches when the extractor/parser schema or Arma version changes.
+- [ ] Remove stale functions when addons disappear and record each function's source PBO.
+- [ ] Report reused versus rescanned roots and diagnose unreadable/unsupported PBOs.
+
+## Priority 5: developer-facing linter features
+
+- [ ] Add inline rule suppression and per-project severity configuration.
+- [ ] Add ignore patterns for generated files/directories.
+- [ ] Add stable JSON/SARIF rule metadata and diagnostic deduplication.
+- [ ] Add optional style rules for naming, whitespace, line length, and bracket style.
+
+## Priority 6: editor and agent integration
+
+- [ ] Expose Armalint through a standard MCP server usable by Claude and other
+  MCP clients. The initial read-only tools should include:
+  - lint SQF text and return structured diagnostics with file/line/column data;
+  - lint a mission file or directory using its discovered project config;
+  - look up whether a command or function name is known;
+  - look up extracted mission/mod function signatures and source addons.
+- [ ] Support stdio transport first, with clear setup instructions for Claude
+  Desktop and other local MCP hosts.
+- [ ] Keep MCP calls isolated from cache mutation by default; expose updating
+  or cache-clearing as separate explicitly named operations if needed.
+- [ ] Version the MCP response schema and include rule codes, severity, and
+  actionable messages so clients can present or auto-fix diagnostics safely.
+- [ ] Extract useful function metadata where it is available locally:
+  - descriptions/documentation fields from `CfgFunctions` and `CfgPatches`;
+  - leading comments or docblocks immediately preceding function source files;
+  - source addon/PBO, file path, preInit/postInit flags, and required addons.
+- [ ] Return that metadata through MCP so Claude can explain functions, suggest
+  likely alternatives, and provide context for type warnings.
+- [ ] Mark metadata provenance and confidence; missing descriptions are normal
+  for compiled engine functions and many mod functions.

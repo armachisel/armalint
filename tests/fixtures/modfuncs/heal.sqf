@@ -1,0 +1,4 @@
+call ace_medical_fnc_setUnconscious;
+call ace_hearing_fnc_putInEarplugs;
+call CBA_settings_fnc_set;
+call someUnknownMod_fnc_doThing;
