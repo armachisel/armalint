@@ -156,6 +156,8 @@ def _infer_expression(
                     if (inner == "Array" and j < len(tokens)
                             and tokens[j].value.lower() == "select"):
                         return "Number" if j + 1 < len(tokens) and tokens[j + 1].type == "number" else None
+                    if j < len(tokens) and tokens[j].value.lower() in _COMMAND_RETURN_TYPES:
+                        return _COMMAND_RETURN_TYPES[tokens[j].value.lower()]
                     return inner
     if start < len(tokens) and tokens[start].type == "operator" and tokens[start].value in ("+", "-"):
         # Unary + preserves the operand type (commonly used to copy arrays);
@@ -536,6 +538,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_ok = 1 > 0; sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_ok = (1 > 0); sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_alt = round (((getPosATL player) select 2) max 0);') == []
+    assert check_argument_types_text('_n = (1 max 0); sleep _n;') == []
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", 1]; sleep _delay;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", "soon"]; sleep _delay;')[0].code == _CODE
