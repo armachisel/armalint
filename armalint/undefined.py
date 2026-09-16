@@ -36,6 +36,8 @@ def _constant_condition(tokens: list[Token], negated: bool = False) -> bool | No
             visible = visible[1:-1]
             continue
         break
+    if len(visible) >= 4 and visible[0].type == "operator" and visible[0].value == "!" and visible[1].type == "lparen" and visible[-1].type == "rparen":
+        return _constant_condition(visible[2:-1], not negated)
     if len(visible) == 3 and visible[1].type == "operator" and visible[1].value in ("==", "!=", "<", ">", "<=", ">="):
         left, right = visible[0], visible[2]
         literal_keywords = {"true", "false", "nil"}

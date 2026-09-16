@@ -28,6 +28,8 @@ def _constant_condition(tokens: list[Token]) -> bool:
             visible = visible[1:-1]
             continue
         break
+    if len(visible) >= 4 and visible[0].type == "operator" and visible[0].value == "!" and visible[1].type == "lparen" and visible[-1].type == "rparen":
+        return _constant_condition(visible[2:-1])
     if len(visible) == 2 and visible[0].type == "operator" and visible[0].value == "!":
         visible = visible[1:]
     if len(visible) == 1:
@@ -157,6 +159,8 @@ if __name__ == "__main__":
     assert len([d for d in grouped_comparison if d.code == _CONSTANT_CONDITION]) == 1, grouped_comparison
     boolean_literal = check_control_flow_text('if (true && false) then { hint "constant"; };')
     assert len([d for d in boolean_literal if d.code == _CONSTANT_CONDITION]) == 1, boolean_literal
+    negated_group = check_control_flow_text('if (!(true && false)) then { hint "constant"; };')
+    assert len([d for d in negated_group if d.code == _CONSTANT_CONDITION]) == 1, negated_group
     assert check_control_flow_text('if (_condition) then { exitWith {}; }; hint "maybe";') == []
     embedded = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded
