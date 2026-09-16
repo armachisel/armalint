@@ -391,6 +391,10 @@ if __name__ == "__main__":
     embedded = parse('_result = ({ _result pushBack _x; } forEach allUnits);').statements[0]
     assert isinstance(embedded, Statement) and len(embedded.embedded) == 1
     assert isinstance(embedded.embedded[0], LoopStatement)
+    embedded_loop = embedded.embedded[0]
+    assert embedded_loop.start.type == "lbrace" and embedded_loop.end.value == ")"
+    assert any(token.value.lower() == "allunits" for token in embedded_loop.header)
+    assert embedded_loop.body is not None and embedded_loop.body.start.type == "lbrace"
     switch = parse('switch (_x) do { case 1: { hint "one"; }; default { hint "other"; }; };').statements[0]
     assert isinstance(switch, SwitchStatement) and len(switch.cases) == 2
     exit_with = parse('exitWith { hint "done"; };').statements[0]
