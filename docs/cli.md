@@ -22,6 +22,7 @@ The most useful options are:
 | `--snippet SOURCE` | Lint inline SQF and label diagnostics as `<snippet>`. |
 | `--mission PATH` | Use a mission's symbols and configuration while linting a snippet or file. |
 | `--ignore GLOB` | Skip matching files. Repeat it when needed. |
+| `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run, such as `W206`. Repeatable. |
 | `--config PATH` | Use this `armalint.json` instead of discovering one. |
 | `--version` | Print the installed version. |
 
@@ -35,6 +36,19 @@ Use `--file` when an explicit single-file option is more convenient than a
 positional path. Add `--mission` to resolve mission functions and signatures
 without linting every mission file. A snippet cannot be combined with file or
 directory paths.
+
+Rules can also be suppressed in source comments:
+
+```sqf
+// armalint: disable-next-line W206
+if (true) then { };
+// armalint: disable-line W101
+hint str _value;
+```
+
+Use `// armalint: disable W206` and `// armalint: enable W206` around a
+file-level or section-wide exception. A mission's `armalint.json` can set
+`{"ignoreRules": ["W206", "W101"]}` for every file in that mission.
 
 ## `armalint-update`
 

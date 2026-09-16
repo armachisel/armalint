@@ -59,6 +59,7 @@ python -m armalint --mission PATH --snippet SOURCE [--json]
 | `--mission PATH` | Use mission symbols/configuration with `--snippet` or `--file`.      |
 | `--json`        | Emit a single JSON array of diagnostic objects instead of text.     |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
+| `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
 | `--rules RULE`  | Accepted for forward compatibility; currently ignored. Repeatable. |
 | `--version`     | Print the version and exit.                                        |
 

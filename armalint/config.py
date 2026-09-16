@@ -152,6 +152,18 @@ def extract_function_return_types(config: dict) -> dict[str, str]:
     return result
 
 
+def extract_ignored_rules(config: dict) -> set[str]:
+    """Read rule codes configured for mission-wide suppression."""
+    raw = config.get("ignoreRules")
+    if not isinstance(raw, (list, tuple)):
+        return set()
+    return {
+        item.strip().upper()
+        for item in raw
+        if isinstance(item, str) and re.fullmatch(r"(?:E|W)\d{3}", item.strip(), re.IGNORECASE)
+    }
+
+
 def extract_mods(config: dict) -> list[dict]:
     """Normalize ``config["mods"]`` into a list of ``{"name", "url", "workshop_id"}`` dicts.
 
@@ -217,6 +229,7 @@ if __name__ == "__main__":
         assert extract_function_return_types({
             "functionReturns": {"ALT_fnc_distanceToRoute": "Number", "bad": 3}
         }) == {"alt_fnc_distancetoroute": "Number"}
+        assert extract_ignored_rules({"ignoreRules": ["w206", " W101 ", "bad", 3]}) == {"W206", "W101"}
 
         # find_mod_cache walks up looking for armalint_mods.json.
         assert find_mod_cache(nested) is None
