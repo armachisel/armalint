@@ -351,5 +351,7 @@ if __name__ == "__main__":
     assert len(private_leak) == 1 and "_inner" in private_leak[0].message, private_leak
     embedded_loop = check_undefined_text('_result = ({ hint str _missingInLoop; } forEach allUnits);')
     assert len(embedded_loop) == 1 and "_missingInLoop" in embedded_loop[0].message, embedded_loop
+    spawned = check_undefined_text('spawn { hint str _missingInSpawn; };')
+    assert len(spawned) == 1 and "_missingInSpawn" in spawned[0].message, spawned
 
     print("undefined self-test passed")

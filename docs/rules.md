@@ -53,4 +53,5 @@ mission's `armalint.json` can apply suppression to the whole mission with
 `// armalint: disable-next-line W206` or
 `// armalint: disable-line W206`; use paired `disable` and `enable` comments
 for a file or section-wide exception. Omitting rule codes disables or enables
-all rules.
+all rules. Command-line and mission-configured suppressions also cover
+diagnostics remapped from `#include`d files.

@@ -54,6 +54,8 @@ def _walk_block(block: Block, diags: list[Diagnostic]) -> None:
                 embedded_body = getattr(embedded, "body", None)
                 if embedded_body:
                     _walk_block(embedded_body, diags)
+                elif isinstance(embedded, Block):
+                    _walk_block(embedded, diags)
         elif isinstance(node, Block):
             _walk_block(node, diags)
         elif isinstance(node, IfStatement):
