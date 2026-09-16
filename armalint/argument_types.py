@@ -131,6 +131,16 @@ def _infer_expression(
                 if tokens[start].value == "+" else "Number")
     if start < len(tokens) and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
         return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
+    if start < len(tokens) and tokens[start].value.lower() == "getvariable":
+        default_start = start + 1
+        while default_start < len(tokens) and tokens[default_start].type in _TRIVIA:
+            default_start += 1
+        if default_start < len(tokens) and tokens[default_start].type == "lbracket":
+            split = _array_items(tokens, default_start)
+            if split:
+                items, _close = split
+                if len(items) > 1:
+                    return _simple_item_type(items[1], variables)
     operand_end = start + 1
     while operand_end < len(tokens) and tokens[operand_end].type in _TRIVIA:
         operand_end += 1
@@ -421,6 +431,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_items = [1]; _item = _items select 0; sleep _item;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", 1]; sleep _delay;') == []
     assert check_argument_types_text('_delay = missionNamespace getVariable ["delay", "soon"]; sleep _delay;')[0].code == _CODE
+    assert check_argument_types_text('_delay = getVariable ["delay", 1]; sleep _delay;') == []
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE
