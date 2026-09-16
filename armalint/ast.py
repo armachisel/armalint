@@ -19,10 +19,44 @@ class Node:
 
 
 @dataclass
+class Expression(Node):
+    pass
+
+
+@dataclass
+class LiteralExpression(Expression):
+    value: Token = None  # type: ignore[assignment]
+
+
+@dataclass
+class NameExpression(Expression):
+    name: Token = None  # type: ignore[assignment]
+
+
+@dataclass
+class ArrayExpression(Expression):
+    items: list[Expression] = field(default_factory=list)
+
+
+@dataclass
+class UnaryExpression(Expression):
+    operator: Token = None  # type: ignore[assignment]
+    operand: Expression = None  # type: ignore[assignment]
+
+
+@dataclass
+class BinaryExpression(Expression):
+    left: Expression = None  # type: ignore[assignment]
+    operator: Token = None  # type: ignore[assignment]
+    right: Expression = None  # type: ignore[assignment]
+
+
+@dataclass
 class Statement(Node):
     tokens: list[Token] = field(default_factory=list)
     terminator: str | None = None
     embedded: list[Node] = field(default_factory=list)
+    expression: Expression | None = None
 
 
 @dataclass
@@ -95,6 +129,60 @@ def _matching(tokens: list[Token], start: int, opener: str, closer: str) -> int 
     return None
 
 
+_EXPR_PRECEDENCE = {"=": 0, "||": 1, "&&": 2, "==": 3, "!=": 3, "<": 4, ">": 4, "<=": 4, ">=": 4, "+": 5, "-": 5, "*": 6, "/": 6, "%": 6}
+
+
+def parse_expression(tokens: list[Token]) -> Expression | None:
+    """Parse a conservative expression tree for common SQF operators."""
+    visible = [t for t in tokens if t.type not in ("comment", "preprocessor", "eof")]
+    pos = 0
+
+    def primary() -> Expression | None:
+        nonlocal pos
+        if pos >= len(visible): return None
+        token = visible[pos]
+        if token.type in ("number", "string") or (token.type == "keyword" and token.value.lower() in ("true", "false", "nil")):
+            pos += 1; return LiteralExpression(token, token, token)
+        if token.type in ("ident", "local", "keyword"):
+            pos += 1; return NameExpression(token, token, token)
+        if token.type == "lbracket":
+            close = _matching(visible, pos, "lbracket", "rbracket")
+            if close is None: return None
+            start = pos; pos += 1; items = []
+            while pos < close:
+                item = expression(0)
+                if item is None: return None
+                items.append(item)
+                if pos < close and visible[pos].type == "comma": pos += 1
+                elif pos < close: return None
+            pos = close + 1
+            return ArrayExpression(visible[start], visible[close], items)
+        if token.type == "lparen":
+            pos += 1; item = expression(0)
+            if item is not None and pos < len(visible) and visible[pos].type == "rparen": pos += 1
+            return item
+        if token.type == "operator" and token.value in ("!", "+", "-"):
+            pos += 1; item = primary()
+            return UnaryExpression(token, item.end if item else token, token, item) if item else None
+        return None
+
+    def expression(minimum: int) -> Expression | None:
+        nonlocal pos
+        left = primary()
+        if left is None: return None
+        while pos < len(visible):
+            op = visible[pos]
+            precedence = _EXPR_PRECEDENCE.get(op.value) if op.type == "operator" else None
+            if precedence is None or precedence < minimum: break
+            pos += 1; right = expression(precedence + 1)
+            if right is None: return None
+            left = BinaryExpression(left.start, right.end, left, op, right)
+        return left
+
+    result = expression(0)
+    return result if result is not None and pos == len(visible) else None
+
+
 class Parser:
     def __init__(self, tokens: list[Token]):
         self.tokens = [t for t in tokens if t.type not in ("comment", "preprocessor", "eof")]
@@ -122,7 +210,7 @@ class Parser:
             while end < limit and self.tokens[end].type != "semicolon":
                 end += 1
             final = self.tokens[end] if end < limit else self.tokens[end - 1]
-            return TerminatorStatement(tok, final, self.tokens[pos:end], ";" if end < limit else None, [], tok.value.lower()), end + 1 if end < limit else end
+            return TerminatorStatement(tok, final, self.tokens[pos:end], ";" if end < limit else None, [], None, tok.value.lower()), end + 1 if end < limit else end
         if tok.type == "lbrace":
             foreach = self._foreach_node(pos, limit)
             if foreach is not None:
@@ -162,10 +250,10 @@ class Parser:
                     depth -= 1
             elif kind == "semicolon" and depth == 0:
                 statement_tokens = self.tokens[pos:end]
-                return Statement(tok, self.tokens[end], statement_tokens, ";", self._embedded(statement_tokens)), end + 1
+                return Statement(tok, self.tokens[end], statement_tokens, ";", self._embedded(statement_tokens), parse_expression(statement_tokens)), end + 1
             end += 1
         statement_tokens = self.tokens[pos:end]
-        return Statement(tok, self.tokens[end - 1], statement_tokens, None, self._embedded(statement_tokens)), end
+        return Statement(tok, self.tokens[end - 1], statement_tokens, None, self._embedded(statement_tokens), parse_expression(statement_tokens)), end
 
     def _embedded(self, tokens: list[Token]) -> list[Node]:
         """Find structured code blocks embedded in expressions."""
@@ -483,4 +571,6 @@ if __name__ == "__main__":
     assert isinstance(caught, TryCatchStatement) and caught.try_block is not None and caught.catch_block is not None
     terminator = parse('breakOut "scope";').statements[0]
     assert isinstance(terminator, TerminatorStatement) and terminator.command == "breakout"
+    expr = parse('_value = 1 + 2;').statements[0]
+    assert isinstance(expr, Statement) and isinstance(expr.expression, BinaryExpression)
     print("ast self-test passed")
