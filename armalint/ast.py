@@ -147,6 +147,18 @@ class Parser:
         """Find structured ``{...} forEach`` nodes embedded in expressions."""
         result: list[Node] = []
         for i, token in enumerate(tokens):
+            if token.type == "keyword" and token.value.lower() == "exitwith":
+                body_start = i + 1
+                if body_start < len(tokens) and tokens[body_start].type == "lbrace":
+                    close = _matching(tokens, body_start, "lbrace", "rbrace")
+                    if close is not None:
+                        body_statements, _ = Parser(tokens[body_start + 1:close])._sequence(0, close - body_start - 1, stop=None)
+                        result.append(ExitWithStatement(
+                            start=token,
+                            end=tokens[close],
+                            body=Block(tokens[body_start], tokens[close], body_statements),
+                        ))
+                continue
             if token.type != "lbrace":
                 continue
             close = _matching(tokens, i, "lbrace", "rbrace")
@@ -396,6 +408,8 @@ if __name__ == "__main__":
     assert embedded_loop.start.type == "lbrace" and embedded_loop.end.value.lower() == "allunits"
     assert any(token.value.lower() == "allunits" for token in embedded_loop.header)
     assert embedded_loop.body is not None and embedded_loop.body.start.type == "lbrace"
+    early = parse('_result = ({ exitWith {}; } forEach allUnits);').statements[0]
+    assert isinstance(early, Statement) and any(isinstance(node, ExitWithStatement) for node in early.embedded)
     switch = parse('switch (_x) do { case 1: { hint "one"; }; default { hint "other"; }; };').statements[0]
     assert isinstance(switch, SwitchStatement) and len(switch.cases) == 2
     exit_with = parse('exitWith { hint "done"; };').statements[0]
