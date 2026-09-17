@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from armalint.argument_types import check_argument_types_text
+from armalint.argument_types import _BINARY_SIGNATURES, _COMMAND_ARITIES, _SIGNATURES
 from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpression, GroupExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
 from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
@@ -174,6 +175,17 @@ def _isnull_accepts_engine_handles() -> bool:
 def _in_checks_right_array_operand() -> bool:
     diagnostics = check_argument_types_text('{ if !(_x in (assignedItems player)) then {}; } forEach ["NVGoggles", "ItemMap"];')
     return not any(d.code == "W203" and " in " in d.message for d in diagnostics)
+
+
+def _generated_signature_forms() -> bool:
+    unary = _SIGNATURES.get("finddisplay")
+    binary = _BINARY_SIGNATURES.get("setposasl")
+    return (
+        unary is not None and "Number" in unary[0]
+        and binary is not None and "Array" in binary[0]
+        and _COMMAND_ARITIES.get("finddisplay") == frozenset({1})
+        and 2 in _COMMAND_ARITIES.get("setposasl", frozenset())
+    )
 
 
 def _command_xml_metadata_parser() -> bool:
@@ -403,6 +415,7 @@ CASES = (
     ("extended object producer returns", _extended_object_producer_returns),
     ("isNull accepts engine handles", _isnull_accepts_engine_handles),
     ("in checks right array operand", _in_checks_right_array_operand),
+    ("generated signature forms", _generated_signature_forms),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
