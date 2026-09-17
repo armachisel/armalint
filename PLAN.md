@@ -15,7 +15,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 ## Priority 2: semantic and type analysis
 
 - [ ] Expand built-in command signatures, arity checks, and return types.
-- [ ] Infer types through arithmetic, comparisons, array operations, `select`, and namespace access.
+- [x] Infer types through arithmetic, comparisons, array operations, `select`, and namespace access.
 - [ ] Check statically known mission/mod function argument counts and types for `call` and `spawn`.
 - [ ] Distinguish unary, binary, and nular command usage using command metadata.
 - [ ] Detect calls to values that are known not to contain code.
