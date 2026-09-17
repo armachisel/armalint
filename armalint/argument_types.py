@@ -157,6 +157,7 @@ _COMMAND_RETURN_TYPES = {
     "configproperties": "Array", "configsourcemod": "String",
 }
 _COMMAND_ARITIES: dict[str, frozenset[int]] = {}
+_GENERATED_BINARY_SKIP = frozenset(("getvariable", "configclasses", "configproperties"))
 _ARRAY_ELEMENT_TYPES = {
     "nearroads": "Object", "allplayers": "Object", "allunits": "Object",
     "allvehicles": "Object", "allmissionobjects": "Object", "allgroups": "Group",
@@ -207,22 +208,34 @@ def _load_generated_command_signatures() -> None:
         if name.lower() in _KEYWORDS:
             continue
         name = name.lower()
-        syntax_rows = metadata.get("syntaxes", [])
-        arities = {
-            len(syntax.get("params", []))
-            for syntax in syntax_rows
-            if isinstance(syntax, dict)
-        }
+        syntax_rows = [s for s in metadata.get("syntaxes", []) if isinstance(s, dict)]
+        def form(row: dict[str, object]) -> int | None:
+            params = row.get("params", [])
+            if not isinstance(params, list):
+                return None
+            orders = {int(p.get("order", 0)) for p in params if isinstance(p, dict)}
+            if not params:
+                return 0
+            if len(params) == 1 and orders == {1}:
+                return 1
+            if len(params) >= 2 and 0 in orders and 1 in orders:
+                return 2
+            # A lone order-0 parameter is the implicit left operand of a
+            # binary command; its right operand is often an untyped array.
+            return None
+        forms = {form(row) for row in syntax_rows} - {None}
+        arities = frozenset(forms)
         if arities:
-            _COMMAND_ARITIES[name] = frozenset(arities)
+            _COMMAND_ARITIES[name] = arities
         for arity in (1, 2):
-            rows = [s for s in syntax_rows if len(s.get("params", [])) == arity]
-            if arities != {arity} or not rows or any(len(s.get("params", [])) != arity for s in rows):
+            rows = [s for s in syntax_rows if form(s) == arity]
+            if forms != {arity} or not rows:
                 continue
             accepted_by_position: list[set[str]] = [set() for _ in range(arity)]
             usable = True
             for row in rows:
-                for index, param in enumerate(row.get("params", [])):
+                params = sorted(row.get("params", []), key=lambda p: int(p.get("order", 0)))
+                for index, param in enumerate(params):
                     mapped = _canonical_type(str(param.get("type", "ANYTHING")))
                     if mapped is None:
                         usable = False
@@ -234,6 +247,8 @@ def _load_generated_command_signatures() -> None:
                 continue
             operand_index = 0 if arity == 1 else 1
             label = " or ".join(sorted(accepted_by_position[operand_index]))
+            if arity == 2 and name in _GENERATED_BINARY_SKIP:
+                continue
             target = _SIGNATURES if arity == 1 else _BINARY_SIGNATURES
             target.setdefault(name, (frozenset(accepted_by_position[operand_index]), label))
         returns = {
