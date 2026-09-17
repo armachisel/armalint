@@ -276,7 +276,25 @@ def walk_expression(expression: Expression | None):
         yield from walk_expression(expression.target)
     elif isinstance(expression, CodeExpression) and expression.body:
         for statement in expression.body.statements:
-            yield from walk_expression(getattr(statement, "expression", None))
+            yield from _walk_node_expressions(statement)
+
+
+def _walk_node_expressions(node: Node):
+    """Yield expressions attached to a structured AST node and its children."""
+    yield from walk_expression(getattr(node, "expression", None))
+    for name in ("condition_ast", "header_ast", "expression_ast"):
+        yield from walk_expression(getattr(node, name, None))
+    for name in ("then_block", "else_block", "body", "try_block", "catch_block"):
+        child = getattr(node, name, None)
+        if isinstance(child, Block):
+            for statement in child.statements:
+                yield from _walk_node_expressions(statement)
+        elif isinstance(child, Node):
+            yield from _walk_node_expressions(child)
+    for case in getattr(node, "cases", ()):
+        if case.body:
+            for statement in case.body.statements:
+                yield from _walk_node_expressions(statement)
 
 
 class Parser:
