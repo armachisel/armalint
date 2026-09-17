@@ -129,6 +129,11 @@ def _expanded_builtin_signatures() -> bool:
     return any(d.code == "W203" and "alive" in d.message for d in diagnostics) and not any(d.code == "W203" and "count" in d.message for d in diagnostics)
 
 
+def _nular_collection_returns() -> bool:
+    diagnostics = check_argument_types_text('_players = allPlayers; count _players; _units = allUnits; count _units;')
+    return not any(d.code == "W203" for d in diagnostics)
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -330,6 +335,7 @@ CASES = (
     ("literal non-code call target", _literal_non_code_call_target),
     ("AST statement boundary", _ast_statement_boundary),
     ("expanded built-in signatures", _expanded_builtin_signatures),
+    ("nular collection returns", _nular_collection_returns),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
