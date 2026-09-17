@@ -57,6 +57,13 @@ class UnaryExpression(Expression):
 
 
 @dataclass
+class GroupExpression(Expression):
+    """An expression enclosed in parentheses, retaining its source span."""
+
+    inner: Expression = None  # type: ignore[assignment]
+
+
+@dataclass
 class BinaryExpression(Expression):
     left: Expression = None  # type: ignore[assignment]
     operator: Token = None  # type: ignore[assignment]
@@ -214,9 +221,13 @@ def parse_expression(tokens: list[Token]) -> Expression | None:
             pos = close + 1
             return ArrayExpression(visible[start], visible[close], items)
         if token.type == "lparen":
+            opening = token
             pos += 1; item = expression(0)
-            if item is not None and pos < len(visible) and visible[pos].type == "rparen": pos += 1
-            return item
+            if item is not None and pos < len(visible) and visible[pos].type == "rparen":
+                closing = visible[pos]
+                pos += 1
+                return GroupExpression(opening, closing, item)
+            return None
         if token.type == "operator" and token.value in ("!", "+", "-"):
             pos += 1; item = primary()
             return UnaryExpression(token, item.end if item else token, token, item) if item else None
@@ -250,8 +261,11 @@ def walk_expression(expression: Expression | None):
     if expression is None:
         return
     yield expression
-    if isinstance(expression, (UnaryExpression,)):
-        yield from walk_expression(expression.operand)
+    if isinstance(expression, (UnaryExpression, GroupExpression)):
+        if isinstance(expression, GroupExpression):
+            yield from walk_expression(expression.inner)
+        else:
+            yield from walk_expression(expression.operand)
     elif isinstance(expression, (BinaryExpression, CommandExpression)):
         yield from walk_expression(expression.left)
         yield from walk_expression(expression.right)
@@ -673,6 +687,9 @@ if __name__ == "__main__":
     assert isinstance(variable_call, Statement) and isinstance(variable_call.expression, CallExpression)
     negated = parse('not _condition;').statements[0]
     assert isinstance(negated, Statement) and isinstance(negated.expression, UnaryExpression)
+    grouped = parse('_value = (1 + 2);').statements[0]
+    assert isinstance(grouped, Statement) and isinstance(grouped.expression, BinaryExpression)
+    assert isinstance(grouped.expression.right, GroupExpression)
     unary_command = parse('count [1, 2];').statements[0]
     assert isinstance(unary_command, Statement) and isinstance(unary_command.expression, CommandExpression)
     assert unary_command.expression.left is None

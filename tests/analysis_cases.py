@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from armalint.argument_types import check_argument_types_text
-from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
+from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpression, GroupExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
 from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
 from armalint.suppression import filter_suppressed
@@ -68,6 +68,12 @@ def _ast_text_prefix_command() -> bool:
     node = parse('_text = str 42;').statements[0]
     expr = getattr(node, "expression", None)
     return isinstance(expr, BinaryExpression) and isinstance(expr.right, CommandExpression) and expr.right.left is None
+
+
+def _ast_group_expression_span() -> bool:
+    node = parse('_value = (1 + 2);').statements[0]
+    expr = getattr(node, "expression", None)
+    return isinstance(expr, BinaryExpression) and isinstance(expr.right, GroupExpression) and expr.right.start.type == "lparen" and expr.right.end.type == "rparen"
 
 
 def _ast_malformed_expression_recovery() -> bool:
@@ -260,6 +266,7 @@ CASES = (
     ("AST select element type", _ast_select_element_type),
     ("AST selectRandom element type", _ast_select_random_element_type),
     ("AST text prefix command", _ast_text_prefix_command),
+    ("AST grouped expression span", _ast_group_expression_span),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
