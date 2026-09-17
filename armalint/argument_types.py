@@ -234,6 +234,15 @@ def _infer_expression(
         # unary - is numeric.
         return (_infer_operand(tokens, start + 1, variables)
                 if tokens[start].value == "+" else "Number")
+    if start < len(tokens) and tokens[start].value.lower() == "selectrandom":
+        operand = start + 1
+        if operand < len(tokens) and tokens[operand].type == "lbracket":
+            split = _array_items(tokens, operand)
+            if split:
+                items, _ = split
+                inferred = [_simple_item_type(item, variables) for item in items]
+                if items and inferred[0] is not None and all(item_type == inferred[0] for item_type in inferred):
+                    return inferred[0]
     if start < len(tokens) and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
         return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
     if start < len(tokens) and tokens[start].value.lower() == "getvariable":

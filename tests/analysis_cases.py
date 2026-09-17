@@ -88,6 +88,11 @@ def _ast_switch_case_condition() -> bool:
     return case is not None and isinstance(getattr(case, "condition_ast", None), BinaryExpression)
 
 
+def _switch_case_select_random_type() -> bool:
+    diagnostics = check_argument_types_text('switch (1) do { case 1: { _value = selectRandom [1, 2]; allowDamage _value; }; };')
+    return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -281,6 +286,7 @@ CASES = (
     ("AST grouped expression span", _ast_group_expression_span),
     ("AST walker structured conditions", _ast_walker_structured_conditions),
     ("AST switch case condition", _ast_switch_case_condition),
+    ("switch case selectRandom type", _switch_case_select_random_type),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
