@@ -323,15 +323,17 @@ python -m armalint.update_commands --dry-run
 The dry run prints the current count, the count that would result, and how many
 names would be added.
 
-To also fetch the typed XML definitions for every known command, including
+The typed XML definitions are vendored in
+`armalint/data/command_metadata.json`, including
 syntax variants, parameter types, return types, game/version metadata, and
-deprecation markers, add `--signatures`:
+deprecation markers, explicitly refresh it with:
 
 ```powershell
-python -m armalint.update_commands --signatures
+python -m armalint.update_commands --refresh-signatures
 ```
 
-This writes `armalint/data/command_metadata.json`. The linter loads that file
+This is the only mode that contacts the upstream XML repository. Normal command
+database updates use the checked-in snapshot. The linter loads the snapshot
 automatically and uses only unambiguous return types; uncertain or conflicting
 definitions remain available in the registry without being used to guess.
 

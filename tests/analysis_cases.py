@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from armalint.argument_types import check_argument_types_text
 from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpression, GroupExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
 from armalint.tokenizer import tokenize
@@ -167,6 +170,13 @@ def _command_xml_metadata_parser() -> bool:
     xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
     metadata = _parse_command_xml(xml)
     return metadata["name"] == "fake" and metadata["game"] == "arma3" and _metadata_return_type(metadata) == "Object"
+
+
+def _vendored_command_metadata_snapshot() -> bool:
+    path = Path(__file__).resolve().parents[1] / "armalint" / "data" / "command_metadata.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    commands = payload.get("commands", {})
+    return payload.get("schema") == 1 and isinstance(commands, dict) and len(commands) >= 2000
 
 
 def _hashmap_foreach_value_scope() -> bool:
@@ -382,6 +392,7 @@ CASES = (
     ("object producer returns", _object_producer_returns),
     ("extended object producer returns", _extended_object_producer_returns),
     ("command XML metadata parser", _command_xml_metadata_parser),
+    ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
