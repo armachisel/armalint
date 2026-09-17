@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity, format_diagnostic
-from .known import is_known
+from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Statement, SwitchStatement, TryCatchStatement, parse
 from .tokenizer import Token, tokenize
 
 # Token-type -> bracket character mappings used by the balance check.
@@ -40,6 +40,41 @@ def _matching_close(tokens: list[Token], start: int) -> int | None:
     return None
 
 
+def _ast_statement_boundary_diagnostics(tokens: list[Token]) -> list[Diagnostic]:
+    """Find clear block/statement boundaries from the parsed AST."""
+    try:
+        roots = parse(tokens).statements
+    except Exception:
+        return []
+    structured = (IfStatement, LoopStatement, SwitchStatement, ExitWithStatement, TryCatchStatement)
+    diagnostics: list[Diagnostic] = []
+
+    def visit(nodes: list[Node]) -> None:
+        for previous, current in zip(nodes, nodes[1:]):
+            if (isinstance(previous, structured) or
+                    (isinstance(previous, Statement) and previous.embedded)):
+                if (previous.end.type == "rbrace" and current.start.line == previous.end.line
+                        and current.start.value.lower() not in ("else", "catch", "then")):
+                    diagnostics.append(Diagnostic(
+                        Severity.ERROR, _MISSING_SEMICOLON,
+                        "missing semicolon after code block",
+                        current.start.line, current.start.column,
+                    ))
+        for node in nodes:
+            for name in ("then_block", "else_block", "body", "try_block", "catch_block"):
+                child = getattr(node, name, None)
+                if isinstance(child, Block):
+                    visit(child.statements)
+                elif isinstance(child, Node):
+                    visit([child])
+            for case in getattr(node, "cases", ()):
+                if case.body:
+                    visit(case.body.statements)
+
+    visit(roots)
+    return diagnostics
+
+
 def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
     """Run syntax checks over a token stream (which ends with ``eof``)."""
     diags: list[Diagnostic] = []
@@ -74,15 +109,7 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                     if left.type in ("number", "string") and right.type in ("number", "string"):
                         diags.append(Diagnostic(Severity.ERROR, _MISSING_COMMA, "missing comma between array elements", right.line, right.column))
                         break
-        if tok.type == "rbrace" and i + 1 < len(sig):
-            nxt = sig[i + 1]
-            if (nxt.line == tok.line and nxt.type in ("ident", "local", "keyword")
-                    and nxt.value.lower() not in ("else", "then", "catch", "call", "spawn")
-                    and not is_known(nxt.value)):
-                diags.append(Diagnostic(
-                    Severity.ERROR, _MISSING_SEMICOLON,
-                    "missing semicolon after code block", nxt.line, nxt.column,
-                ))
+    diags.extend(_ast_statement_boundary_diagnostics(tokens))
 
     for tok in tokens:
         t = tok.type

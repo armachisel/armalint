@@ -7,6 +7,7 @@ from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpress
 from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
 from armalint.suppression import filter_suppressed
+from armalint.syntax import check_syntax
 from armalint.undefined import check_undefined_text
 from armalint.diagnostic import Diagnostic, Severity
 
@@ -116,6 +117,11 @@ def _non_code_call_target() -> bool:
 def _literal_non_code_call_target() -> bool:
     diagnostics = check_argument_types_text('call 1; spawn false;')
     return len([d for d in diagnostics if d.code == "W205"]) == 2
+
+
+def _ast_statement_boundary() -> bool:
+    diagnostics = check_syntax(tokenize('if (true) then {} hint 1;'))
+    return len([d for d in diagnostics if d.code == "E008"]) == 1
 
 
 def _ast_malformed_expression_recovery() -> bool:
@@ -317,6 +323,7 @@ CASES = (
     ("AST grouped namespace default type", _ast_grouped_namespace_default_type),
     ("non-code call target", _non_code_call_target),
     ("literal non-code call target", _literal_non_code_call_target),
+    ("AST statement boundary", _ast_statement_boundary),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
