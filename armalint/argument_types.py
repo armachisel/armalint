@@ -84,7 +84,6 @@ _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "allowdamage": (frozenset(("Boolean",)), "Boolean"),
     "setbehaviour": (frozenset(("String",)), "String"),
     "setunitpos": (frozenset(("String",)), "String"),
-    "in": (frozenset(("Array",)), "Array"),
     "configclasses": (frozenset(("Config",)), "Config"),
     "configproperties": (frozenset(("Config",)), "Config"),
 }

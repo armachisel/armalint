@@ -171,6 +171,11 @@ def _isnull_accepts_engine_handles() -> bool:
     return not any(d.code == "W203" and "isNull" in d.message for d in check_argument_types_text(source))
 
 
+def _in_checks_right_array_operand() -> bool:
+    diagnostics = check_argument_types_text('{ if !(_x in (assignedItems player)) then {}; } forEach ["NVGoggles", "ItemMap"];')
+    return not any(d.code == "W203" and " in " in d.message for d in diagnostics)
+
+
 def _command_xml_metadata_parser() -> bool:
     xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
     metadata = _parse_command_xml(xml)
@@ -397,6 +402,7 @@ CASES = (
     ("object producer returns", _object_producer_returns),
     ("extended object producer returns", _extended_object_producer_returns),
     ("isNull accepts engine handles", _isnull_accepts_engine_handles),
+    ("in checks right array operand", _in_checks_right_array_operand),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
