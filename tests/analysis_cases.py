@@ -193,6 +193,11 @@ def _ui_and_array_encoded_commands_stay_unchecked() -> bool:
     return not any(d.code == "W203" for d in check_argument_types_text(source))
 
 
+def _engine_array_operand_commands() -> bool:
+    source = '"ext" callExtension ["arm", ["x"]]; private _a = [0, 0, 0]; private _b = [1, 1, 1]; _a distance _b; private _cam = "camera" camCreate [0, 0, 0]; _cam camSetFov ([getPosASL player, [0, 0, 0]] call ALT_fnc_fov); private _names = allVariables player;'
+    return not any(d.code == "W203" for d in check_argument_types_text(source))
+
+
 def _command_xml_metadata_parser() -> bool:
     xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
     metadata = _parse_command_xml(xml)
@@ -422,6 +427,7 @@ CASES = (
     ("in checks right array operand", _in_checks_right_array_operand),
     ("generated signature forms", _generated_signature_forms),
     ("UI and array-encoded commands stay unchecked", _ui_and_array_encoded_commands_stay_unchecked),
+    ("engine array operand commands", _engine_array_operand_commands),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
