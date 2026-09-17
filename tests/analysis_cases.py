@@ -150,6 +150,12 @@ def _camera_and_config_returns() -> bool:
     return not any(d.code == "W203" and ("isNull" in d.message or "configClasses" in d.message) for d in diagnostics)
 
 
+def _object_producer_returns() -> bool:
+    source = '_a = objectFromNetId "1:2"; isNull _a; _b = cameraOn; isNull _b; _c = nearestObject [player, "Car"]; isNull _c;'
+    diagnostics = check_argument_types_text(source)
+    return not any(d.code == "W203" and "isNull" in d.message for d in diagnostics)
+
+
 def _hashmap_foreach_value_scope() -> bool:
     from armalint.undefined import check_undefined_text
     return not any(d.code == "W101" and "_y" in d.message for d in check_undefined_text('{ hint str _y; } forEach _map;'))
@@ -360,6 +366,7 @@ CASES = (
     ("config built-in signatures", _config_builtin_signatures),
     ("object constructor returns", _object_constructor_returns),
     ("camera and config returns", _camera_and_config_returns),
+    ("object producer returns", _object_producer_returns),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
