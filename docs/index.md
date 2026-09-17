@@ -52,3 +52,8 @@ including explicit Arma and Workshop paths when automatic discovery cannot
 find them. The [function index guide](indexes.md) explains what is stored and
 why each mission has its own index. The [CLI reference](cli.md) has the
 options, and [rules and analysis](rules.md) explains the diagnostics.
+
+## Credits
+
+Armalint's vendored typed command definitions are based on the XML data from
+the [arma-commands-syntax project](https://github.com/kayler-renslow/arma-commands-syntax).
