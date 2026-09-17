@@ -347,3 +347,8 @@ python tests/run_all.py
 
 It runs each analyzer module's built-in self-test, lints the fixtures, and
 prints a PASS/FAIL summary (exits non-zero on any failure).
+
+## Credits
+
+Armalint's vendored typed command definitions are based on the XML data from
+the [arma-commands-syntax project](https://github.com/kayler-renslow/arma-commands-syntax).
