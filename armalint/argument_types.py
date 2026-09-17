@@ -322,7 +322,17 @@ def _infer_expression(
                 if items and inferred[0] is not None and all(item_type == inferred[0] for item_type in inferred):
                     return inferred[0]
     if start < len(tokens) and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
-        return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
+        # A nular command can be the left operand of a binary command (for
+        # example, ``missionNamespace getVariable``). In that form its own
+        # return type must not mask the enclosing command's result.
+        next_token = start + 1
+        while next_token < len(tokens) and tokens[next_token].type in _TRIVIA:
+            next_token += 1
+        next_value = tokens[next_token].value.lower() if next_token < len(tokens) else ""
+        if (next_token >= len(tokens) or tokens[next_token].type != "ident"
+                or next_value in _KNOWN_VARIABLE_TYPES
+                or next_value not in (_COMMAND_RETURN_TYPES | _BINARY_SIGNATURES | _SIGNATURES | _RETURN_TYPES)):
+            return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
     if start < len(tokens) and tokens[start].value.lower() == "getvariable":
         default_start = start + 1
         while default_start < len(tokens) and tokens[default_start].type in _TRIVIA:
@@ -345,18 +355,30 @@ def _infer_expression(
         if (select < len(tokens) and tokens[select].value.lower() == "select"
                 and select + 1 < len(tokens) and tokens[select + 1].type == "number"):
             return "Number"
-    if operand_end < len(tokens) and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES:
-        return _COMMAND_RETURN_TYPES[tokens[operand_end].value.lower()]
     if operand_end < len(tokens) and tokens[operand_end].value.lower() == "getvariable":
         default_start = operand_end + 1
         while default_start < len(tokens) and tokens[default_start].type in _TRIVIA:
             default_start += 1
+        if default_start < len(tokens) and tokens[default_start].type == "lparen":
+            depth = 0
+            for close in range(default_start, len(tokens)):
+                if tokens[close].type == "lparen":
+                    depth += 1
+                elif tokens[close].type == "rparen":
+                    depth -= 1
+                    if depth == 0:
+                        default_start += 1
+                        while default_start < close and tokens[default_start].type in _TRIVIA:
+                            default_start += 1
+                        break
         if default_start < len(tokens) and tokens[default_start].type == "lbracket":
             split = _array_items(tokens, default_start)
             if split:
                 items, _close = split
                 if len(items) > 1:
                     return _simple_item_type(items[1], variables)
+    if operand_end < len(tokens) and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES:
+        return _COMMAND_RETURN_TYPES[tokens[operand_end].value.lower()]
     direct = _infer_operand(tokens, start, variables)
     # A selected field from a non-literal record has no reliable type without
     # a producer schema; keep it unknown instead of guessing from the record.
@@ -691,7 +713,7 @@ def check_argument_types(
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
         accepted, expected = rule
-        if actual is not None and not all(member in accepted for member in actual.split("|")):
+        if actual is not None and actual != "Anything" and not all(member in accepted for member in actual.split("|")):
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 
     # A small set of binary commands has a stable right-hand operand type.
@@ -710,7 +732,7 @@ def check_argument_types(
             continue
         actual = _infer_operand(tokens, j, variables)
         accepted, expected = rule
-        if actual is not None and actual not in accepted:
+        if actual is not None and actual != "Anything" and actual not in accepted:
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 
     # A statically known non-code value cannot be used as a call/spawn target.
