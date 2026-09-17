@@ -127,6 +127,11 @@ _COMMAND_RETURN_TYPES = {
     "isnumber": "Boolean", "isequaltype": "Boolean", "find": "Number",
     "isserver": "Boolean", "isdedicated": "Boolean", "hasinterface": "Boolean",
     "createhashmap": "HashMap", "createhashmapfrom": "HashMap",
+    "allplayers": "Array", "allunits": "Array", "allvehicles": "Array",
+    "allgroups": "Array", "allmissionobjects": "Array", "alldead": "Array",
+    "alldeadmen": "Array", "allturrets": "Array", "allsimpleobjects": "Array",
+    "allstaticobjects": "Array", "allstaticweapons": "Array", "allair": "Array",
+    "allland": "Array", "allman": "Array",
 }
 _ARRAY_ELEMENT_TYPES = {
     "nearroads": "Object", "allplayers": "Object", "allunits": "Object",
