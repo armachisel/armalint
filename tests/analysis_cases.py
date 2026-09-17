@@ -103,6 +103,11 @@ def _ast_namespace_default_type() -> bool:
     return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
 
 
+def _ast_grouped_namespace_default_type() -> bool:
+    diagnostics = check_argument_types_text('_value = missionNamespace getVariable (["flag", 1]); allowDamage _value;')
+    return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -299,6 +304,7 @@ CASES = (
     ("switch case selectRandom type", _switch_case_select_random_type),
     ("AST grouped select type", _ast_grouped_select_type),
     ("AST namespace default type", _ast_namespace_default_type),
+    ("AST grouped namespace default type", _ast_grouped_namespace_default_type),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),

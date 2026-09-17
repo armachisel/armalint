@@ -147,8 +147,10 @@ def _infer_ast_expression(expr: Expression | None, variables: dict[str, str], fu
         if expr.operator.value in ("==", "!=", "<", ">", "<=", ">=", "&&", "||"): return "Boolean"
     if isinstance(expr, CommandExpression):
         name = expr.command.value.lower()
-        if name == "getvariable" and isinstance(expr.right, ArrayExpression) and len(expr.right.items) > 1:
-            return _infer_ast_expression(expr.right.items[1], variables, function_return_types)
+        if name == "getvariable":
+            variable_args = expr.right.inner if isinstance(expr.right, GroupExpression) else expr.right
+            if isinstance(variable_args, ArrayExpression) and len(variable_args.items) > 1:
+                return _infer_ast_expression(variable_args.items[1], variables, function_return_types)
         selected_array = expr.left if isinstance(expr.left, ArrayExpression) else expr.right
         if isinstance(selected_array, GroupExpression):
             selected_array = selected_array.inner
