@@ -64,6 +64,12 @@ def _ast_select_random_element_type() -> bool:
     return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
 
 
+def _ast_text_prefix_command() -> bool:
+    node = parse('_text = str 42;').statements[0]
+    expr = getattr(node, "expression", None)
+    return isinstance(expr, BinaryExpression) and isinstance(expr.right, CommandExpression) and expr.right.left is None
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -253,6 +259,7 @@ CASES = (
     ("AST unary command expression", _ast_unary_command_expression),
     ("AST select element type", _ast_select_element_type),
     ("AST selectRandom element type", _ast_select_random_element_type),
+    ("AST text prefix command", _ast_text_prefix_command),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
