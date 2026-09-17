@@ -93,6 +93,11 @@ def _switch_case_select_random_type() -> bool:
     return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
 
 
+def _ast_grouped_select_type() -> bool:
+    diagnostics = check_argument_types_text('_value = ([1, 2]) select 0; allowDamage _value;')
+    return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -287,6 +292,7 @@ CASES = (
     ("AST walker structured conditions", _ast_walker_structured_conditions),
     ("AST switch case condition", _ast_switch_case_condition),
     ("switch case selectRandom type", _switch_case_select_random_type),
+    ("AST grouped select type", _ast_grouped_select_type),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),

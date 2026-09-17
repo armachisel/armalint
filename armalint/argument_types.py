@@ -148,6 +148,8 @@ def _infer_ast_expression(expr: Expression | None, variables: dict[str, str], fu
     if isinstance(expr, CommandExpression):
         name = expr.command.value.lower()
         selected_array = expr.left if isinstance(expr.left, ArrayExpression) else expr.right
+        if isinstance(selected_array, GroupExpression):
+            selected_array = selected_array.inner
         if name in ("select", "selectrandom") and isinstance(selected_array, ArrayExpression):
             if name == "selectrandom":
                 inferred_items = [
