@@ -8,6 +8,7 @@ from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
 from armalint.suppression import filter_suppressed
 from armalint.syntax import check_syntax
+from armalint.update_commands import _metadata_return_type, _parse_command_xml
 from armalint.undefined import check_undefined_text
 from armalint.diagnostic import Diagnostic, Severity
 
@@ -160,6 +161,12 @@ def _extended_object_producer_returns() -> bool:
     source = '_a = effectiveDriver player; isNull _a; _b = assignedGunner player; isNull _b; _c = cursorObject; isNull _c;'
     diagnostics = check_argument_types_text(source)
     return not any(d.code == "W203" and "isNull" in d.message for d in diagnostics)
+
+
+def _command_xml_metadata_parser() -> bool:
+    xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
+    metadata = _parse_command_xml(xml)
+    return metadata["name"] == "fake" and metadata["game"] == "arma3" and _metadata_return_type(metadata) == "Object"
 
 
 def _hashmap_foreach_value_scope() -> bool:
@@ -374,6 +381,7 @@ CASES = (
     ("camera and config returns", _camera_and_config_returns),
     ("object producer returns", _object_producer_returns),
     ("extended object producer returns", _extended_object_producer_returns),
+    ("command XML metadata parser", _command_xml_metadata_parser),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),

@@ -7,6 +7,9 @@ checker; unknown expressions and mission functions remain unchecked.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from .diagnostic import Diagnostic, Severity
 from .ast import ArrayExpression, BinaryExpression, Block, CallExpression, CodeExpression, CommandExpression, Expression, GroupExpression, IfStatement, LiteralExpression, LoopStatement, NameExpression, Node, Statement, UnaryExpression, parse, walk_expression
 from .tokenizer import Token, tokenize
@@ -164,6 +167,27 @@ _ARRAY_ELEMENT_TYPES = {
     "lineintersectswith": "Array", "lineintersectssurfaces": "Array", "fullcrew": "Array",
     "weapons": "String", "magazines": "String", "items": "String", "assigneditems": "String",
 }
+
+
+def _load_generated_command_returns() -> None:
+    """Merge unambiguous returns from the updater's typed command registry."""
+    path = Path(__file__).resolve().parent / "data" / "command_metadata.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    for name, metadata in payload.get("commands", {}).items():
+        returns = {
+            value
+            for syntax in metadata.get("syntaxes", [])
+            for value in syntax.get("returns", [])
+            if isinstance(value, str) and value.upper() not in ("NOTHING", "VOID")
+        }
+        if len(returns) == 1:
+            _COMMAND_RETURN_TYPES.setdefault(name.lower(), next(iter(returns)).title())
+
+
+_load_generated_command_returns()
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",

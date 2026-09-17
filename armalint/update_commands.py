@@ -27,6 +27,7 @@ import re
 import sys
 import tempfile
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +47,7 @@ _GIT_TREE_URL_TEMPLATE = (
 )
 # HEAD should resolve for a normal checkout; fall back to master/main if it 404s.
 _GIT_TREE_REFS = ("HEAD", "master", "main")
+_COMMAND_XML_URL = "https://raw.githubusercontent.com/kayler-renslow/arma-commands-syntax/{ref}/command_xml/{name}.xml"
 
 _FUNCTIONS_JSON_URL_TEMPLATE = (
     "https://raw.githubusercontent.com/HakonRydland/Arma3CfgFunctions"
@@ -188,6 +190,54 @@ DEFAULT_TIMEOUT = 30.0
 
 COMMANDS_PATH = Path(__file__).resolve().parent / "data" / "commands.txt"
 FUNCTIONS_PATH = Path(__file__).resolve().parent / "data" / "functions.txt"
+COMMAND_METADATA_PATH = Path(__file__).resolve().parent / "data" / "command_metadata.json"
+
+
+def _parse_command_xml(text: str) -> dict[str, object]:
+    """Parse one arma-commands-syntax XML document into JSON-safe metadata."""
+    root = ET.fromstring(text)
+    def types(element: ET.Element) -> list[str]:
+        result: list[str] = []
+        for value in element.findall(".//value"):
+            value_type = value.attrib.get("type")
+            if value_type:
+                result.append(value_type.upper())
+            for alternate in value.findall("./alt-types/t"):
+                if alternate.attrib.get("type"):
+                    result.append(alternate.attrib["type"].upper())
+        return list(dict.fromkeys(result))
+
+    syntaxes: list[dict[str, object]] = []
+    for syntax in root.findall("./syntax"):
+        params = []
+        for param in syntax.findall("./param"):
+            params.append({
+                "name": param.attrib.get("name", ""),
+                "type": param.attrib.get("type", "ANYTHING").upper(),
+                "optional": param.attrib.get("optional", "f").lower() == "t",
+                "order": int(param.attrib.get("order", "0")),
+            })
+        returns = types(syntax.find("./return")) if syntax.find("./return") is not None else []
+        syntaxes.append({"params": params, "returns": returns})
+    return {
+        "name": root.attrib.get("name", ""),
+        "version": root.attrib.get("version"),
+        "game": root.attrib.get("game"),
+        "deprecated": root.find("./deprecated") is not None,
+        "uncertain": root.find("./uncertain") is not None,
+        "syntaxes": syntaxes,
+    }
+
+
+def _metadata_return_type(metadata: dict[str, object]) -> str | None:
+    """Return a single conservative return type when every syntax agrees."""
+    values = {
+        value
+        for syntax in metadata.get("syntaxes", [])
+        for value in syntax.get("returns", [])
+        if isinstance(value, str) and value not in ("NOTHING", "VOID")
+    }
+    return next(iter(values)).title() if len(values) == 1 else None
 
 
 def _fetch(url: str, timeout: float) -> str:
@@ -373,6 +423,28 @@ def _refresh(dataset: _Dataset, dry_run: bool) -> tuple[int, int, int]:
     return current_count, new_count, added
 
 
+def _refresh_command_metadata(dry_run: bool, ref: str = "master") -> int:
+    """Fetch typed XML definitions for all known commands and write JSON."""
+    names = sorted(_load_existing(COMMANDS_PATH) | _normalize_all(_INLINE_COMMANDS))
+    metadata: dict[str, dict[str, object]] = {}
+    print(f"\ncommand metadata ({COMMAND_METADATA_PATH.name}):")
+    for index, name in enumerate(names, 1):
+        try:
+            raw = _fetch(_COMMAND_XML_URL.format(ref=ref, name=name), DEFAULT_TIMEOUT)
+            parsed = _parse_command_xml(raw)
+        except (FetchError, ET.ParseError):
+            continue
+        metadata[name] = parsed
+        if index % 100 == 0 or index == len(names):
+            print(f"  parsed {index}/{len(names)} command XML files")
+    if not dry_run:
+        generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+        payload = {"schema": 1, "generated": generated, "source": _COMMAND_XML_URL, "commands": metadata}
+        _atomic_write(COMMAND_METADATA_PATH, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        print(f"  Wrote {COMMAND_METADATA_PATH} ({len(metadata)} command definitions)")
+    return len(metadata)
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m armalint.update_commands",
@@ -386,6 +458,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="fetch and compute the result, but do not write the data files.",
     )
+    parser.add_argument(
+        "--signatures",
+        action="store_true",
+        help="also fetch typed command XML and write data/command_metadata.json",
+    )
     return parser.parse_args(argv)
 
 
@@ -396,6 +473,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for dataset in DATASETS:
             _refresh(dataset, dry_run=args.dry_run)
+        if args.signatures:
+            _refresh_command_metadata(dry_run=args.dry_run)
     except FetchError as exc:
         print(f"\nerror: {exc}", file=sys.stderr)
         return 1
