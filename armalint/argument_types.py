@@ -68,6 +68,7 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "configsourcemod": (frozenset(("Config",)), "Config"),
     "configclasses": (frozenset(("Config", "Array")), "Config or Array"),
     "configproperties": (frozenset(("Config", "Array")), "Config or Array"),
+    "allvariables": (frozenset(("Namespace", "Object", "Group", "Display", "Control")), "Namespace, Object, Group, Display or Control"),
 }
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
@@ -87,6 +88,14 @@ _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "setbehaviour": (frozenset(("String",)), "String"),
     "setunitpos": (frozenset(("String",)), "String"),
 }
+
+# These commands accept array-encoded or position operands that the XML mirror
+# describes as separate inner parameters. Keep the right-hand checks aligned
+# with the actual SQF call form.
+_BINARY_SIGNATURES.update({
+    "callextension": (frozenset(("String", "Array")), "String or Array"),
+    "distance": (frozenset(("Object", "Location", "Array")), "Object, Location or Array"),
+})
 
 _RETURN_TYPES = {
     "str": "String", "format": "String", "parsetext": "Structured Text",
@@ -464,7 +473,9 @@ def _infer_expression(
                 items, _close = split
                 if len(items) > 1:
                     return _simple_item_type(items[1], variables)
-    if operand_end < len(tokens) and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES:
+    if (tokens[start].type != "lbracket"
+            and operand_end < len(tokens)
+            and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES):
         return _COMMAND_RETURN_TYPES[tokens[operand_end].value.lower()]
     direct = _infer_operand(tokens, start, variables)
     # A selected field from a non-literal record has no reliable type without
