@@ -134,6 +134,11 @@ def _nular_collection_returns() -> bool:
     return not any(d.code == "W203" for d in diagnostics)
 
 
+def _config_builtin_signatures() -> bool:
+    diagnostics = check_argument_types_text('configName 1; _classes = configClasses configFile; count _classes;')
+    return any(d.code == "W203" and "configName" in d.message for d in diagnostics) and not any(d.code == "W203" and "count" in d.message for d in diagnostics)
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -336,6 +341,7 @@ CASES = (
     ("AST statement boundary", _ast_statement_boundary),
     ("expanded built-in signatures", _expanded_builtin_signatures),
     ("nular collection returns", _nular_collection_returns),
+    ("config built-in signatures", _config_builtin_signatures),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),

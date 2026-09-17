@@ -59,6 +59,10 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "magazines": (frozenset(("Object",)), "Object"),
     "items": (frozenset(("Object",)), "Object"),
     "assigneditems": (frozenset(("Object",)), "Object"),
+    "configname": (frozenset(("Config",)), "Config"),
+    "configclasses": (frozenset(("Config",)), "Config"),
+    "configproperties": (frozenset(("Config",)), "Config"),
+    "configsourcemod": (frozenset(("Config",)), "Config"),
 }
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
@@ -132,6 +136,8 @@ _COMMAND_RETURN_TYPES = {
     "alldeadmen": "Array", "allturrets": "Array", "allsimpleobjects": "Array",
     "allstaticobjects": "Array", "allstaticweapons": "Array", "allair": "Array",
     "allland": "Array", "allman": "Array",
+    "configname": "String", "configfile": "String", "configclasses": "Array",
+    "configproperties": "Array", "configsourcemod": "String",
 }
 _ARRAY_ELEMENT_TYPES = {
     "nearroads": "Object", "allplayers": "Object", "allunits": "Object",
