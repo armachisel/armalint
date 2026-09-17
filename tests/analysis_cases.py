@@ -76,6 +76,12 @@ def _ast_group_expression_span() -> bool:
     return isinstance(expr, BinaryExpression) and isinstance(expr.right, GroupExpression) and expr.right.start.type == "lparen" and expr.right.end.type == "rparen"
 
 
+def _ast_walker_structured_conditions() -> bool:
+    node = parse('_fn = { if (1 == 1) then { hint "ok"; }; };').statements[0]
+    expr = getattr(node, "expression", None)
+    return expr is not None and any(isinstance(item, BinaryExpression) and item.operator.value == "==" for item in walk_expression(expr))
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -267,6 +273,7 @@ CASES = (
     ("AST selectRandom element type", _ast_select_random_element_type),
     ("AST text prefix command", _ast_text_prefix_command),
     ("AST grouped expression span", _ast_group_expression_span),
+    ("AST walker structured conditions", _ast_walker_structured_conditions),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
