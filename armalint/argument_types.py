@@ -66,6 +66,8 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "assigneditems": (frozenset(("Object",)), "Object"),
     "configname": (frozenset(("Config",)), "Config"),
     "configsourcemod": (frozenset(("Config",)), "Config"),
+    "configclasses": (frozenset(("Config", "Array")), "Config or Array"),
+    "configproperties": (frozenset(("Config", "Array")), "Config or Array"),
 }
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
@@ -84,8 +86,6 @@ _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "allowdamage": (frozenset(("Boolean",)), "Boolean"),
     "setbehaviour": (frozenset(("String",)), "String"),
     "setunitpos": (frozenset(("String",)), "String"),
-    "configclasses": (frozenset(("Config",)), "Config"),
-    "configproperties": (frozenset(("Config",)), "Config"),
 }
 
 _RETURN_TYPES = {
@@ -156,6 +156,7 @@ _COMMAND_RETURN_TYPES = {
     "configname": "String", "configfile": "Config", "configclasses": "Array",
     "configproperties": "Array", "configsourcemod": "String",
 }
+_COMMAND_ARITIES: dict[str, frozenset[int]] = {}
 _ARRAY_ELEMENT_TYPES = {
     "nearroads": "Object", "allplayers": "Object", "allunits": "Object",
     "allvehicles": "Object", "allmissionobjects": "Object", "allgroups": "Group",
@@ -170,8 +171,30 @@ _ARRAY_ELEMENT_TYPES = {
 }
 
 
-def _load_generated_command_returns() -> None:
-    """Merge unambiguous returns from the updater's typed command registry."""
+def _canonical_type(value: str) -> str | None:
+    """Map XML type vocabulary onto the checker's conservative type names."""
+    value = value.upper()
+    if value in {"NUMBER"}: return "Number"
+    if value in {"BOOLEAN"}: return "Boolean"
+    if value in {"STRING"}: return "String"
+    if value in {"ARRAY", "VECTOR_3D", "POSITION", "POSITION_2D", "POSITION_3D", "POSITION_RELATIVE", "POSITION_AGL", "POSITION_ASL", "POSITION_ATL", "POSITION_ASLW", "POSITION_WORLD", "COLOR", "COLOR_RGB", "ARRAY_OF_EDEN_ENTITIES"}: return "Array"
+    if value in {"OBJECT", "OBJECT_RTD", "EDEN_ENTITY"}: return "Object"
+    if value in {"STRUCTURED_TEXT"}: return "Structured Text"
+    if value in {"CONFIG"}: return "Config"
+    if value in {"HASHMAP"}: return "HashMap"
+    if value in {"NAMESPACE"}: return "Namespace"
+    if value in {"GROUP"}: return "Group"
+    if value in {"CONTROL"}: return "Control"
+    if value in {"DISPLAY"}: return "Display"
+    if value in {"LOCATION"}: return "Location"
+    if value in {"TASK"}: return "Task"
+    if value in {"SCRIPT_HANDLE"}: return "Script"
+    if value in {"CODE"}: return "Code"
+    return None
+
+
+def _load_generated_command_signatures() -> None:
+    """Merge conservative arity, operand, and return facts from XML metadata."""
     path = Path(__file__).resolve().parent / "data" / "command_metadata.json"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -183,17 +206,49 @@ def _load_generated_command_returns() -> None:
         # value-producing command, and must not override parser semantics.
         if name.lower() in _KEYWORDS:
             continue
+        name = name.lower()
+        syntax_rows = metadata.get("syntaxes", [])
+        arities = {
+            len(syntax.get("params", []))
+            for syntax in syntax_rows
+            if isinstance(syntax, dict)
+        }
+        if arities:
+            _COMMAND_ARITIES[name] = frozenset(arities)
+        for arity in (1, 2):
+            rows = [s for s in syntax_rows if len(s.get("params", [])) == arity]
+            if arities != {arity} or not rows or any(len(s.get("params", [])) != arity for s in rows):
+                continue
+            accepted_by_position: list[set[str]] = [set() for _ in range(arity)]
+            usable = True
+            for row in rows:
+                for index, param in enumerate(row.get("params", [])):
+                    mapped = _canonical_type(str(param.get("type", "ANYTHING")))
+                    if mapped is None:
+                        usable = False
+                        break
+                    accepted_by_position[index].add(mapped)
+                if not usable:
+                    break
+            if not usable or any(not values for values in accepted_by_position):
+                continue
+            operand_index = 0 if arity == 1 else 1
+            label = " or ".join(sorted(accepted_by_position[operand_index]))
+            target = _SIGNATURES if arity == 1 else _BINARY_SIGNATURES
+            target.setdefault(name, (frozenset(accepted_by_position[operand_index]), label))
         returns = {
             value
             for syntax in metadata.get("syntaxes", [])
             for value in syntax.get("returns", [])
             if isinstance(value, str) and value.upper() not in ("NOTHING", "VOID")
         }
-        if len(returns) == 1:
-            _COMMAND_RETURN_TYPES.setdefault(name.lower(), next(iter(returns)).title())
+        mapped_returns = {_canonical_type(value) for value in returns}
+        mapped_returns.discard(None)
+        if len(mapped_returns) == 1:
+            _COMMAND_RETURN_TYPES.setdefault(name, next(iter(mapped_returns)))
 
 
-_load_generated_command_returns()
+_load_generated_command_signatures()
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
@@ -327,6 +382,17 @@ def _infer_expression(
                 inferred = [_simple_item_type(item, variables) for item in items]
                 if items and inferred[0] is not None and all(item_type == inferred[0] for item_type in inferred):
                     return inferred[0]
+    if (start + 1 < len(tokens)
+            and tokens[start + 1].value.lower() == "getvariable"):
+        default_start = start + 2
+        while default_start < len(tokens) and tokens[default_start].type in _TRIVIA:
+            default_start += 1
+        if default_start < len(tokens) and tokens[default_start].type == "lbracket":
+            split = _array_items(tokens, default_start)
+            if split:
+                items, _close = split
+                if len(items) > 1:
+                    return _simple_item_type(items[1], variables)
     if start < len(tokens) and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
         # A nular command can be the left operand of a binary command (for
         # example, ``missionNamespace getVariable``). In that form its own
