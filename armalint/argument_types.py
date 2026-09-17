@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .diagnostic import Diagnostic, Severity
 from .ast import ArrayExpression, BinaryExpression, Block, CallExpression, CodeExpression, CommandExpression, Expression, GroupExpression, IfStatement, LiteralExpression, LoopStatement, NameExpression, Node, Statement, UnaryExpression, parse, walk_expression
-from .tokenizer import Token, tokenize
+from .tokenizer import Token, _KEYWORDS, tokenize
 
 _CODE = "W203"
 _ARITY_CODE = "W204"
@@ -51,7 +51,9 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "canmove": (frozenset(("Object",)), "Object"),
     "fuel": (frozenset(("Object",)), "Object"),
     "isdamageallowed": (frozenset(("Object",)), "Object"),
-    "isnull": (frozenset(("Object",)), "Object"),
+    # The engine accepts null-able handles beyond world objects, including
+    # UI controls/displays and other handle types returned by the UI API.
+    "isnull": (frozenset(("Object", "Control", "Display", "Group", "Location", "Script", "Task")), "Object, Control, Display, Group, Location, Script or Task"),
     "isplayer": (frozenset(("Object",)), "Object"),
     "istouchingground": (frozenset(("Object",)), "Object"),
     "name": (frozenset(("Object",)), "Object"),
@@ -177,6 +179,11 @@ def _load_generated_command_returns() -> None:
     except (OSError, ValueError):
         return
     for name, metadata in payload.get("commands", {}).items():
+        # The XML mirror also contains SQF grammar words (if/then/params and
+        # call/spawn). Their return tags describe the grammar, not a
+        # value-producing command, and must not override parser semantics.
+        if name.lower() in _KEYWORDS:
+            continue
         returns = {
             value
             for syntax in metadata.get("syntaxes", [])
