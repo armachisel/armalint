@@ -658,6 +658,14 @@ def check_argument_types(
                     f"{tok.value} expects Code or String, got {actual}",
                     tokens[j].line, tokens[j].column,
                 ))
+        elif j < len(tokens) and tokens[j].type in ("number", "keyword"):
+            actual = _infer_operand(tokens, j, variables)
+            if actual and actual not in ("Code", "String"):
+                diags.append(Diagnostic(
+                    Severity.WARNING, _CALL_TARGET_CODE,
+                    f"{tok.value} expects Code or String, got {actual}",
+                    tokens[j].line, tokens[j].column,
+                ))
 
     # Project-configured functions, including mod functions, use the common
     # SQF form `[arg1, arg2] call tag_fnc_name;`. Verify each known argument.
