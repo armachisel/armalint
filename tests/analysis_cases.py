@@ -156,6 +156,12 @@ def _object_producer_returns() -> bool:
     return not any(d.code == "W203" and "isNull" in d.message for d in diagnostics)
 
 
+def _extended_object_producer_returns() -> bool:
+    source = '_a = effectiveDriver player; isNull _a; _b = assignedGunner player; isNull _b; _c = cursorObject; isNull _c;'
+    diagnostics = check_argument_types_text(source)
+    return not any(d.code == "W203" and "isNull" in d.message for d in diagnostics)
+
+
 def _hashmap_foreach_value_scope() -> bool:
     from armalint.undefined import check_undefined_text
     return not any(d.code == "W101" and "_y" in d.message for d in check_undefined_text('{ hint str _y; } forEach _map;'))
@@ -367,6 +373,7 @@ CASES = (
     ("object constructor returns", _object_constructor_returns),
     ("camera and config returns", _camera_and_config_returns),
     ("object producer returns", _object_producer_returns),
+    ("extended object producer returns", _extended_object_producer_returns),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
