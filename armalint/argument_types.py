@@ -133,13 +133,13 @@ _COMMAND_RETURN_TYPES = {
     "createhashmap": "HashMap", "createhashmapfrom": "HashMap",
     "createvehicle": "Object", "createvehiclelocal": "Object",
     "createsimpleobject": "Object", "createagent": "Object",
-    "createunit": "Object", "creategroup": "Group",
+    "createunit": "Object", "creategroup": "Group", "camcreate": "Object",
     "allplayers": "Array", "allunits": "Array", "allvehicles": "Array",
     "allgroups": "Array", "allmissionobjects": "Array", "alldead": "Array",
     "alldeadmen": "Array", "allturrets": "Array", "allsimpleobjects": "Array",
     "allstaticobjects": "Array", "allstaticweapons": "Array", "allair": "Array",
     "allland": "Array", "allman": "Array",
-    "configname": "String", "configfile": "String", "configclasses": "Array",
+    "configname": "String", "configfile": "Config", "configclasses": "Array",
     "configproperties": "Array", "configsourcemod": "String",
 }
 _ARRAY_ELEMENT_TYPES = {
