@@ -139,6 +139,11 @@ def _config_builtin_signatures() -> bool:
     return any(d.code == "W203" and "configName" in d.message for d in diagnostics) and not any(d.code == "W203" and "count" in d.message for d in diagnostics)
 
 
+def _object_constructor_returns() -> bool:
+    diagnostics = check_argument_types_text('_object = "SomeClass" createVehicleLocal [0, 0, 0]; isNull _object;')
+    return not any(d.code == "W203" and "isNull" in d.message for d in diagnostics)
+
+
 def _hashmap_foreach_value_scope() -> bool:
     from armalint.undefined import check_undefined_text
     return not any(d.code == "W101" and "_y" in d.message for d in check_undefined_text('{ hint str _y; } forEach _map;'))
@@ -347,6 +352,7 @@ CASES = (
     ("expanded built-in signatures", _expanded_builtin_signatures),
     ("nular collection returns", _nular_collection_returns),
     ("config built-in signatures", _config_builtin_signatures),
+    ("object constructor returns", _object_constructor_returns),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
