@@ -113,6 +113,11 @@ def _non_code_call_target() -> bool:
     return any(d.code == "W205" and "call" in d.message for d in diagnostics)
 
 
+def _literal_non_code_call_target() -> bool:
+    diagnostics = check_argument_types_text('call 1; spawn false;')
+    return len([d for d in diagnostics if d.code == "W205"]) == 2
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -311,6 +316,7 @@ CASES = (
     ("AST namespace default type", _ast_namespace_default_type),
     ("AST grouped namespace default type", _ast_grouped_namespace_default_type),
     ("non-code call target", _non_code_call_target),
+    ("literal non-code call target", _literal_non_code_call_target),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
