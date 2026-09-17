@@ -459,9 +459,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="fetch and compute the result, but do not write the data files.",
     )
     parser.add_argument(
-        "--signatures",
+        "--signatures", "--refresh-signatures",
+        dest="refresh_signatures",
         action="store_true",
-        help="also fetch typed command XML and write data/command_metadata.json",
+        help="refresh the vendored typed command snapshot from upstream XML",
     )
     return parser.parse_args(argv)
 
@@ -473,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for dataset in DATASETS:
             _refresh(dataset, dry_run=args.dry_run)
-        if args.signatures:
+        if args.refresh_signatures:
             _refresh_command_metadata(dry_run=args.dry_run)
     except FetchError as exc:
         print(f"\nerror: {exc}", file=sys.stderr)
