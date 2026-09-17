@@ -8,7 +8,7 @@ checker; unknown expressions and mission functions remain unchecked.
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .ast import ArrayExpression, BinaryExpression, Block, CallExpression, CodeExpression, CommandExpression, Expression, IfStatement, LiteralExpression, LoopStatement, NameExpression, Node, Statement, UnaryExpression, parse, walk_expression
+from .ast import ArrayExpression, BinaryExpression, Block, CallExpression, CodeExpression, CommandExpression, Expression, GroupExpression, IfStatement, LiteralExpression, LoopStatement, NameExpression, Node, Statement, UnaryExpression, parse, walk_expression
 from .tokenizer import Token, tokenize
 
 _CODE = "W203"
@@ -134,6 +134,8 @@ def _infer_ast_expression(expr: Expression | None, variables: dict[str, str], fu
         if expr.value.type == "keyword" and expr.value.value.lower() in ("true", "false", "nil"): return "Boolean"
     if isinstance(expr, NameExpression):
         return variables.get(expr.name.value.lower()) or _KNOWN_VARIABLE_TYPES.get(expr.name.value.lower())
+    if isinstance(expr, GroupExpression):
+        return _infer_ast_expression(expr.inner, variables, function_return_types)
     if isinstance(expr, ArrayExpression):
         return "Array"
     if isinstance(expr, UnaryExpression):
