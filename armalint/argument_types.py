@@ -13,6 +13,7 @@ from .tokenizer import Token, tokenize
 
 _CODE = "W203"
 _ARITY_CODE = "W204"
+_CALL_TARGET_CODE = "W205"
 _TRIVIA = frozenset(("comment", "preprocessor"))
 
 # (accepted inferred types, user-facing type label). This initial set covers
@@ -640,6 +641,23 @@ def check_argument_types(
         accepted, expected = rule
         if actual is not None and actual not in accepted:
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
+
+    # A statically known non-code value cannot be used as a call/spawn target.
+    # SQF also permits string targets, so those remain valid here.
+    for i, tok in enumerate(tokens):
+        if tok.type != "keyword" or tok.value.lower() not in ("call", "spawn"):
+            continue
+        j = i + 1
+        while j < len(tokens) and tokens[j].type in _TRIVIA:
+            j += 1
+        if j < len(tokens) and tokens[j].type == "local":
+            actual = variables.get(tokens[j].value.lower())
+            if actual and actual not in ("Code", "String"):
+                diags.append(Diagnostic(
+                    Severity.WARNING, _CALL_TARGET_CODE,
+                    f"{tok.value} expects Code or String, got {actual}",
+                    tokens[j].line, tokens[j].column,
+                ))
 
     # Project-configured functions, including mod functions, use the common
     # SQF form `[arg1, arg2] call tag_fnc_name;`. Verify each known argument.
