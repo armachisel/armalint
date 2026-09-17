@@ -309,6 +309,11 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
         return diags, then_defined & else_defined
     if isinstance(node, LoopStatement):
         loop_in = set(incoming)
+        if node.kind == "foreach":
+            # HashMap forEach exposes both implicit element variables: _x is
+            # the key and _y is the value. Defining _y here avoids treating
+            # valid map iteration bodies as references to an undefined local.
+            loop_in.update(("_x", "_y"))
         if node.kind == "for":
             for token in node.header:
                 if token.type == "string" and token.value.startswith("_"):
