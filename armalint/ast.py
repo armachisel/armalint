@@ -161,7 +161,7 @@ _EXPR_PRECEDENCE = {"=": 0, "||": 1, "&&": 2, "==": 3, "!=": 3, "<": 4, ">": 4, 
 _PREFIX_COMMANDS = frozenset({
     "abs", "acos", "asin", "atan", "ceil", "count", "cos", "floor",
     "isarray", "isclass", "isnil", "isnumber", "isnull", "isserver",
-    "parsenumber", "parsesimplearray", "round", "sin", "sqrt", "tan",
+    "parsenumber", "parsesimplearray", "round", "selectrandom", "sin", "sqrt", "tan",
     "toarray", "tolower", "toupper", "typename", "typeof", "tostring",
 })
 

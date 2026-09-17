@@ -145,16 +145,22 @@ def _infer_ast_expression(expr: Expression | None, variables: dict[str, str], fu
         if expr.operator.value in ("==", "!=", "<", ">", "<=", ">=", "&&", "||"): return "Boolean"
     if isinstance(expr, CommandExpression):
         name = expr.command.value.lower()
-        if name in ("select", "selectrandom") and isinstance(expr.left, ArrayExpression):
+        selected_array = expr.left if isinstance(expr.left, ArrayExpression) else expr.right
+        if name in ("select", "selectrandom") and isinstance(selected_array, ArrayExpression):
             if name == "selectrandom":
-                return None
+                inferred_items = [
+                    _infer_ast_expression(item, variables, function_return_types)
+                    for item in selected_array.items
+                ]
+                item_types = {item_type for item_type in inferred_items if item_type}
+                return next(iter(item_types)) if inferred_items and all(item_type == inferred_items[0] for item_type in inferred_items) else None
             if isinstance(expr.right, LiteralExpression) and expr.right.value.type == "number":
                 try:
                     index = int(float(expr.right.value.value))
                 except ValueError:
                     return None
-                if 0 <= index < len(expr.left.items):
-                    return _infer_ast_expression(expr.left.items[index], variables, function_return_types)
+                if 0 <= index < len(selected_array.items):
+                    return _infer_ast_expression(selected_array.items[index], variables, function_return_types)
         if name in _COMMAND_RETURN_TYPES: return _COMMAND_RETURN_TYPES[name]
         if name in _RETURN_TYPES: return _RETURN_TYPES[name]
     if isinstance(expr, CallExpression) and isinstance(expr.target, NameExpression) and function_return_types:
