@@ -60,8 +60,6 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "items": (frozenset(("Object",)), "Object"),
     "assigneditems": (frozenset(("Object",)), "Object"),
     "configname": (frozenset(("Config",)), "Config"),
-    "configclasses": (frozenset(("Config",)), "Config"),
-    "configproperties": (frozenset(("Config",)), "Config"),
     "configsourcemod": (frozenset(("Config",)), "Config"),
 }
 
@@ -82,6 +80,8 @@ _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "setbehaviour": (frozenset(("String",)), "String"),
     "setunitpos": (frozenset(("String",)), "String"),
     "in": (frozenset(("Array",)), "Array"),
+    "configclasses": (frozenset(("Config",)), "Config"),
+    "configproperties": (frozenset(("Config",)), "Config"),
 }
 
 _RETURN_TYPES = {
