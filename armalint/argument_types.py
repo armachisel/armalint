@@ -44,6 +44,21 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "selectrandom": (frozenset(("Array",)), "Array"),
     "count": (frozenset(("String", "Array", "Config", "HashMap")), "String, Array, Config or HashMap"),
     "getroadinfo": (frozenset(("Object",)), "Object"),
+    "alive": (frozenset(("Object",)), "Object"),
+    "canmove": (frozenset(("Object",)), "Object"),
+    "fuel": (frozenset(("Object",)), "Object"),
+    "isdamageallowed": (frozenset(("Object",)), "Object"),
+    "isnull": (frozenset(("Object",)), "Object"),
+    "isplayer": (frozenset(("Object",)), "Object"),
+    "istouchingground": (frozenset(("Object",)), "Object"),
+    "name": (frozenset(("Object",)), "Object"),
+    "speed": (frozenset(("Object",)), "Object"),
+    "typeof": (frozenset(("Object",)), "Object"),
+    "vehicle": (frozenset(("Object",)), "Object"),
+    "weapons": (frozenset(("Object",)), "Object"),
+    "magazines": (frozenset(("Object",)), "Object"),
+    "items": (frozenset(("Object",)), "Object"),
+    "assigneditems": (frozenset(("Object",)), "Object"),
 }
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
@@ -76,6 +91,13 @@ _RETURN_TYPES = {
     "asin": "Number", "acos": "Number", "atan": "Number",
     "selectrandom": None,
     "in": "Boolean",
+    "direction": "Number", "damage": "Number", "fuel": "Number",
+    "speed": "Number", "name": "String", "side": "Side",
+    "rank": "String", "locked": "Number", "alive": "Boolean",
+    "canmove": "Boolean", "isdamageallowed": "Boolean",
+    "isplayer": "Boolean", "istouchingground": "Boolean",
+    "vehicle": "Object", "weapons": "Array", "magazines": "Array",
+    "items": "Array", "assigneditems": "Array",
 }
 
 # Return types for common engine commands. These are used when a command is
@@ -116,6 +138,7 @@ _ARRAY_ELEMENT_TYPES = {
     "crew": "Object", "units": "Object", "allair": "Object", "allland": "Object",
     "allman": "Object", "allstaticobjects": "Object", "allstaticweapons": "Object",
     "lineintersectswith": "Array", "lineintersectssurfaces": "Array", "fullcrew": "Array",
+    "weapons": "String", "magazines": "String", "items": "String", "assigneditems": "String",
 }
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "grpnull": "Group",

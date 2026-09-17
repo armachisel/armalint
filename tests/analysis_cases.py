@@ -124,6 +124,11 @@ def _ast_statement_boundary() -> bool:
     return len([d for d in diagnostics if d.code == "E008"]) == 1
 
 
+def _expanded_builtin_signatures() -> bool:
+    diagnostics = check_argument_types_text('alive 1; _name = name player; count _name;')
+    return any(d.code == "W203" and "alive" in d.message for d in diagnostics) and not any(d.code == "W203" and "count" in d.message for d in diagnostics)
+
+
 def _ast_malformed_expression_recovery() -> bool:
     return parse_expression(tokenize('[1,')) is None
 
@@ -324,6 +329,7 @@ CASES = (
     ("non-code call target", _non_code_call_target),
     ("literal non-code call target", _literal_non_code_call_target),
     ("AST statement boundary", _ast_statement_boundary),
+    ("expanded built-in signatures", _expanded_builtin_signatures),
     ("AST malformed expression recovery", _ast_malformed_expression_recovery),
     ("unreachable code in spawn", _control_flow_spawn),
     ("terminating try/catch branches", _control_flow_try),
