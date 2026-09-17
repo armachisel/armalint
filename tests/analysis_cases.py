@@ -188,6 +188,11 @@ def _generated_signature_forms() -> bool:
     )
 
 
+def _ui_and_array_encoded_commands_stay_unchecked() -> bool:
+    source = 'private _d = findDisplay 46; _d setVariable ["x", 1]; private _c = _d ctrlCreate ["RscText", 1]; _c ctrlSetPosition [0, 0, 1, 1]; _c ctrlCommit 0; private _v = _d getVariable ["x", 0]; sleep _v;'
+    return not any(d.code == "W203" for d in check_argument_types_text(source))
+
+
 def _command_xml_metadata_parser() -> bool:
     xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
     metadata = _parse_command_xml(xml)
@@ -416,6 +421,7 @@ CASES = (
     ("isNull accepts engine handles", _isnull_accepts_engine_handles),
     ("in checks right array operand", _in_checks_right_array_operand),
     ("generated signature forms", _generated_signature_forms),
+    ("UI and array-encoded commands stay unchecked", _ui_and_array_encoded_commands_stay_unchecked),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
