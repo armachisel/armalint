@@ -123,6 +123,7 @@ class SwitchCase(Node):
     condition: list[Token] = field(default_factory=list)
     body: Block | None = None
     is_default: bool = False
+    condition_ast: Expression | None = None
 
 
 @dataclass
@@ -292,6 +293,7 @@ def _walk_node_expressions(node: Node):
         elif isinstance(child, Node):
             yield from _walk_node_expressions(child)
     for case in getattr(node, "cases", ()):
+        yield from walk_expression(getattr(case, "condition_ast", None))
         if case.body:
             for statement in case.body.statements:
                 yield from _walk_node_expressions(statement)
@@ -564,6 +566,7 @@ class Parser:
                 condition=[] if is_default else self.tokens[condition_start:colon],
                 body=case_body,
                 is_default=is_default,
+                condition_ast=None if is_default else parse_expression(self.tokens[condition_start:colon]),
             ))
             cursor = next_cursor
         next_pos = body_close + 1
