@@ -30,6 +30,11 @@ RULES = {
     "W214": ("warning", "Config property defined more than once"),
     "W215": ("warning", "Local declaration shadows or duplicates another local"),
     "W216": ("warning", "Comparison uses incompatible statically known types"),
+    "W217": ("warning", "Invalid params declaration shape"),
+    "W218": ("warning", "Invalid namespace variable operation"),
+    "W219": ("warning", "Invalid event-handler lifecycle or declaration"),
+    "W220": ("warning", "Invalid remote execution contract"),
+    "W221": ("warning", "Invalid public-variable contract"),
     "W301": ("warning", "Trailing whitespace"),
     "W302": ("warning", "Tab character in source indentation"),
 }

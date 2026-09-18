@@ -17,6 +17,7 @@ from .symbols import SymbolIndex
 from .suppression import apply_rule_severities, filter_suppressed
 from .syntax import check_syntax
 from .style import check_style
+from .sqf_contracts import check_sqf_contracts
 from .tokenizer import tokenize
 from .undefined import check_undefined
 
@@ -77,6 +78,7 @@ def lint_text(
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
+    diags.extend(check_sqf_contracts(tokens))
     if style:
         diags.extend(check_style(source))
 
@@ -140,6 +142,7 @@ def lint_file(
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
+    diags.extend(check_sqf_contracts(source_tokens))
     if style:
         diags.extend(check_style(source))
 
