@@ -24,7 +24,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 3: preprocessor and config coverage
 
-- [ ] Expand macro substitution and include guards; conditional compilation and nested includes are supported.
+- [ ] Add include-guard diagnostics; object-like macro substitution, conditional compilation, and nested includes are supported.
 - [ ] Make CfgFunctions inheritance and custom `file` mappings fully parser-based.
 - [ ] Improve callback discovery through event handlers and namespace variables.
 
