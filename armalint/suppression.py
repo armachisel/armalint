@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .diagnostic import Diagnostic
+from .diagnostic import Diagnostic, Severity
 
 _DIRECTIVE = re.compile(
     r"//\s*armalint:\s*(disable-next-line|disable-line|disable|enable)\b(.*)$",
@@ -56,6 +56,22 @@ def filter_suppressed(
     return result
 
 
+def apply_rule_severities(diagnostics: list[Diagnostic], severities: dict[str, str] | None = None) -> list[Diagnostic]:
+    """Apply project rule severities before suppression and exit-status checks."""
+    if not severities:
+        return diagnostics
+    result: list[Diagnostic] = []
+    levels = {"error": Severity.ERROR, "warning": Severity.WARNING, "info": Severity.INFO}
+    for diagnostic in diagnostics:
+        level = severities.get(diagnostic.code.upper())
+        if level == "off":
+            continue
+        if level in levels:
+            diagnostic.severity = levels[level]
+        result.append(diagnostic)
+    return result
+
+
 if __name__ == "__main__":
     from .diagnostic import Severity
 
@@ -70,4 +86,11 @@ if __name__ == "__main__":
     ]
     assert [item.message for item in filter_suppressed(diagnostics, source)] == ["other"]
     assert filter_suppressed(diagnostics, source, {"W201"}) == []
+    severity_diagnostics = [
+        Diagnostic(Severity.WARNING, "W206", "constant", 1, 1),
+        Diagnostic(Severity.WARNING, "W101", "unused", 1, 1),
+    ]
+    adjusted = apply_rule_severities(severity_diagnostics, {"W206": "error", "W101": "off"})
+    assert len(adjusted) == 1
+    assert adjusted[0].severity is Severity.ERROR
     print("suppression self-test passed")

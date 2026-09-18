@@ -15,6 +15,8 @@ from .config import (
     extract_function_type_signatures,
     extract_function_return_types,
     extract_ignored_rules,
+    extract_ignore_patterns,
+    extract_rule_severities,
     find_config,
     find_mod_cache,
     find_mod_type_cache,
@@ -25,6 +27,7 @@ from .diagnostic import Severity, format_diagnostic
 from .linter import build_symbol_index, lint_file, lint_text
 from .mods import load_mod_cache
 from .mods import load_mod_type_cache
+from .rules import metadata as rule_metadata
 
 _SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext")
 _CONFIG_EXTENSIONS = (".hpp", ".ext")
@@ -130,6 +133,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="emit a JSON array of diagnostics",
     )
+    parser.add_argument("--sarif", action="store_true", help="emit SARIF 2.1.0 diagnostics")
+    parser.add_argument("--style", action="store_true", help="enable optional source style checks")
     parser.add_argument(
         "--ignore",
         action="append",
@@ -186,12 +191,13 @@ def _main(argv: list[str] | None = None) -> int:
         context_signatures = extract_function_type_signatures(context_config)
         context_returns = extract_function_return_types(context_config)
         context_ignored_rules = extract_ignored_rules(context_config) | {rule.upper() for rule in args.ignore_rule}
+        context_severities = extract_rule_severities(context_config)
         for tag in context_tags:
             context_index.add_tag(tag)
         all_diags = lint_text(
             args.snippet, filename="<snippet>", index=context_index,
             function_signatures=context_signatures, function_return_types=context_returns,
-            ignored_rules=context_ignored_rules,
+            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=args.style,
         )
         linted_files = ["<snippet>"]
         if args.json:
@@ -207,9 +213,14 @@ def _main(argv: list[str] | None = None) -> int:
             print(f"{len(linted_files)} snippet(s) linted, {len(all_diags)} diagnostic(s)")
         return 1 if any(d.severity is Severity.ERROR for d in all_diags) else 0
 
+    collection_ignores = list(args.ignore)
+    for path in input_paths:
+        cfg_path = args.config or find_config(path)
+        if cfg_path:
+            collection_ignores.extend(extract_ignore_patterns(load_config_file(cfg_path)))
     files: list[str] = []
     for path in input_paths:
-        files.extend(_collect_files(path, args.ignore))
+        files.extend(_collect_files(path, collection_ignores))
 
     # De-duplicate while preserving determinism, then sort.
     files = sorted(set(files))
@@ -221,6 +232,7 @@ def _main(argv: list[str] | None = None) -> int:
     function_signatures: dict[str, list[str]] = {}
     function_return_types: dict[str, str] = {}
     ignored_rules: set[str] = {rule.upper() for rule in args.ignore_rule}
+    rule_severities: dict[str, str] = {}
     context_paths = [*input_paths, args.mission] if args.mission else input_paths
     if args.config:
         loaded_config = load_config_file(args.config)
@@ -228,6 +240,7 @@ def _main(argv: list[str] | None = None) -> int:
         function_signatures = extract_function_type_signatures(loaded_config)
         function_return_types = extract_function_return_types(loaded_config)
         ignored_rules |= extract_ignored_rules(loaded_config)
+        rule_severities.update(extract_rule_severities(loaded_config))
     else:
         for path in context_paths:
             cfg_path = find_config(path)
@@ -239,12 +252,13 @@ def _main(argv: list[str] | None = None) -> int:
                 for name, return_type in extract_function_return_types(loaded_config).items():
                     function_return_types.setdefault(name, return_type)
                 ignored_rules |= extract_ignored_rules(loaded_config)
+                rule_severities.update(extract_rule_severities(loaded_config))
 
     # Build a mission-wide symbol index so mission-defined functions are not
     # reported as unknown (W201) before linting each file.
     index_files = list(files)
     if args.mission:
-        index_files.extend(_collect_files(args.mission, args.ignore))
+        index_files.extend(_collect_files(args.mission, collection_ignores))
     token_cache = {}
     index = build_symbol_index(sorted(set(index_files)), token_cache=token_cache)
     for tag in config_tags:
@@ -278,7 +292,7 @@ def _main(argv: list[str] | None = None) -> int:
     for f in files:
         if _is_sqf_file(f):
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=args.style, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -286,9 +300,24 @@ def _main(argv: list[str] | None = None) -> int:
             except OSError:
                 continue
             linted_files.append(f)
-            all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules))
+            all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=args.style))
 
-    if args.json:
+    if args.sarif:
+        payload = {
+            "version": "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "runs": [{
+                "tool": {"driver": {"name": "armalint", "version": __version__, "rules": rule_metadata()}},
+                "results": [{
+                    "ruleId": d.code,
+                    "level": d.severity.value,
+                    "message": {"text": d.message},
+                    "locations": [{"physicalLocation": {"artifactLocation": {"uri": d.file}, "region": {"startLine": d.line, "startColumn": d.column}}}],
+                } for d in all_diags],
+            }],
+        }
+        print(json.dumps(payload))
+    elif args.json:
         payload = [
             {
                 "file": d.file,

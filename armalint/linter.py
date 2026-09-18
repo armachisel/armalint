@@ -14,8 +14,9 @@ from .functions import check_functions
 from .locals import check_unused_locals
 from .preprocessor import find_include_cycles, preprocess
 from .symbols import SymbolIndex
-from .suppression import filter_suppressed
+from .suppression import apply_rule_severities, filter_suppressed
 from .syntax import check_syntax
+from .style import check_style
 from .tokenizer import tokenize
 from .undefined import check_undefined
 
@@ -48,6 +49,8 @@ def lint_text(
     function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
     ignored_rules: set[str] | frozenset[str] | None = None,
+    rule_severities: dict[str, str] | None = None,
+    style: bool = False,
 ) -> list[Diagnostic]:
     """Run all analyzers over ``source`` and return their diagnostics.
 
@@ -74,11 +77,13 @@ def lint_text(
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
+    if style:
+        diags.extend(check_style(source))
 
     for d in diags:
         d.file = filename
 
-    return _deduplicate(filter_suppressed(diags, source, ignored_rules))
+    return _deduplicate(filter_suppressed(apply_rule_severities(diags, rule_severities), source, ignored_rules))
 
 
 def lint_file(
@@ -88,6 +93,8 @@ def lint_file(
     ignored_rules: set[str] | frozenset[str] | None = None,
     pretokenized: list | None = None,
     check_unused_locals_enabled: bool = True,
+    rule_severities: dict[str, str] | None = None,
+    style: bool = False,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -126,6 +133,8 @@ def lint_file(
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
+    if style:
+        diags.extend(check_style(source))
 
     for d in diags:
         if 1 <= d.line <= len(line_map):
@@ -135,7 +144,7 @@ def lint_file(
         else:
             d.file = path
 
-    return _deduplicate(filter_suppressed(diags, source, ignored_rules))
+    return _deduplicate(filter_suppressed(apply_rule_severities(diags, rule_severities), source, ignored_rules))
 
 
 def build_symbol_index(file_paths: list[str], token_cache: dict[str, list] | None = None) -> SymbolIndex:

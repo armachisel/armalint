@@ -51,6 +51,13 @@ armalint-update --mission C:\path\to\MyMission.Altis --clear-cache
 The cache is per mission. A second mission gets its own list and its own scan
 cache. An `armalint.json` file can add optional mods, broad function tags,
 project-specific argument types, and mission-wide rule suppression with
-`"ignoreRules": ["W206"]`. For one run, use
+`"ignoreRules": ["W206"]`. It can also set severities and skip generated paths:
+
+```json
+{"ignore": ["vendor/**", "generated/**"], "severity": {"W206": "off", "W101": "error"}}
+```
+
+Severity values are `error`, `warning`, `info`, and `off`. For one run, use
 `armalint --ignore-rule W206 <path>`; source comments can suppress a single
-line or section.
+line or section. Use `--sarif` for CI/code-scanning integrations and `--style`
+to enable optional whitespace diagnostics (`W301` and `W302`).
