@@ -53,10 +53,9 @@ blocks. Scope and type analysis use those nodes where the syntax is
 unambiguous; dynamic expressions remain unchecked.
 
 The duplicate-definition checks use the conventional Arma function marker
-`_fnc_`. They report repeated definitions and overwrites for names such as
-`ALT_fnc_buildRoute`, but do not infer that every global code value is a
-function. Global state and callback variables may use any naming scheme and
-are left alone by these checks.
+`_fnc_` or evidence that an arbitrary global code value is later used as a
+`call` or `spawn` target. They report repeated definitions and overwrites for
+names such as `ALT_fnc_buildRoute`, while leaving unrelated global state alone.
 
 ## Suppressing rules
 

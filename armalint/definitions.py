@@ -20,6 +20,12 @@ def _next(tokens: list[Token], index: int) -> int:
 
 def check_definitions(tokens: list[Token]) -> list[Diagnostic]:
     """Report repeated function definitions and later global overwrites."""
+    called: set[str] = set()
+    for i, token in enumerate(tokens):
+        if token.type == "keyword" and token.value.lower() in ("call", "spawn"):
+            j = _next(tokens, i)
+            if j < len(tokens) and tokens[j].type == "ident":
+                called.add(tokens[j].value.lower())
     functions: dict[str, Token] = {}
     diagnostics: list[Diagnostic] = []
     for i, token in enumerate(tokens):
@@ -32,11 +38,10 @@ def check_definitions(tokens: list[Token]) -> list[Diagnostic]:
         if value >= len(tokens):
             continue
         name = token.value.lower()
-        # Function-style globals conventionally use the Arma ``_fnc_`` marker.
-        # Other globals are often callbacks or state values that legitimately
-        # change type over a mission's lifetime.
+        # The marker is one signal, while a later call/spawn use is equally
+        # strong evidence for arbitrary callback names.
         is_function = (
-            "_fnc_" in name
+            ("_fnc_" in name or name in called)
             and (tokens[value].type == "lbrace" or tokens[value].value.lower() in _COMPILE)
         )
         if is_function:
@@ -57,5 +62,6 @@ if __name__ == "__main__":
     assert check_definitions_text("TAG_fnc_a = {}; TAG_fnc_a = {}; ")[0].code == _DUPLICATE
     assert check_definitions_text("TAG_fnc_a = {}; TAG_fnc_a = 1;")[0].code == _OVERWRITE
     assert check_definitions_text("ALT_callback = {}; ALT_callback = false;") == []
+    assert check_definitions_text("ALT_callback = {}; [1] call ALT_callback; ALT_callback = false;")[0].code == _OVERWRITE
     assert check_definitions_text("private _fn = {}; _value = 1;") == []
     print("definitions self-test passed")
