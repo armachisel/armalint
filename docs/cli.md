@@ -68,13 +68,16 @@ CI/code-scanning integrations; `--json` remains the compact native format.
 
 ```text
 armalint-update [--mission DIR] [--config PATH] [--workshop PATH]
-                [--arma-dir PATH] [--out PATH] [--dry-run] [--clear-cache]
+                [--arma-dir PATH] [--out PATH] [--arma-version VERSION]
+                [--dry-run] [--clear-cache]
 ```
 
 Normally automatic installation discovery is enough. If Arma is installed in
 an unusual place, pass `--arma-dir`. Repeat `--workshop` and `--arma-dir` when
 you need to search more than one location. `--dry-run` reports what would be
 found without writing caches.
+`--arma-version` records the game version in the metadata cache; the
+`ARMALINT_ARMA_VERSION` environment variable can provide the same value.
 
 ## `armalint-update-commands`
 
@@ -83,7 +86,12 @@ The built-in command list is generated data. Refresh it after an Arma update:
 ```powershell
 armalint-update-commands
 armalint-update-commands --dry-run
+armalint-update-commands --refresh-signatures
 ```
+
+The normal command update uses the checked-in snapshot. Use
+`--refresh-signatures` only when you intentionally want to contact the XML
+source and refresh typed command metadata.
 
 ## `armalint-mcp`
 

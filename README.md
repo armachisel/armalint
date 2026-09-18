@@ -6,14 +6,15 @@ mistakes — unbalanced brackets, unterminated strings,
 probably-undefined local variables, and unknown `call`/`spawn` targets —
 without needing Arma itself or any third-party dependencies.
 
-It is intentionally small and deterministic: a single shared token stream is
-fed to each analyzer, diagnostics carry machine-readable codes, and the CLI
-supports both human and JSON output.
+It is intentionally deterministic: a shared token stream feeds the analyzers,
+diagnostics carry stable machine-readable codes, and the CLI supports human,
+JSON, and SARIF output.
 
 ## Requirements
 
 - Python **3.9+**
-- Standard library only (no third-party packages)
+- Runtime: standard library only (no third-party packages)
+- Build: Hatchling, with `uv` recommended for development and installation
 
 ## Installation
 
@@ -23,11 +24,10 @@ supports both human and JSON output.
 python -m armalint <paths>
 ```
 
-Optionally install it in editable mode so `armalint` is on your `PATH`
-(requires `setuptools>=61`, already used as the build backend):
+Install an editable checkout with `uv`:
 
 ```powershell
-pip install -e .
+uv tool install --editable .
 ```
 
 For an isolated command-line installation, use `uv` or `pipx`:
@@ -38,10 +38,9 @@ uv tool install .
 pipx install .
 ```
 
-The package also installs `armalint-update` and
-`armalint-update-commands` entry points for refreshing the extracted mod and
-engine command data. It also installs `armalint-mcp`, a read-only stdio MCP
-server for Claude and other MCP clients.
+The package also installs `armalint-update`, `armalint-update-commands`, and
+`armalint-mcp` entry points. The updater builds project-specific base-game,
+DLC, and mod indexes; the MCP server exposes read-only lint and lookup tools.
 
 ## Usage
 
@@ -153,6 +152,9 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W206 | warning  | `if` condition is a literal value and is always truthy or falsey.    |
 | W209 | warning  | A `private` or `params` local has no later reference in its lexical scope. |
 | W210 | warning  | A local include cycle is detected.                             |
+| W211 | warning  | A repeated include has no recognized guard.                     |
+| W301 | warning  | Trailing whitespace when `--style` is enabled.                 |
+| W302 | warning  | Tab character when `--style` is enabled.                       |
 
 `W203` checks common built-in commands, binary commands, indexed function
 signatures, and extracted mod or mission signatures. It infers types from
@@ -171,9 +173,9 @@ Error (`E*`) diagnostics make the CLI exit non-zero; warnings (`W*`) do not.
 - **Function metadata depends on indexing.** Built-in and mod signatures that
   are not present in the selected game/mod data cannot be checked until the
   mission is indexed again.
-- **Preprocessor directives are not expanded.** File linting resolves includes
-  for symbol and scope analysis, but macro expansion and conditional
-  compilation are not performed.
+- **Preprocessor support is deliberately limited.** Local includes, object-like
+  macros, and simple literal/defined conditionals are handled. Arbitrary
+  preprocessor expressions and engine-specific build steps are not evaluated.
 - **Runtime behavior is outside the linter's scope.** It does not execute SQF,
   evaluate dynamic control flow, or know values created only in the game.
 
