@@ -33,8 +33,8 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Make CfgFunctions inheritance and custom `file` mappings fully parser-based.
 - [x] Improve callback discovery through event handlers and namespace variables.
 - [ ] Diagnose macro redefinition, undefined macro use, malformed conditional nesting, and unsupported directives.
-- [ ] Validate deeper `description.ext` and `config.cpp` property types and inheritance.
-- [ ] Validate `mission.sqm` structure, version, required addons, and common property errors.
+- [x] Validate deeper `description.ext` and `config.cpp` property types and inheritance.
+- [x] Validate `mission.sqm` structure, version, required addons, and common property errors.
 
 ## Priority 4: registry and updater quality
 
@@ -43,7 +43,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Remove stale functions when addons disappear; source-root provenance is recorded in the scan cache.
 - [x] Report reused versus rescanned roots.
 - [x] Include Arma-version metadata, per-function source-PBO provenance, and unreadable/unsupported PBO diagnostics.
-- [ ] Complete arity/type metadata for every built-in command variant, including binary and nular forms and version differences.
+- [x] Complete arity/type metadata for every built-in command variant, including binary and nular forms and version differences.
 
 ## Priority 5: developer-facing linter features
 
