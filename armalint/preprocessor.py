@@ -18,6 +18,8 @@ _DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(.*?))?
 _UNDEF_RE = re.compile(r'^\s*#\s*undef\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IFDEF_RE = re.compile(r'^\s*#\s*(ifdef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IF_DEFINED_RE = re.compile(r'^\s*#\s*if\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
+_IF_LITERAL_RE = re.compile(r'^\s*#\s*if\s+(0|1|true|false)\s*$')
+_ELIF_RE = re.compile(r'^\s*#\s*elif\s+(0|1|true|false)\s*$')
 _ELSE_RE = re.compile(r'^\s*#\s*else\s*$')
 _ENDIF_RE = re.compile(r'^\s*#\s*endif\s*$')
 
@@ -95,6 +97,14 @@ def _preprocess_lines(
             lines.append("")
             line_map.append((filename, orig_line))
             continue
+        match = _ELIF_RE.match(line)
+        if match:
+            if _conditions:
+                enabled = match.group(1).lower() in ("1", "true")
+                _conditions[-1] = enabled and all(_conditions[:-1])
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
         match = _IFDEF_RE.match(line)
         if match:
             name = match.group(2).lower()
@@ -102,6 +112,12 @@ def _preprocess_lines(
             if match.group(1).lower() == "ifndef":
                 enabled = not enabled
             _conditions.append(enabled and all(_conditions))
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _IF_LITERAL_RE.match(line)
+        if match:
+            _conditions.append(match.group(1).lower() in ("1", "true") and all(_conditions))
             lines.append("")
             line_map.append((filename, orig_line))
             continue
@@ -229,5 +245,8 @@ if __name__ == "__main__":
         assert "private _value = 42;" in macro_expanded
         assert 'hint "LIMIT";' in macro_expanded
         assert "// LIMIT" in macro_expanded
+
+        literals, _ = preprocess('#if 0\nhint "no";\n#elif 1\nhint "yes";\n#endif\n', main_path, tmpdir)
+        assert 'hint "yes";' in literals and 'hint "no";' not in literals
 
     print("preprocessor self-test passed")
