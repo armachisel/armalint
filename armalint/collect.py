@@ -48,7 +48,7 @@ def _next_significant(tokens: list, index: int) -> int:
     return j
 
 
-def collect_code_functions(source: str, index: SymbolIndex) -> None:
+def collect_code_functions(source: str, index: SymbolIndex, tokens: list | None = None) -> None:
     """Scan SQF ``source`` for global function definitions and add them to ``index``.
 
     Any global identifier (a bare ``ident`` token, so it cannot start with
@@ -62,7 +62,8 @@ def collect_code_functions(source: str, index: SymbolIndex) -> None:
     identifier contains ``_fnc_``, the leading tag (the part before the first
     ``_fnc_``) is also registered via ``index.add_tag``.
     """
-    tokens = tokenize(source)
+    if tokens is None:
+        tokens = tokenize(source)
     n = len(tokens)
 
     for i, tok in enumerate(tokens):

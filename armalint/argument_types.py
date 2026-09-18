@@ -743,12 +743,13 @@ def _seed_ast_assignments(nodes: list[Node], variables: dict[str, str], function
 def check_argument_types(
     tokens: list[Token], function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
+    ast_nodes: list[Node] | None = None,
 ) -> list[Diagnostic]:
     """Check built-in unary arguments and configured function argument types."""
     diags: list[Diagnostic] = []
     variables: dict[str, str] = {}
     element_types: dict[str, str] = {}
-    ast_nodes = parse(tokens).statements
+    ast_nodes = ast_nodes if ast_nodes is not None else parse(tokens).statements
     _collect_param_types(tokens, variables)
     _collect_foreach_element_types(tokens, variables, ast_nodes)
     # Collect simple literal assignments. If the same variable is assigned

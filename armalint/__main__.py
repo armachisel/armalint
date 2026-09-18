@@ -207,7 +207,8 @@ def _main(argv: list[str] | None = None) -> int:
     index_files = list(files)
     if args.mission:
         index_files.extend(_collect_files(args.mission, args.ignore))
-    index = build_symbol_index(sorted(set(index_files)))
+    token_cache = {}
+    index = build_symbol_index(sorted(set(index_files)), token_cache=token_cache)
     for tag in config_tags:
         index.add_tag(tag)
 
@@ -239,7 +240,7 @@ def _main(argv: list[str] | None = None) -> int:
     for f in files:
         if _is_sqf_file(f):
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, pretokenized=token_cache.get(f)))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
