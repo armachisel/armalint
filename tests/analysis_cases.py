@@ -15,12 +15,24 @@ from armalint.suppression import filter_suppressed
 from armalint.syntax import check_syntax
 from armalint.update_commands import _metadata_return_type, _parse_command_xml
 from armalint.undefined import check_undefined_text
+from armalint.locals import check_unused_locals_text
 from armalint.diagnostic import Diagnostic, Severity
 
 
 def _ast_wait_until() -> bool:
     node = parse("waitUntil { _ready; };").statements[0]
     return isinstance(node, LoopStatement) and node.kind == "waituntil" and node.body is not None
+
+
+def _unused_locals() -> bool:
+    unused = check_unused_locals_text("private _unused = 1; private _used = 2; hint str _used;")
+    included = check_unused_locals_text('#include "shared.sqf"\nprivate _maybeUsed;')
+    nested = check_unused_locals_text("private _outer = 1; { hint str _outer; };")
+    return (
+        len([item for item in unused if item.code == "W209"]) == 1
+        and not included
+        and not nested
+    )
 
 
 def _ast_try_catch() -> bool:
@@ -455,6 +467,7 @@ CASES = (
     ("isNull accepts engine handles", _isnull_accepts_engine_handles),
     ("in checks right array operand", _in_checks_right_array_operand),
     ("function definition overwrite checks", _definition_overwrite_checks),
+    ("conservative unused locals", _unused_locals),
     ("postfix command syntax", _postfix_command_syntax),
     ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),

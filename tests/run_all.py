@@ -39,6 +39,7 @@ SELF_TEST_MODULES = (
     "rapified",
     "cfgfunctions",
     "config_lint",
+    "locals",
 )
 
 CLEAN_FIXTURE = FIXTURES_DIR / "clean.sqf"

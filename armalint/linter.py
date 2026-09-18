@@ -11,6 +11,7 @@ from .control_flow import check_control_flow
 from .definitions import check_definitions
 from .diagnostic import Diagnostic
 from .functions import check_functions
+from .locals import check_unused_locals
 from .preprocessor import preprocess
 from .symbols import SymbolIndex
 from .suppression import filter_suppressed
@@ -65,6 +66,7 @@ def lint_text(
     tree = parse(tokens)
     diags.extend(check_control_flow(tree))
     diags.extend(check_definitions(tokens))
+    diags.extend(check_unused_locals(tokens))
     # Type inference is file-local. Include expansion is useful for symbol and
     # undefined-variable analysis, but carrying inferred locals across included
     # files creates false positives when common names are reused.
@@ -85,6 +87,7 @@ def lint_file(
     function_return_types: dict[str, str] | None = None,
     ignored_rules: set[str] | frozenset[str] | None = None,
     pretokenized: list | None = None,
+    check_unused_locals_enabled: bool = True,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -109,6 +112,8 @@ def lint_file(
     diags.extend(check_definitions(tokens))
     source_tokens = tokens if combined == source else tokenize(source)
     source_nodes = tree.statements if combined == source else None
+    if check_unused_locals_enabled:
+        diags.extend(check_unused_locals(source_tokens))
     diags.extend(check_argument_types(source_tokens, function_signatures, function_return_types, source_nodes))
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
