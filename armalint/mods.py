@@ -27,7 +27,7 @@ import json
 import os
 import re
 
-from .cfgfunctions import extract_cfg_functions, extract_cfg_function_files
+from .cfgfunctions import extract_cfg_functions, extract_cfg_function_files, extract_cfg_function_metadata
 from .collect import collect_description_cfg_functions
 from .pbo import read_pbo
 from .rapified import parse_config_bin
@@ -780,7 +780,7 @@ def extract_mod_data(
     SQF sources are retained until the mod-wide HATG prefix is known, then
     names and signatures are attributed together.
     """
-    records: list[tuple[str, str, str | None, set[str], dict[str, str], dict[str, bytes], str]] = []
+    records: list[tuple[str, str, str | None, set[str], dict[str, str], dict[str, dict], dict[str, bytes], str]] = []
     if metadata is not None:
         metadata.setdefault("errors", [])
         metadata.setdefault("sources", {})
@@ -801,12 +801,14 @@ def extract_mod_data(
                 continue
             cfg_names: set[str] = set()
             cfg_files: dict[str, str] = {}
+            cfg_metadata: dict[str, dict] = {}
             for name, data in files.items():
                 if name.lower() == "config.bin":
                     try:
                         config = parse_config_bin(data)
                         cfg_names = extract_cfg_functions(config)
                         cfg_files = extract_cfg_function_files(config)
+                        cfg_metadata = extract_cfg_function_metadata(config)
                         if addon_names is not None:
                             addon_names.update(
                                 child.name.lower()
@@ -833,6 +835,7 @@ def extract_mod_data(
                     cfg_sources.append(text)
             cfg_names = set(cfg_index.functions)
             cfg_files = {}
+            cfg_metadata = {}
             for text in cfg_sources:
                 cfg_files.update(_extract_cfg_file_paths(text, cfg_names))
             tag = _addon_tag(path)
@@ -840,17 +843,19 @@ def extract_mod_data(
             sources = {name: data for name, data in files.items() if name.lower().endswith(".sqf")}
         if prefix and mod_prefix is None:
             mod_prefix = prefix
-        records.append((kind, tag, prefix, cfg_names, cfg_files, sources, path))
+        records.append((kind, tag, prefix, cfg_names, cfg_files, cfg_metadata, sources, path))
         if progress:
             progress(path, True)
 
     functions: set[str] = set()
     signatures: dict[str, list[str | None]] = {}
-    for kind, tag, prefix, cfg_names, cfg_files, sources, addon_path in records:
+    for kind, tag, prefix, cfg_names, cfg_files, cfg_metadata, sources, addon_path in records:
         functions.update(cfg_names)
         if metadata is not None:
             for name in cfg_names:
                 metadata["sources"].setdefault(name, addon_path)
+            for name, details in cfg_metadata.items():
+                metadata.setdefault("functions", {}).setdefault(name, {}).update(details)
         hatg_tag = prefix or mod_prefix or tag
         cfg_by_suffix: dict[str, set[str]] = {}
         for name in cfg_names:
@@ -879,6 +884,21 @@ def extract_mod_data(
             if metadata is not None:
                 for name in function_names:
                     metadata["sources"].setdefault(name, addon_path)
+                    details = metadata.setdefault("functions", {}).setdefault(name, {})
+                    details.setdefault("name", name)
+                    details.setdefault("source", addon_path)
+                    details.setdefault("confidence", "medium")
+                    text = raw.decode("utf-8", errors="replace")
+                    comments = []
+                    for line in text.splitlines()[:8]:
+                        stripped = line.strip()
+                        if stripped.startswith("//"):
+                            comments.append(stripped[2:].strip())
+                        elif stripped and not stripped.startswith("/*"):
+                            break
+                    if comments and "description" not in details:
+                        details["description"] = " ".join(comments)
+                        details["provenance"] = "source comment"
             types = _extract_params_types(raw.decode("utf-8", errors="replace"))
             if types and any(types):
                 for name in function_names:

@@ -95,11 +95,11 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
   or cache-clearing as separate explicitly named operations if needed.
 - [x] Version the MCP response schema and include rule codes, severity, and
   actionable messages so clients can present or auto-fix diagnostics safely.
-- [ ] Extract useful function metadata where it is available locally:
+- [x] Extract useful function metadata where it is available locally:
   - descriptions/documentation fields from `CfgFunctions` and `CfgPatches`;
   - leading comments or docblocks immediately preceding function source files;
   - source addon/PBO, file path, preInit/postInit flags, and required addons.
-- [ ] Return that metadata through MCP so Claude can explain functions, suggest
+- [x] Return that metadata through MCP so Claude can explain functions, suggest
   likely alternatives, and provide context for type warnings.
-- [ ] Mark metadata provenance and confidence; missing descriptions are normal
+- [x] Mark metadata provenance and confidence; missing descriptions are normal
   for compiled engine functions and many mod functions.

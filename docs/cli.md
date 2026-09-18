@@ -107,4 +107,6 @@ For Claude Desktop, configure the command as a stdio MCP server:
 
 The tools are `lint_sqf`, `lint_path`, `lookup_command`, `lookup_function`,
 and `list_rules`. Responses use a versioned `schema` field and diagnostics
-include file, line, column, severity, rule code, and message.
+include file, line, column, severity, rule code, and message. Function lookups
+also return available `CfgFunctions` descriptions, lifecycle flags, declared
+files, source comments, addon/PBO provenance, and a confidence level.

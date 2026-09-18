@@ -271,6 +271,12 @@ def run_update(args) -> int:
             for name in entry.get("functions", []) if isinstance(name, str)
             and entry.get("metadata", {}).get("sources", {}).get(name)
         },
+        "functions": {
+            name: details
+            for entry in scan_cache.values() if isinstance(entry, dict)
+            for name, details in entry.get("metadata", {}).get("functions", {}).items()
+            if isinstance(name, str) and isinstance(details, dict)
+        },
         "scan_errors": [error for entry in scan_cache.values() if isinstance(entry, dict)
                         for error in entry.get("metadata", {}).get("errors", [])],
     }
