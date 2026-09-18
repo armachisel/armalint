@@ -187,6 +187,19 @@ def _definition_overwrite_checks() -> bool:
     return duplicate and duplicate[0].code == "W207" and overwrite and overwrite[0].code == "W208" and not local and not callback and invoked_callback and invoked_callback[0].code == "W208"
 
 
+def _postfix_command_syntax() -> bool:
+    from armalint.syntax import check_syntax_text
+    bad = check_syntax_text('_nodeIds reverse;')
+    good = check_syntax_text('_nodeIds = reverse _nodeIds;')
+    return any(item.code == "E009" for item in bad) and not any(item.code == "E009" for item in good)
+
+
+def _missing_semicolon_after_apply() -> bool:
+    from armalint.syntax import check_syntax_text
+    diagnostics = check_syntax_text('_nodeIds apply { _x; }\n};')
+    return any(item.code == "E008" for item in diagnostics)
+
+
 def _generated_signature_forms() -> bool:
     unary = _SIGNATURES.get("finddisplay")
     binary = _BINARY_SIGNATURES.get("setposasl")
@@ -441,6 +454,8 @@ CASES = (
     ("isNull accepts engine handles", _isnull_accepts_engine_handles),
     ("in checks right array operand", _in_checks_right_array_operand),
     ("function definition overwrite checks", _definition_overwrite_checks),
+    ("postfix command syntax", _postfix_command_syntax),
+    ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),
     ("UI and array-encoded commands stay unchecked", _ui_and_array_encoded_commands_stay_unchecked),
     ("engine array operand commands", _engine_array_operand_commands),

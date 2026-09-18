@@ -16,7 +16,8 @@ These are errors and make the command exit with status 1.
 | `E005` | `else` is not followed by a code block or another `if`. |
 | `E006` | Adjacent literal values in an array are missing a comma. |
 | `E007` | Reversed `forEach` syntax; the code block must come before `forEach`. |
-| `E008` | A code block is followed by a statement that needs a semicolon in a case where the boundary is clear. The check is deliberately conservative because a final semicolon before `}` is optional in SQF. |
+| `E008` | A code block or command expression is followed by a statement that needs a semicolon in a case where the boundary is clear. The check is deliberately conservative because a final semicolon before `}` is optional in SQF. |
+| `E009` | A statement uses a known command in postfix form, such as `_items reverse;`, which is not a complete SQF command expression. |
 
 ## Analysis warnings
 
