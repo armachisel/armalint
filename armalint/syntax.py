@@ -91,6 +91,8 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
     for tok in sig + [Token("semicolon", ";", 0, 0, ";")]:
         if tok.type == "semicolon":
             if (len(statement) == 2 and statement[0].type in ("local", "ident")
+                    and statement[0].type != "keyword"
+                    and not is_known(statement[0].value)
                     and statement[1].type == "ident" and is_known(statement[1].value)):
                 command = statement[1]
                 diags.append(Diagnostic(Severity.ERROR, _INVALID_POSTFIX_COMMAND,
@@ -127,14 +129,19 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                     if left.type in ("number", "string") and right.type in ("number", "string"):
                         diags.append(Diagnostic(Severity.ERROR, _MISSING_COMMA, "missing comma between array elements", right.line, right.column))
                         break
+        # A command that consumes a code block must be terminated before the
+        # next statement.  A final expression before the enclosing `}` is
+        # valid SQF and is intentionally left alone.
         if tok.type == "lbrace" and i > 0 and sig[i - 1].type == "ident" and is_known(sig[i - 1].value):
             close = _matching_close(sig, i)
-            if close is not None and close + 1 < len(sig) and sig[close + 1].type == "rbrace":
-                diags.append(Diagnostic(
-                    Severity.ERROR, _MISSING_SEMICOLON,
-                    "missing semicolon after command with code block",
-                    sig[close + 1].line, sig[close + 1].column,
-                ))
+            if close is not None and close + 1 < len(sig):
+                nxt = sig[close + 1]
+                if nxt.type not in ("semicolon", "rbrace", "eof"):
+                    diags.append(Diagnostic(
+                        Severity.ERROR, _MISSING_SEMICOLON,
+                        "missing semicolon after command with code block",
+                        nxt.line, nxt.column,
+                    ))
     diags.extend(_ast_statement_boundary_diagnostics(tokens))
 
     for tok in tokens:

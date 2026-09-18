@@ -196,8 +196,9 @@ def _postfix_command_syntax() -> bool:
 
 def _missing_semicolon_after_apply() -> bool:
     from armalint.syntax import check_syntax_text
-    diagnostics = check_syntax_text('_nodeIds apply { _x; }\n};')
-    return any(item.code == "E008" for item in diagnostics)
+    missing = check_syntax_text('_nodeIds apply { _x } _next = 1;')
+    valid = check_syntax_text('_nodeIds apply { _x }\n};')
+    return any(item.code == "E008" for item in missing) and not any(item.code == "E008" for item in valid)
 
 
 def _generated_signature_forms() -> bool:
