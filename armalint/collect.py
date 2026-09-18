@@ -122,21 +122,22 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
             j += 1
         return limit
 
-    def class_head(i: int, limit: int) -> tuple[str | None, int]:
-        # ``i`` is at a ``class`` token; return ``(name, lbrace_index)`` where
-        # ``lbrace_index`` is -1 when the class has no body within ``limit``.
+    def class_head(i: int, limit: int) -> tuple[str | None, str, int]:
+        # ``i`` is at a ``class`` token; return ``(name, base, lbrace_index)``.
         j = skip(i + 1, limit)
         if j >= limit or tokens[j].type != "ident":
-            return None, -1
+            return None, "", -1
         name = tokens[j].value
         k = skip(j + 1, limit)
+        base = ""
         if k < limit and tokens[k].type == "operator" and tokens[k].value == ":":
             m = skip(k + 1, limit)
             if m < limit and tokens[m].type == "ident":
+                base = tokens[m].value
                 k = skip(m + 1, limit)
         if k < limit and tokens[k].type == "lbrace":
-            return name, k
-        return name, -1
+            return name, base, k
+        return name, base, -1
 
     def is_function_body(start: int, end: int) -> bool:
         # True if the class body (``start``..``end``, exclusive) assigns a
@@ -146,7 +147,7 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
         while i < end:
             tok = tokens[i]
             if tok.type == "ident" and tok.value.lower() == "class":
-                _name, lbrace = class_head(i, end)
+                _name, _base, lbrace = class_head(i, end)
                 if lbrace >= 0:
                     i = matching(lbrace, end)  # skip the nested class entirely
                     continue
@@ -159,28 +160,55 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
 
     def collect_tag(tag: str, start: int, end: int) -> None:
         # Walk classes nested under a tag and register the function classes.
+        # Build a direct-sibling table first so ``class Derived: Base`` can
+        # inherit a function marker from a local base class.
+        entries: list[tuple[str, str, int, int]] = []
         i = start
         while i < end:
             tok = tokens[i]
             if tok.type == "ident" and tok.value.lower() == "class":
-                name, lbrace = class_head(i, end)
+                name, base, lbrace = class_head(i, end)
                 if name is None:
                     i += 1
                     continue
                 if lbrace >= 0:
                     body_end = matching(lbrace, end)
-                    if is_function_body(lbrace + 1, body_end - 1):
-                        index.add_function(f"{tag}{_FNC}{name}")
-                    collect_tag(tag, lbrace + 1, body_end - 1)
+                    entries.append((name, base, lbrace, body_end))
                     i = body_end
                     continue
             i += 1
+
+        by_name = {name.lower(): (base, body_start, body_end) for name, base, body_start, body_end in entries}
+        memo: dict[str, bool] = {}
+
+        def is_entry_function(name: str, base: str, body_start: int, body_end: int, seen: set[str] | None = None) -> bool:
+            key = name.lower()
+            if key in memo:
+                return memo[key]
+            direct = is_function_body(body_start + 1, body_end - 1)
+            if direct or not base:
+                memo[key] = direct
+                return direct
+            seen = set() if seen is None else seen
+            parent_key = base.lower()
+            if parent_key in seen or parent_key not in by_name:
+                memo[key] = False
+                return False
+            parent_base, parent_start, parent_end = by_name[parent_key]
+            result = is_entry_function(base, parent_base, parent_start, parent_end, seen | {key})
+            memo[key] = result
+            return result
+
+        for name, base, lbrace, body_end in entries:
+            if is_entry_function(name, base, lbrace, body_end):
+                index.add_function(f"{tag}{_FNC}{name}")
+            collect_tag(tag, lbrace + 1, body_end - 1)
 
     i = 0
     while i < n:
         tok = tokens[i]
         if tok.type == "ident" and tok.value.lower() == "class":
-            name, lbrace = class_head(i, n)
+            name, _base, lbrace = class_head(i, n)
             if name is not None and name.lower() == "cfgfunctions" and lbrace >= 0:
                 end = matching(lbrace, n)
                 # Direct children of CfgFunctions are tags.
@@ -188,7 +216,7 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
                 while t < end - 1:
                     tt = tokens[t]
                     if tt.type == "ident" and tt.value.lower() == "class":
-                        tag_name, tag_lbrace = class_head(t, end)
+                        tag_name, _tag_base, tag_lbrace = class_head(t, end)
                         if tag_name is None:
                             t += 1
                             continue
@@ -247,6 +275,17 @@ if __name__ == "__main__":
     assert "alt_fnc_removestatusoverlay" in idx3.functions, idx3.functions
     assert idx3.is_known_function("ALT_fnc_formatScore") is True
     assert idx3.is_known_function("ALT_fnc_removeStatusOverlay") is True
+
+    # A local derived CfgFunctions class inherits the function marker from its
+    # sibling base class; an unresolved external base remains conservative.
+    idx_inherit = SymbolIndex()
+    collect_description_cfg_functions(
+        "class CfgFunctions { class T { "
+        'class Base { file = "base.sqf"; }; '
+        'class Derived: Base {}; class External: Other {}; }; };',
+        idx_inherit,
+    )
+    assert idx_inherit.functions == {"t_fnc_base", "t_fnc_derived"}, idx_inherit.functions
 
     # Intermediate category classes are structural: they are not functions,
     # but their children still are.
