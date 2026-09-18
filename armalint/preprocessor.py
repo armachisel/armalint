@@ -14,6 +14,12 @@ import re
 
 # ``#include "..."`` or ``#include <...>``, with optional surrounding whitespace.
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s+(?:"([^"]*)"|<([^>]*)>)\s*$')
+_DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)')
+_UNDEF_RE = re.compile(r'^\s*#\s*undef\s+([A-Za-z_][A-Za-z0-9_]*)')
+_IFDEF_RE = re.compile(r'^\s*#\s*(ifdef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)')
+_IF_DEFINED_RE = re.compile(r'^\s*#\s*if\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
+_ELSE_RE = re.compile(r'^\s*#\s*else\s*$')
+_ENDIF_RE = re.compile(r'^\s*#\s*endif\s*$')
 
 
 def _normalized(path: str) -> str:
@@ -26,6 +32,8 @@ def _preprocess_lines(
     filename: str,
     base_dir: str,
     _include_stack: tuple[str, ...],
+    _defines: set[str],
+    _conditions: list[bool],
 ) -> tuple[list[str], list[tuple[str, int]]]:
     """Split out the line-by-line work; returns ``(lines, line_map)``."""
     lines: list[str] = []
@@ -35,6 +43,53 @@ def _preprocess_lines(
         return lines, line_map
 
     for orig_line, line in enumerate(source.split("\n"), start=1):
+        if _ENDIF_RE.match(line):
+            if _conditions:
+                _conditions.pop()
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        if _ELSE_RE.match(line):
+            if _conditions:
+                _conditions[-1] = not _conditions[-1]
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _IFDEF_RE.match(line)
+        if match:
+            name = match.group(2).lower()
+            enabled = name in _defines
+            if match.group(1).lower() == "ifndef":
+                enabled = not enabled
+            _conditions.append(enabled and all(_conditions))
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _IF_DEFINED_RE.match(line)
+        if match:
+            enabled = match.group(2).lower() in _defines
+            if match.group(1):
+                enabled = not enabled
+            _conditions.append(enabled and all(_conditions))
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _DEFINE_RE.match(line)
+        if match and all(_conditions):
+            _defines.add(match.group(1).lower())
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _UNDEF_RE.match(line)
+        if match and all(_conditions):
+            _defines.discard(match.group(1).lower())
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        if not all(_conditions):
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
         match = _INCLUDE_RE.match(line)
         if match:
             include_path = match.group(1) if match.group(1) is not None else match.group(2)
@@ -48,6 +103,8 @@ def _preprocess_lines(
                     filename=resolved,
                     base_dir=os.path.dirname(resolved),
                     _include_stack=_include_stack + (normalized_resolved,),
+                    _defines=_defines,
+                    _conditions=_conditions,
                 )
                 lines.extend(sub_lines)
                 line_map.extend(sub_map)
@@ -70,7 +127,7 @@ def preprocess(
     Returns ``(combined_source, line_map)`` where ``line_map[i]`` is the
     ``(file, orig_line)`` (1-based) of combined line ``i + 1``.
     """
-    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack)
+    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, set(), [])
     return "\n".join(lines), line_map
 
 
@@ -120,5 +177,11 @@ if __name__ == "__main__":
             fh.write("#include <shared.sqf>\nhint str _definedInShared;\n")
         combined4, _line_map4 = preprocess_file(main_path)
         assert "private _definedInShared" in combined4
+
+        conditional = "#define ENABLED\n#ifdef ENABLED\nhint \"yes\";\n#else\nhint \"no\";\n#endif\n#ifndef MISSING\nhint \"still\";\n#endif\n"
+        combined5, map5 = preprocess(conditional, main_path, tmpdir)
+        assert 'hint "yes";' in combined5 and 'hint "still";' in combined5
+        assert 'hint "no";' not in combined5
+        assert len(map5) == combined5.count("\n") + 1
 
     print("preprocessor self-test passed")
