@@ -44,6 +44,8 @@ mistakes are found.
 | `W212` | A mission addon is listed more than once. |
 | `W213` | A mission addon name is malformed or no addon list is present. |
 | `W214` | A config property is assigned more than once in the same class. |
+| `W215` | A local declaration shadows or duplicates another local. |
+| `W216` | A comparison uses incompatible statically known primitive types. |
 | `W301` | Trailing whitespace when optional style checks are enabled with `--style`. |
 | `W302` | Tab character when optional style checks are enabled with `--style`. |
 

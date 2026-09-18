@@ -28,6 +28,8 @@ RULES = {
     "W212": ("warning", "Duplicate mission addon entry"),
     "W213": ("warning", "Invalid mission addon name"),
     "W214": ("warning", "Config property defined more than once"),
+    "W215": ("warning", "Local declaration shadows or duplicates another local"),
+    "W216": ("warning", "Comparison uses incompatible statically known types"),
     "W301": ("warning", "Trailing whitespace"),
     "W302": ("warning", "Tab character in source indentation"),
 }

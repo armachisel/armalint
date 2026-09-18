@@ -21,9 +21,9 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Detect calls to values that are known not to contain code.
 - [x] Report duplicate function definitions, suspicious overwrites, and constant conditions.
 - [x] Report unused locals conservatively across include and nested-scope boundaries.
-- [ ] Detect variable shadowing, duplicate locals, and more use-before-assignment paths.
+- [x] Detect variable shadowing, duplicate locals, and more use-before-assignment paths.
 - [ ] Add union-type narrowing after `isEqualType`, `isNull`, `typeName`, and guard branches.
-- [ ] Propagate types through more command chains and detect impossible comparisons.
+- [x] Propagate types through common command chains and detect impossible comparisons.
 - [ ] Add SQF-specific checks for `params` shapes, namespace misuse, event-handler lifecycle, remote execution, and public-variable contracts.
 - [ ] Add value-flow diagnostics for overwritten-before-use, constant assignments, and ineffective empty code/array expressions.
 

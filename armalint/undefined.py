@@ -7,6 +7,7 @@ from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Sta
 from .tokenizer import Token, tokenize
 
 _CODE = "W101"
+_SCOPE_CODE = "W215"
 
 # Script-local variables that are always defined by the SQF engine/context and
 # therefore never flagged.
@@ -171,10 +172,20 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     diags: list[Diagnostic] = []
     n = len(tokens)
     i = 0
+    pending_assignments: set[str] = set()
 
     while i < n:
         tok = tokens[i]
         ttype = tok.type
+
+        if ttype == "semicolon":
+            # An assignment makes its target available after its RHS has been
+            # evaluated.  Delaying this update catches ``_x = _x + 1`` while
+            # preserving the normal sequential flow for later statements.
+            defined.update(pending_assignments)
+            pending_assignments.clear()
+            i += 1
+            continue
 
         if ttype in _TRIVIA:
             i += 1
@@ -222,7 +233,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
 
         if ttype == "local":
             if _is_assignment_lhs(tokens, i):
-                defined.add(tok.value)
+                pending_assignments.add(tok.value)
             elif tok.value not in _ALWAYS_DEFINED and tok.value not in defined:
                 diags.append(
                     Diagnostic(
@@ -238,6 +249,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
 
         i += 1
 
+    defined.update(pending_assignments)
     return diags, defined
 
 
@@ -353,6 +365,34 @@ def check_undefined(tokens: list[Token]) -> list[Diagnostic]:
     for node in tree.statements:
         node_diags, defined = _walk_node(node, defined)
         diags.extend(node_diags)
+    # Declaration diagnostics are kept separate from W101 so a project can
+    # adopt shadowing checks independently. Brace depth is a conservative scope
+    # approximation that works for nested SQF code blocks without guessing at
+    # runtime namespace behavior.
+    scopes: list[set[str]] = [set()]
+    declarations: list[tuple[str, Token]] = []
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token.type == "lbrace":
+            scopes.append(set())
+        elif token.type == "rbrace" and len(scopes) > 1:
+            scopes.pop()
+        elif token.type == "keyword" and token.value.lower() in ("private", "params"):
+            j = _next_significant(tokens, i)
+            names: list[str] = []
+            if j < len(tokens) and tokens[j].type == "local":
+                names = [tokens[j].value]
+            elif j < len(tokens) and tokens[j].type == "lbracket":
+                names = (_collect_string_names(tokens, j, False)[0] if token.value.lower() == "private" else _collect_params_names(tokens, j)[0])
+            for name in names:
+                key = name.lower()
+                if key in {item.lower() for item in scopes[-1]} or any(key in {item.lower() for item in scope} for scope in scopes[:-1]):
+                    declarations.append((name, token))
+                scopes[-1].add(name)
+        i += 1
+    for name, token in declarations:
+        diags.append(Diagnostic(Severity.WARNING, _SCOPE_CODE, f"local declaration shadows or duplicates {name}", token.line, token.column))
     return diags
 
 
@@ -392,6 +432,10 @@ if __name__ == "__main__":
 
     diags = check_undefined_text("hint str _z; _z = 5;")
     assert len(diags) == 1 and diags[0].message == "possible undefined variable: _z", diags
+    shadowed = check_undefined_text('private _value; { private _value; hint str _value; };')
+    assert any(item.code == "W215" for item in shadowed), shadowed
+    use_before_assignment = check_undefined_text('_value = _value + 1;')
+    assert any(item.code == _CODE and "_value" in item.message for item in use_before_assignment), use_before_assignment
 
     # Nested params defaults define their first-element local.
     assert check_undefined_text('params ["_a", ["_b", 0]]; hint str _b;') == []

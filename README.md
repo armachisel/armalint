@@ -159,6 +159,8 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W212 | warning  | Duplicate mission addon entry.                                  |
 | W213 | warning  | Invalid or missing mission addon list.                          |
 | W214 | warning  | Duplicate config property in one class.                         |
+| W215 | warning  | Local declaration shadows or duplicates another local.           |
+| W216 | warning  | Comparison uses incompatible statically known primitive types.   |
 | W301 | warning  | Trailing whitespace when `--style` is enabled.                 |
 | W302 | warning  | Tab character when `--style` is enabled.                       |
 
