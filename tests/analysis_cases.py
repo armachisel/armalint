@@ -183,7 +183,8 @@ def _definition_overwrite_checks() -> bool:
     overwrite = check_definitions_text('ALT_fnc_a = {}; ALT_fnc_a = 1;')
     local = check_definitions_text('private _fn = {}; _value = 1;')
     callback = check_definitions_text('ALT_callback = {}; ALT_callback = false;')
-    return duplicate and duplicate[0].code == "W207" and overwrite and overwrite[0].code == "W208" and not local and not callback
+    invoked_callback = check_definitions_text('[1] call ALT_callback; ALT_callback = {}; ALT_callback = false;')
+    return duplicate and duplicate[0].code == "W207" and overwrite and overwrite[0].code == "W208" and not local and not callback and invoked_callback and invoked_callback[0].code == "W208"
 
 
 def _generated_signature_forms() -> bool:
