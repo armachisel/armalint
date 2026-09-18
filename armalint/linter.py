@@ -67,7 +67,7 @@ def lint_text(
     # Type inference is file-local. Include expansion is useful for symbol and
     # undefined-variable analysis, but carrying inferred locals across included
     # files creates false positives when common names are reused.
-    diags.extend(check_argument_types(tokenize(source), function_signatures, function_return_types))
+    diags.extend(check_argument_types(tokens, function_signatures, function_return_types))
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
