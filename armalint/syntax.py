@@ -136,7 +136,12 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
             close = _matching_close(sig, i)
             if close is not None and close + 1 < len(sig):
                 nxt = sig[close + 1]
-                if nxt.type not in ("semicolon", "rbrace", "eof"):
+                # Operators, delimiters, and control-flow keywords commonly
+                # continue the enclosing expression (`findIf {...} >= 0`,
+                # `isNil {...} exitWith {...}`, etc.).  A missing terminator
+                # is unambiguous only when another identifier/local starts a
+                # new statement.
+                if nxt.type in ("ident", "local"):
                     diags.append(Diagnostic(
                         Severity.ERROR, _MISSING_SEMICOLON,
                         "missing semicolon after command with code block",
