@@ -84,3 +84,27 @@ The built-in command list is generated data. Refresh it after an Arma update:
 armalint-update-commands
 armalint-update-commands --dry-run
 ```
+
+## `armalint-mcp`
+
+Armalint includes a dependency-free MCP server using stdio JSON-RPC. It is
+read-only: it can lint text or paths, look up commands and functions, and
+return the stable rule catalog, but it never updates or clears caches.
+
+```powershell
+armalint-mcp
+```
+
+For Claude Desktop, configure the command as a stdio MCP server:
+
+```json
+{
+  "mcpServers": {
+    "armalint": {"command": "armalint-mcp"}
+  }
+}
+```
+
+The tools are `lint_sqf`, `lint_path`, `lookup_command`, `lookup_function`,
+and `list_rules`. Responses use a versioned `schema` field and diagnostics
+include file, line, column, severity, rule code, and message.
