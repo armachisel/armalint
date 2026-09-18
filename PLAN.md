@@ -45,22 +45,22 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 6: packaging and distribution
 
-- [ ] Adopt the modern PEP 621 `pyproject.toml` layout with Hatchling (or
+- [x] Adopt the modern PEP 621 `pyproject.toml` layout with Hatchling (or
   another standard backend only if needed), explicit Python version
   requirements, and console-script entry points for `armalint` and its
   updater.
-- [ ] Use `uv` as the project and dependency-management frontend for fast,
+- [x] Use `uv` as the project and dependency-management frontend for fast,
   reproducible environments, locking, test commands, and build orchestration;
   commit the lockfile and document the supported install and upgrade commands.
-- [ ] Build and validate source and wheel distributions in CI, including a
+- [x] Build and validate source and wheel distributions in CI, including a
   clean-install smoke test that runs the CLI and updater.
-- [ ] Publish versioned releases to the appropriate package index with release
+- [x] Publish versioned releases to the appropriate package index with release
   notes, while keeping the extracted Arma/mod signature databases outside the
   wheel and downloading or generating them through an explicit update command.
-- [ ] Provide a practical Windows distribution path (pip/uv install first,
+- [x] Provide a practical Windows distribution path (pip/uv install first,
   with a standalone executable considered if the dependency footprint or user
   environment makes it worthwhile).
-- [ ] Add package metadata, license/readme inclusion, typed package data, and
+- [x] Add package metadata, license/readme inclusion, typed package data, and
   an automated compatibility matrix for supported Python versions.
 
 ## Priority 7: documentation and project communication
