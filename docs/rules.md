@@ -37,6 +37,7 @@ mistakes are found.
 | `W207` | A global function name is defined more than once in the same file. |
 | `W208` | A global function definition is later overwritten by a non-code value. |
 | `W209` | A `private` or `params` local has no later reference in its lexical scope. Files proven to be included fragments and files containing includes are skipped. |
+| `W210` | A local include cycle is detected. Ordinary repeated includes are not warned about. |
 
 ## How cautious is the analysis?
 

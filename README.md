@@ -149,6 +149,7 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W205 | warning  | `call` or `spawn` targeted a literal value rather than code.           |
 | W206 | warning  | `if` condition is a literal value and is always truthy or falsey.    |
 | W209 | warning  | A `private` or `params` local has no later reference in its lexical scope. |
+| W210 | warning  | A local include cycle is detected.                             |
 
 `W203` checks common built-in commands, binary commands, indexed function
 signatures, and extracted mod or mission signatures. It infers types from
