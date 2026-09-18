@@ -114,6 +114,29 @@ def collect_code_functions(source: str, index: SymbolIndex, tokens: list | None 
             if _FNC in name.lower():
                 index.add_tag(name.split("_fnc_", 1)[0])
 
+    # Event-handler APIs can also carry an inline callback under a string key.
+    # Register that key when the same argument list contains code, so callback
+    # analysis does not depend on a ``_fnc_`` naming convention.
+    event_names = {"addeventhandler", "addmissioneventhandler", "addstackedeventhandler", "bis_fnc_addstackedeventhandler"}
+    for i, tok in enumerate(tokens):
+        if tok.type != "ident" or tok.value.lower() not in event_names:
+            continue
+        j = _next_significant(tokens, i)
+        while j < n and tokens[j].type != "lbracket" and j < i + 8:
+            j += 1
+        if j >= n or tokens[j].type != "lbracket":
+            continue
+        k = _next_significant(tokens, j)
+        if k >= n or tokens[k].type != "string":
+            continue
+        end = k
+        has_code = False
+        while end < n and tokens[end].type != "rbracket":
+            has_code |= tokens[end].type == "lbrace"
+            end += 1
+        if has_code and _IDENT.match(tokens[k].value):
+            index.add_function(tokens[k].value)
+
 
 def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
     """Parse ``description.ext``-style config for ``class CfgFunctions``.
@@ -300,6 +323,9 @@ if __name__ == "__main__":
     )
     assert idx8.is_known_function("myCallback")
     assert idx8.is_known_function("ALT_fnc_fromNamespace")
+    idx9 = SymbolIndex()
+    collect_code_functions('player addEventHandler ["myEventCallback", { hint "x"; }];', idx9)
+    assert idx9.is_known_function("myEventCallback")
 
     desc = r'''class CfgFunctions {
         class ALT {

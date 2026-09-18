@@ -22,6 +22,7 @@ RULES = {
     "W208": ("warning", "Function overwritten by a non-code value"),
     "W209": ("warning", "Unused local variable"),
     "W210": ("warning", "Include cycle detected"),
+    "W211": ("warning", "Repeated include without an include guard"),
     "W301": ("warning", "Trailing whitespace"),
     "W302": ("warning", "Tab character in source indentation"),
 }

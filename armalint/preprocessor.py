@@ -61,6 +61,49 @@ def find_include_cycles(path: str) -> list[tuple[str, int, str]]:
     return cycles
 
 
+def find_include_guard_issues(path: str) -> list[tuple[str, int, str]]:
+    """Return repeated includes whose target has no recognizable guard."""
+    issues: list[tuple[str, int, str]] = []
+    seen: set[str] = set()
+
+    def guarded(target: str) -> bool:
+        try:
+            with open(target, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            return False
+        if re.search(r"^\s*#\s*pragma\s+once\b", text, re.IGNORECASE | re.MULTILINE):
+            return True
+        match = re.search(r"^\s*#\s*ifndef\s+([A-Za-z_][A-Za-z0-9_]*)\b", text, re.IGNORECASE | re.MULTILINE)
+        return bool(match and re.search(r"^\s*#\s*define\s+" + re.escape(match.group(1)) + r"\b", text, re.IGNORECASE | re.MULTILINE))
+
+    def visit(current: str, stack: tuple[str, ...]) -> None:
+        normalized = _normalized(current)
+        if normalized in stack:
+            return
+        try:
+            with open(current, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return
+        base_dir = os.path.dirname(os.path.abspath(current))
+        for line_number, line in enumerate(lines, 1):
+            match = _INCLUDE_RE.match(line)
+            if not match:
+                continue
+            target = os.path.normpath(os.path.join(base_dir, match.group(1) or match.group(2)))
+            if not os.path.isfile(target):
+                continue
+            target_key = _normalized(target)
+            if target_key in seen and not guarded(target):
+                issues.append((current, line_number, target))
+            seen.add(target_key)
+            visit(target, stack + (normalized,))
+
+    visit(path, ())
+    return issues
+
+
 def _normalized(path: str) -> str:
     """Absolute, case-normalized (Windows) path used for cycle detection."""
     return os.path.normcase(os.path.abspath(path))
@@ -258,6 +301,15 @@ if __name__ == "__main__":
         assert line_map[0] == (shared_path, 1), line_map[0]
         assert line_map[2] == (main_path, 2), line_map[2]
         assert len(line_map) == combined.count("\n") + 1, (len(line_map), combined)
+
+        with open(main_path, "w", encoding="utf-8") as fh:
+            fh.write('#include "shared.sqf"\n#include "shared.sqf"\n')
+        assert find_include_guard_issues(main_path), "unguarded repeated include should be reported"
+        with open(shared_path, "w", encoding="utf-8") as fh:
+            fh.write("#pragma once\nprivate _x = 1;\n")
+        assert find_include_guard_issues(main_path) == []
+        with open(shared_path, "w", encoding="utf-8") as fh:
+            fh.write("private _definedInShared = 42;\n")
 
         # Missing include: directive is left in place, mapped to the main file.
         missing_main = os.path.join(tmpdir, "missing.sqf")

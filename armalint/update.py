@@ -47,6 +47,8 @@ from .mods import (
     load_mod_type_cache,
     MOD_TYPE_CACHE_FILENAME,
     MOD_SCAN_CACHE_FILENAME,
+    MOD_METADATA_CACHE_FILENAME,
+    save_mod_metadata_cache,
 )
 from .sqm import extract_addons
 
@@ -254,6 +256,25 @@ def run_update(args) -> int:
         if addon.lower() not in resolved_required and addon.lower() not in installed_addon_names:
             _warn(f"could not resolve required addon {addon}")
 
+    arma_version = getattr(args, "arma_version", None) or os.environ.get("ARMALINT_ARMA_VERSION")
+    metadata_path = os.path.join(os.path.dirname(out_path), MOD_METADATA_CACHE_FILENAME)
+    metadata = {
+        "arma_version": arma_version,
+        "roots": {
+            root: entry.get("metadata", {})
+            for root, entry in scan_cache.items()
+            if isinstance(entry, dict) and isinstance(entry.get("metadata"), dict)
+        },
+        "signature_sources": {
+            name: entry.get("metadata", {}).get("sources", {}).get(name)
+            for entry in scan_cache.values() if isinstance(entry, dict)
+            for name in entry.get("functions", []) if isinstance(name, str)
+            and entry.get("metadata", {}).get("sources", {}).get(name)
+        },
+        "scan_errors": [error for entry in scan_cache.values() if isinstance(entry, dict)
+                        for error in entry.get("metadata", {}).get("errors", [])],
+    }
+
     # 6. Save result caches unless this was a dry run.
     dry_run = bool(getattr(args, "dry_run", False))
     if not dry_run:
@@ -261,6 +282,7 @@ def run_update(args) -> int:
         type_cache_path = os.path.join(os.path.dirname(out_path), MOD_TYPE_CACHE_FILENAME)
         save_mod_type_cache(type_cache_path, function_types)
         save_mod_scan_cache(scan_cache_path, scan_cache)
+        save_mod_metadata_cache(metadata_path, metadata)
 
     # 7. Human-readable summary.
     print("armalint mod cache update")
@@ -286,7 +308,9 @@ def run_update(args) -> int:
     if dry_run:
         print(f"  cache     : {out_path} + {MOD_TYPE_CACHE_FILENAME} (dry run, not written)")
     else:
-        print(f"  cache     : {out_path} + {type_cache_path}")
+        print(f"  cache     : {out_path} + {type_cache_path} + {metadata_path}")
+    if metadata["scan_errors"]:
+        print(f"  scan notes: {len(metadata['scan_errors'])} unreadable/unsupported item(s)")
 
     return 0
 
@@ -337,6 +361,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--clear-cache",
         action="store_true",
         help="remove the incremental scan cache for this mission and exit",
+    )
+    parser.add_argument(
+        "--arma-version", metavar="VERSION", default=None,
+        help="record the Arma version in extraction metadata (or use ARMALINT_ARMA_VERSION)",
     )
     return parser
 

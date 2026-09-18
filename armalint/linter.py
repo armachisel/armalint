@@ -12,7 +12,7 @@ from .definitions import check_definitions
 from .diagnostic import Diagnostic, Severity
 from .functions import check_functions
 from .locals import check_unused_locals
-from .preprocessor import find_include_cycles, preprocess
+from .preprocessor import find_include_cycles, find_include_guard_issues, preprocess
 from .symbols import SymbolIndex
 from .suppression import apply_rule_severities, filter_suppressed
 from .syntax import check_syntax
@@ -121,6 +121,13 @@ def lint_file(
                 Severity.WARNING, "W210",
                 f"include cycle detected through {cycle_target}",
                 cycle_line, 1,
+            ))
+    for include_file, include_line, include_target in find_include_guard_issues(path):
+        if os.path.normcase(os.path.abspath(include_file)) == normalized_path:
+            diags.append(Diagnostic(
+                Severity.WARNING, "W211",
+                f"repeated include without guard: {os.path.basename(include_target)}",
+                include_line, 1,
             ))
     diags.extend(check_syntax(tokens))
     diags.extend(check_control_flow(tree))
