@@ -125,6 +125,35 @@ def extract_cfg_function_files(config: ConfigClass) -> dict[str, str]:
     return result
 
 
+def extract_cfg_function_metadata(config: ConfigClass) -> dict[str, dict]:
+    """Return descriptive and lifecycle metadata for declared functions."""
+    result: dict[str, dict] = {}
+
+    def collect(node: ConfigClass, tag: str, siblings: list[ConfigClass]) -> None:
+        props = _effective_properties(node, {item.name.lower(): item for item in siblings})
+        lowered = {str(k).lower(): v for k, v in props.items()}
+        if any(key in _FUNCTION_PROPERTIES for key in lowered):
+            name = f"{tag}_fnc_{node.name.lower()}"
+            item = {"name": name, "confidence": "high", "provenance": "CfgFunctions"}
+            for key in ("file", "description", "author", "preinit", "postinit", "prestart", "poststart"):
+                if key in lowered and isinstance(lowered[key], (str, int, float, bool)):
+                    item[key] = lowered[key]
+            result[name] = item
+        for child in node.children:
+            collect(child, tag, node.children)
+
+    def visit(node: ConfigClass) -> None:
+        if node.name.lower() == _CFG_FUNCTIONS_NAME:
+            for tag in node.children:
+                for child in tag.children:
+                    collect(child, tag.name.lower(), tag.children)
+        for child in node.children:
+            visit(child)
+
+    visit(config)
+    return result
+
+
 if __name__ == "__main__":
     # Hand-built tree modeling the canonical nested layout from the task spec.
     tree = ConfigClass(
@@ -160,6 +189,9 @@ if __name__ == "__main__":
         "ace_medical_fnc_setdamage",
         "cba_settings_fnc_init",
     }, extract_cfg_functions(tree)
+    metadata = extract_cfg_function_metadata(tree)
+    assert metadata["ace_medical_fnc_setunconscious"]["file"] == "a.sqf"
+    assert metadata["cba_settings_fnc_init"]["preinit"] == 1
 
     # Case-insensitivity: CfgFunctions class name, property names, tag/function
     # casing all fold to lowercase in the result.
