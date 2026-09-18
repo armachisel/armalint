@@ -14,12 +14,13 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 2: semantic and type analysis
 
-- [ ] Expand built-in command signatures, arity checks, and return types.
+- [x] Expand built-in command signatures, arity metadata, and return types.
 - [x] Infer types through arithmetic, comparisons, array operations, `select`, and namespace access.
 - [x] Check statically known mission/mod function argument counts and types for `call` and `spawn`.
-- [ ] Distinguish unary, binary, and nular command usage using command metadata.
+- [x] Distinguish unary, binary, and nular command usage using command metadata.
 - [x] Detect calls to values that are known not to contain code.
-- [ ] Report duplicate function definitions, suspicious overwrites, constant conditions, and unused locals.
+- [x] Report duplicate function definitions, suspicious overwrites, and constant conditions.
+- [ ] Report unused locals conservatively across include and nested-scope boundaries.
 
 ## Priority 3: preprocessor and config coverage
 
