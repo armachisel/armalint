@@ -4,6 +4,8 @@ Populates a :class:`~armalint.symbols.SymbolIndex` from two sources:
 
   * SQF source code — global function definitions of the form
     ``ALT_fnc_foo = { ... };`` (or ``ALT_fnc_foo = compile ...;``).
+    Code-valued namespace registrations such as
+    ``missionNamespace setVariable ["myCallback", { ... }];`` are indexed too.
   * ``description.ext`` config — ``class CfgFunctions { ... }`` tag/function
     class declarations.
 
@@ -86,6 +88,31 @@ def collect_code_functions(source: str, index: SymbolIndex, tokens: list | None 
             index.add_function(tok.value)
             if _FNC in tok.value:
                 index.add_tag(tok.value.split(_FNC, 1)[0])
+
+    # Namespace callback registration, for example:
+    #   missionNamespace setVariable ["myCallback", { ... }];
+    # The key and code value together are stronger evidence than a naming
+    # convention, so register the key even when it has no ``_fnc_`` marker.
+    for i, tok in enumerate(tokens):
+        if tok.type != "ident" or tok.value.lower() != "setvariable":
+            continue
+        j = _next_significant(tokens, i)
+        if j >= n or tokens[j].type != "lbracket":
+            continue
+        k = _next_significant(tokens, j)
+        if k >= n or tokens[k].type != "string":
+            continue
+        name = tokens[k].value
+        end = k
+        has_code = False
+        while end < n and tokens[end].type != "rbracket":
+            if tokens[end].type == "lbrace" or tokens[end].value.lower() in _COMPILE_KW:
+                has_code = True
+            end += 1
+        if has_code and _IDENT.match(name):
+            index.add_function(name)
+            if _FNC in name.lower():
+                index.add_tag(name.split("_fnc_", 1)[0])
 
 
 def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
@@ -262,6 +289,17 @@ if __name__ == "__main__":
     collect_code_functions("count = 5;", idx7)
     assert idx7.is_known_function("count") is False
     assert "count" not in idx7.functions
+
+    # Namespace callback registration is discoverable from the key and code
+    # value, even when the callback name does not use a function suffix.
+    idx8 = SymbolIndex()
+    collect_code_functions(
+        'missionNamespace setVariable ["myCallback", { hint "x"; }]; '
+        'profileNamespace setVariable ["ALT_fnc_fromNamespace", compile "x"];',
+        idx8,
+    )
+    assert idx8.is_known_function("myCallback")
+    assert idx8.is_known_function("ALT_fnc_fromNamespace")
 
     desc = r'''class CfgFunctions {
         class ALT {
