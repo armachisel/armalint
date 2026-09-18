@@ -17,6 +17,7 @@ from .tokenizer import Token, _KEYWORDS, tokenize
 _CODE = "W203"
 _ARITY_CODE = "W204"
 _CALL_TARGET_CODE = "W205"
+_COMPARISON_CODE = "W216"
 _TRIVIA = frozenset(("comment", "preprocessor"))
 
 # (accepted inferred types, user-facing type label). This initial set covers
@@ -374,6 +375,19 @@ def _infer_expression(
     function_return_types: dict[str, str] | None = None,
 ) -> str | None:
     """Infer a few common composed expressions used in assignments."""
+    # A few common command chains have an unambiguous grammar.  Keep this
+    # deliberately narrow: scanning every command in a statement would make
+    # an earlier producer appear to have the type of a later, unrelated call.
+    if (start + 3 < len(tokens)
+            and tokens[start].value.lower() == "finddisplay"
+            and tokens[start + 1].type == "number"
+            and tokens[start + 2].value.lower() == "displayctrl"
+            and tokens[start + 3].type == "number"):
+        return "Control"
+    if (start + 2 < len(tokens)
+            and tokens[start].value.lower() == "createhashmap"
+            and tokens[start + 1].value.lower() == "get"):
+        return "Anything"
     if start < len(tokens) and tokens[start].type == "lparen":
         depth = 0
         for close in range(start, len(tokens)):
@@ -931,6 +945,31 @@ def check_argument_types(
             if actual not in accepted and "Anything" not in accepted:
                 arg_tok = next((t for t in items[arg_index] if t.type not in _TRIVIA), tok)
                 diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tokens[j].value} argument {arg_index + 1} expects {expected}, got {actual}", arg_tok.line, arg_tok.column))
+
+    # Warn only for primitive comparisons whose operands are both known and
+    # have incompatible types. Unknown/dynamic values remain unchecked.
+    for i, tok in enumerate(tokens):
+        if tok.type != "operator" or tok.value not in ("==", "!=", "<", ">", "<=", ">="):
+            continue
+        left = i - 1
+        while left >= 0 and tokens[left].type in _TRIVIA: left -= 1
+        right = i + 1
+        while right < len(tokens) and tokens[right].type in _TRIVIA: right += 1
+        actual_left = _infer_operand(tokens, left, variables) if left >= 0 else None
+        actual_right = _infer_operand(tokens, right, variables) if right < len(tokens) else None
+        primitive = {"Number", "String", "Boolean"}
+        # typeName returns a string describing the operand, so comparing it
+        # with a string literal is intentional even though the underlying
+        # operand may have a different inferred type.
+        type_name_comparison = (
+            left >= 1
+            and tokens[left].type == "local"
+            and tokens[left - 1].value.lower() == "typename"
+        )
+        if (not type_name_comparison
+                and actual_left in primitive and actual_right in primitive
+                and actual_left != actual_right):
+            diags.append(Diagnostic(Severity.WARNING, _COMPARISON_CODE, f"comparison cannot match {actual_left} with {actual_right}", tok.line, tok.column))
     return diags
 
 
@@ -1002,6 +1041,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('params [["_n", ""]]; { _n isEqualType 0 && { abs _n < 100 } };') == []
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
     assert check_argument_types_text('_value = 1; if (typeName _value == "SCALAR") then { sleep _value; };') == []
+    assert any(item.code == _COMPARISON_CODE for item in check_argument_types_text('_n = 1; _n == "one";'))
+    assert check_argument_types_text('_d = findDisplay 46; _c = _d displayCtrl 1; isNull _c;') == []
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(
         'private _remaining = +ALT_currentEnemyPositions; while { (count _remaining) > 0 } do {};'
