@@ -5,6 +5,7 @@ from __future__ import annotations
 from .diagnostic import Diagnostic, Severity, format_diagnostic
 from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Statement, SwitchStatement, TryCatchStatement, parse
 from .tokenizer import Token, tokenize
+from .known import is_known
 
 # Token-type -> bracket character mappings used by the balance check.
 _OPENERS = {"lparen": "(", "lbracket": "[", "lbrace": "{"}
@@ -19,6 +20,7 @@ _BAD_ELSE = "E005"
 _MISSING_COMMA = "E006"
 _FOREACH_ORDER = "E007"
 _MISSING_SEMICOLON = "E008"
+_INVALID_POSTFIX_COMMAND = "E009"
 
 
 def _significant(tokens: list[Token]) -> list[Token]:
@@ -82,6 +84,22 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
     previous_significant: Token | None = None
     sig = _significant(tokens)
 
+    # A two-token statement of ``value command;`` is never a complete SQF
+    # command expression when the second token is a known command. This catches
+    # postfix unary-command mistakes such as ``_nodeIds reverse;``.
+    statement: list[Token] = []
+    for tok in sig + [Token("semicolon", ";", 0, 0, ";")]:
+        if tok.type == "semicolon":
+            if (len(statement) == 2 and statement[0].type in ("local", "ident")
+                    and statement[1].type == "ident" and is_known(statement[1].value)):
+                command = statement[1]
+                diags.append(Diagnostic(Severity.ERROR, _INVALID_POSTFIX_COMMAND,
+                                        f"invalid postfix command expression; use '{command.value} <value>' or assign its result",
+                                        command.line, command.column))
+            statement = []
+        else:
+            statement.append(tok)
+
     # Conservative local grammar checks for forms with an unambiguous shape.
     for i, tok in enumerate(sig):
         if tok.type == "keyword" and tok.value.lower() == "if" and i + 1 < len(sig):
@@ -109,6 +127,14 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                     if left.type in ("number", "string") and right.type in ("number", "string"):
                         diags.append(Diagnostic(Severity.ERROR, _MISSING_COMMA, "missing comma between array elements", right.line, right.column))
                         break
+        if tok.type == "lbrace" and i > 0 and sig[i - 1].type == "ident" and is_known(sig[i - 1].value):
+            close = _matching_close(sig, i)
+            if close is not None and close + 1 < len(sig) and sig[close + 1].type == "rbrace":
+                diags.append(Diagnostic(
+                    Severity.ERROR, _MISSING_SEMICOLON,
+                    "missing semicolon after command with code block",
+                    sig[close + 1].line, sig[close + 1].column,
+                ))
     diags.extend(_ast_statement_boundary_diagnostics(tokens))
 
     for tok in tokens:
