@@ -61,7 +61,8 @@ def _warn(message: str) -> None:
 
 def _extract_with_progress(path: str, label: str, root_number: int, root_total: int,
                            completed: int, overall_total: int,
-                           addon_names: set[str], scan_cache: dict):
+                           addon_names: set[str], scan_cache: dict,
+                           cache_stats: dict[str, int] | None = None):
     """Scan a root and display aggregate addon progress on interactive terminals."""
     stream = (
         sys.stderr if sys.stderr.isatty()
@@ -69,7 +70,7 @@ def _extract_with_progress(path: str, label: str, root_number: int, root_total: 
         else None
     )
     if stream is None:
-        return extract_mod_data_cached(path, scan_cache, None, addon_names)
+        return extract_mod_data_cached(path, scan_cache, None, addon_names, cache_stats)
 
     stop = threading.Event()
     state = {"done": completed, "item": "starting"}
@@ -102,7 +103,7 @@ def _extract_with_progress(path: str, label: str, root_number: int, root_total: 
     draw(f"{status()} |")
     thread.start()
     try:
-        return extract_mod_data_cached(path, scan_cache, progress, addon_names)
+        return extract_mod_data_cached(path, scan_cache, progress, addon_names, cache_stats)
     finally:
         stop.set()
         thread.join()
@@ -238,10 +239,12 @@ def run_update(args) -> int:
     overall_total = sum(len(list_addons(path)) for path, _label in scan_roots)
     completed_addons = 0
     installed_addon_names: set[str] = set()
+    cache_stats = {"reused": 0, "rescanned": 0}
     for current, (path, label) in enumerate(scan_roots, start=1):
         names, types_by_name = _extract_with_progress(
             path, label, current, len(scan_roots), completed_addons, overall_total,
             installed_addon_names, scan_cache,
+            cache_stats,
         )
         completed_addons += len(list_addons(path))
         functions |= names
@@ -278,6 +281,7 @@ def run_update(args) -> int:
         print(f"      - {label}: {info['path']}")
     print(f"  functions : {len(functions)} exact function name(s)")
     print(f"  signatures: {len(function_types)} function type signature(s)")
+    print(f"  scan work : {cache_stats['reused']} reused, {cache_stats['rescanned']} rescanned root(s)")
     print(f"  scan cache: {scan_cache_path}")
     if dry_run:
         print(f"  cache     : {out_path} + {MOD_TYPE_CACHE_FILENAME} (dry run, not written)")
