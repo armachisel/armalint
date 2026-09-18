@@ -70,3 +70,13 @@ mission's `armalint.json` can apply suppression to the whole mission with
 for a file or section-wide exception. Omitting rule codes disables or enables
 all rules. Command-line and mission-configured suppressions also cover
 diagnostics remapped from `#include`d files.
+
+An `armalint.json` file may set `severity` (or `ruleSeverity`) for rules to
+`error`, `warning`, `info`, or `off`, and `ignore` (or `ignorePatterns`) to
+filename globs for generated or vendor files. These settings are
+project-specific and complement command-line and source-comment controls.
+
+Use `--style` to enable optional whitespace rules `W301` (trailing whitespace)
+and `W302` (tab characters). Use `--sarif` for SARIF 2.1.0 output with stable
+rule metadata, severity, messages, and source locations for CI and code
+scanning systems.

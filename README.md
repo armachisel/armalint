@@ -45,10 +45,10 @@ engine command data.
 ## Usage
 
 ```text
-python -m armalint [--json] [--ignore GLOB] [--ignore-rule RULE] [--version] <paths>...
-python -m armalint --file PATH [--json]
-python -m armalint --snippet SOURCE [--json]
-python -m armalint --mission PATH --snippet SOURCE [--json]
+python -m armalint [--json|--sarif] [--style] [--ignore GLOB] [--ignore-rule RULE] [--version] <paths>...
+python -m armalint --file PATH [--json|--sarif]
+python -m armalint --snippet SOURCE [--json|--sarif]
+python -m armalint --mission PATH --snippet SOURCE [--json|--sarif]
 ```
 
 | Option          | Description                                                        |
@@ -58,6 +58,8 @@ python -m armalint --mission PATH --snippet SOURCE [--json]
 | `--snippet SOURCE` | Lint inline SQF without creating a file.                          |
 | `--mission PATH` | Use mission symbols/configuration with `--snippet` or `--file`.      |
 | `--json`        | Emit a single JSON array of diagnostic objects instead of text.     |
+| `--sarif`       | Emit SARIF 2.1.0 with stable rule metadata for CI/code scanning.      |
+| `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
 | `--version`     | Print the version and exit.                                        |

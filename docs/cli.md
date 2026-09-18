@@ -3,10 +3,10 @@
 ## `armalint`
 
 ```text
-armalint [--json] [--ignore GLOB] [--ignore-rule RULE] [--config PATH] [--version] PATH ...
-armalint --file PATH [--json]
-armalint --snippet 'sleep "soon";' [--json]
-armalint --mission PATH --snippet 'sleep _delay;' [--json]
+armalint [--json|--sarif] [--style] [--ignore GLOB] [--ignore-rule RULE] [--config PATH] [--version] PATH ...
+armalint --file PATH [--json|--sarif]
+armalint --snippet 'sleep "soon";' [--json|--sarif]
+armalint --mission PATH --snippet 'sleep _delay;' [--json|--sarif]
 ```
 
 `PATH` can be a file or a directory. Directories are searched for `.sqf`,
@@ -18,6 +18,8 @@ The most useful options are:
 | Option | What it does |
 | --- | --- |
 | `--json` | Print one JSON array of diagnostics. |
+| `--sarif` | Print SARIF 2.1.0 results with stable rule metadata for CI and code scanning. |
+| `--style` | Enable optional style diagnostics (`W301`/`W302`). |
 | `--file PATH` | Lint one specific file; repeat the option for several files. |
 | `--snippet SOURCE` | Lint inline SQF and label diagnostics as `<snippet>`. |
 | `--mission PATH` | Use a mission's symbols and configuration while linting a snippet or file. |
@@ -51,6 +53,16 @@ file-level or section-wide exception. A mission's `armalint.json` can set
 `{"ignoreRules": ["W206", "W101"]}` for every file in that mission.
 Command-line and mission-configured rule suppressions also apply to diagnostics
 from files pulled in through `#include`.
+
+Project configuration can also set rule severity and file patterns:
+
+```json
+{"severity": {"W206": "off", "W101": "error"}, "ignore": ["vendor/**", "generated/**"]}
+```
+
+Severity values are `error`, `warning`, `info`, and `off`. The aliases
+`ruleSeverity` and `ignorePatterns` are accepted as well. Use `--sarif` for
+CI/code-scanning integrations; `--json` remains the compact native format.
 
 ## `armalint-update`
 

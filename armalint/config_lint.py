@@ -75,6 +75,8 @@ def lint_config(
     function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
     ignored_rules: set[str] | frozenset[str] | None = None,
+    rule_severities: dict[str, str] | None = None,
+    style: bool = False,
 ) -> list[Diagnostic]:
     """Lint the SQF embedded in string-valued code fields of ``source``.
 
@@ -107,7 +109,7 @@ def lint_config(
             continue
 
         string_tok = tokens[k]
-        for d in lint_text(content, filename, index, function_signatures, function_return_types, ignored_rules):
+        for d in lint_text(content, filename, index, function_signatures, function_return_types, ignored_rules, rule_severities, style):
             orig_line = d.line
             if orig_line == 1:
                 # Same line as the opening quote: shift the column onto the

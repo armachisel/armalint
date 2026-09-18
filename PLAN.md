@@ -38,10 +38,10 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 5: developer-facing linter features
 
-- [ ] Add inline rule suppression and per-project severity configuration.
-- [ ] Add ignore patterns for generated files/directories.
-- [ ] Add stable JSON/SARIF rule metadata and diagnostic deduplication.
-- [ ] Add optional style rules for naming, whitespace, line length, and bracket style.
+- [x] Add inline rule suppression and per-project severity configuration.
+- [x] Add ignore patterns for generated files/directories.
+- [x] Add stable JSON/SARIF rule metadata and diagnostic deduplication.
+- [x] Add optional style rules for naming, whitespace, line length, and bracket style.
 
 ## Priority 6: packaging and distribution
 

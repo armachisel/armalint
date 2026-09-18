@@ -164,6 +164,28 @@ def extract_ignored_rules(config: dict) -> set[str]:
     }
 
 
+def extract_rule_severities(config: dict) -> dict[str, str]:
+    """Read optional per-rule severities (``error``, ``warning``, ``info``, ``off``)."""
+    raw = config.get("severity", config.get("ruleSeverity"))
+    if not isinstance(raw, dict):
+        return {}
+    allowed = {"error", "warning", "info", "off"}
+    return {
+        code.upper(): value.lower()
+        for code, value in raw.items()
+        if isinstance(code, str) and re.fullmatch(r"(?:E|W)\d{3}", code.strip(), re.IGNORECASE)
+        and isinstance(value, str) and value.lower() in allowed
+    }
+
+
+def extract_ignore_patterns(config: dict) -> list[str]:
+    """Read file/directory glob patterns from ``ignore`` or ``ignorePatterns``."""
+    raw = config.get("ignore", config.get("ignorePatterns"))
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [item.strip() for item in raw if isinstance(item, str) and item.strip()]
+
+
 def extract_mods(config: dict) -> list[dict]:
     """Normalize ``config["mods"]`` into a list of ``{"name", "url", "workshop_id"}`` dicts.
 
@@ -230,6 +252,8 @@ if __name__ == "__main__":
             "functionReturns": {"ALT_fnc_distanceToRoute": "Number", "bad": 3}
         }) == {"alt_fnc_distancetoroute": "Number"}
         assert extract_ignored_rules({"ignoreRules": ["w206", " W101 ", "bad", 3]}) == {"W206", "W101"}
+        assert extract_rule_severities({"severity": {"w206": "error", "W209": "off", "bad": "warning", 3: "info"}}) == {"W206": "error", "W209": "off"}
+        assert extract_ignore_patterns({"ignore": ["generated/**", "", 3]}) == ["generated/**"]
 
         # find_mod_cache walks up looking for armalint_mods.json.
         assert find_mod_cache(nested) is None
