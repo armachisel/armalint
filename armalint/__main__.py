@@ -27,9 +27,10 @@ from .diagnostic import Severity, format_diagnostic
 from .linter import build_symbol_index, lint_file, lint_text
 from .mods import load_mod_cache
 from .mods import load_mod_type_cache
+from .sqm import check_mission_sqm
 from .rules import metadata as rule_metadata
 
-_SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext")
+_SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext", ".sqm")
 _CONFIG_EXTENSIONS = (".hpp", ".ext")
 
 
@@ -45,6 +46,10 @@ def _is_sqf_file(name: str) -> bool:
 def _is_config_file(name: str) -> bool:
     """True if ``name`` is a class-based config file (linted for embedded SQF)."""
     return name.lower().endswith(_CONFIG_EXTENSIONS)
+
+
+def _is_mission_file(name: str) -> bool:
+    return name.lower().endswith(".sqm")
 
 
 def _is_ignored(rel_path: str, patterns: list[str]) -> bool:
@@ -301,6 +306,14 @@ def _main(argv: list[str] | None = None) -> int:
                 continue
             linted_files.append(f)
             all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=args.style))
+        elif _is_mission_file(f):
+            try:
+                with open(f, "r", encoding="utf-8", errors="replace") as fh:
+                    source = fh.read()
+            except OSError:
+                continue
+            linted_files.append(f)
+            all_diags.extend(check_mission_sqm(source, f))
 
     if args.sarif:
         payload = {

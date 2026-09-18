@@ -142,6 +142,9 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | E006 | error    | Missing comma between adjacent literal array elements.              |
 | E007 | error    | Reversed `forEach` form.                                             |
 | E008 | error    | Missing semicolon after a code block where the statement boundary is clear. |
+| E009 | error    | Invalid postfix command expression.                              |
+| E010 | error    | Malformed class-based config structure.                           |
+| E011 | error    | Malformed text `mission.sqm` structure.                            |
 | W101 | warning  | Possible undefined local variable (used before definition).         |
 | W104 | warning  | Unreachable code after unconditional control flow.                   |
 | W201 | warning  | Unknown function/command name after `call` or `spawn`.              |
@@ -153,6 +156,9 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W209 | warning  | A `private` or `params` local has no later reference in its lexical scope. |
 | W210 | warning  | A local include cycle is detected.                             |
 | W211 | warning  | A repeated include has no recognized guard.                     |
+| W212 | warning  | Duplicate mission addon entry.                                  |
+| W213 | warning  | Invalid or missing mission addon list.                          |
+| W214 | warning  | Duplicate config property in one class.                         |
 | W301 | warning  | Trailing whitespace when `--style` is enabled.                 |
 | W302 | warning  | Tab character when `--style` is enabled.                       |
 

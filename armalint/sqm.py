@@ -9,6 +9,8 @@ payloads.
 from __future__ import annotations
 
 from .tokenizer import Token, tokenize
+from .diagnostic import Diagnostic, Severity
+import re
 
 # Array property names to scan for (SQM is case-insensitive).
 _ADDON_ARRAYS = ("addons", "addonsauto")
@@ -116,6 +118,35 @@ def extract_addons(text: str) -> list[str]:
     return result
 
 
+def check_mission_sqm(text: str, filename: str = "") -> list[Diagnostic]:
+    """Validate the small, stable structural contract of text mission.sqm."""
+    diagnostics: list[Diagnostic] = []
+    tokens = tokenize(text)
+    version = next((t for i, t in enumerate(tokens) if t.type == "ident" and t.value.lower() == "version"), None)
+    if version is None:
+        diagnostics.append(Diagnostic(Severity.ERROR, "E011", "mission.sqm is missing version", 1, 1, filename))
+    elif not any(t.type == "number" for t in tokens[tokens.index(version) + 1:tokens.index(version) + 5]):
+        diagnostics.append(Diagnostic(Severity.ERROR, "E011", "mission.sqm version must be numeric", version.line, version.column, filename))
+    if not any(t.type == "ident" and t.value.lower() == "mission" for t in tokens):
+        diagnostics.append(Diagnostic(Severity.ERROR, "E011", "mission.sqm is missing class Mission", 1, 1, filename))
+    addons = extract_addons(text)
+    seen: set[str] = set()
+    for addon in addons:
+        key = addon.lower()
+        if not re.match(r"^[A-Za-z0-9_]+$", addon):
+            diagnostics.append(Diagnostic(Severity.WARNING, "W213", f"invalid mission addon name: {addon}", 1, 1, filename))
+        if key in seen:
+            diagnostics.append(Diagnostic(Severity.WARNING, "W212", f"duplicate mission addon: {addon}", 1, 1, filename))
+        seen.add(key)
+    # Inspect the raw arrays because extract_addons intentionally deduplicates.
+    raw_names = [a.lower() for body in re.findall(r"\baddOns(?:Auto)?\s*(?:\[\s*\])?\s*=\s*\{([^}]*)\}", text, re.IGNORECASE | re.DOTALL) for a in re.findall(r'"([^"]+)"', body)]
+    for addon in sorted({name for name in raw_names if raw_names.count(name) > 1}):
+        diagnostics.append(Diagnostic(Severity.WARNING, "W212", f"duplicate mission addon: {addon}", 1, 1, filename))
+    if not addons:
+        diagnostics.append(Diagnostic(Severity.WARNING, "W213", "mission.sqm has no addOns[] or addOnsAuto[] entries", 1, 1, filename))
+    return diagnostics
+
+
 if __name__ == "__main__":
     text = """\
 version=54;
@@ -159,5 +190,8 @@ class Mission
     ) == ["ace_main"]
     assert extract_addons("not an sqm at all") == []
     assert extract_addons("") == []
+    sqm_diags = check_mission_sqm('version=54; class Mission { addOns[] = {"A", "A"}; };', "mission.sqm")
+    assert any(item.code == "W212" for item in sqm_diags), sqm_diags
+    assert check_mission_sqm('class Mission { addOns[] = {"A"}; };', "mission.sqm")[0].code == "E011"
 
     print("sqm self-test passed")
