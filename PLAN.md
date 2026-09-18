@@ -21,12 +21,20 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Detect calls to values that are known not to contain code.
 - [x] Report duplicate function definitions, suspicious overwrites, and constant conditions.
 - [x] Report unused locals conservatively across include and nested-scope boundaries.
+- [ ] Detect variable shadowing, duplicate locals, and more use-before-assignment paths.
+- [ ] Add union-type narrowing after `isEqualType`, `isNull`, `typeName`, and guard branches.
+- [ ] Propagate types through more command chains and detect impossible comparisons.
+- [ ] Add SQF-specific checks for `params` shapes, namespace misuse, event-handler lifecycle, remote execution, and public-variable contracts.
+- [ ] Add value-flow diagnostics for overwritten-before-use, constant assignments, and ineffective empty code/array expressions.
 
 ## Priority 3: preprocessor and config coverage
 
 - [x] Add include-guard diagnostics; object-like macro substitution, conditional compilation, and nested includes are supported.
 - [x] Make CfgFunctions inheritance and custom `file` mappings fully parser-based.
 - [x] Improve callback discovery through event handlers and namespace variables.
+- [ ] Diagnose macro redefinition, undefined macro use, malformed conditional nesting, and unsupported directives.
+- [ ] Validate deeper `description.ext` and `config.cpp` property types and inheritance.
+- [ ] Validate `mission.sqm` structure, version, required addons, and common property errors.
 
 ## Priority 4: registry and updater quality
 
@@ -35,6 +43,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Remove stale functions when addons disappear; source-root provenance is recorded in the scan cache.
 - [x] Report reused versus rescanned roots.
 - [x] Include Arma-version metadata, per-function source-PBO provenance, and unreadable/unsupported PBO diagnostics.
+- [ ] Complete arity/type metadata for every built-in command variant, including binary and nular forms and version differences.
 
 ## Priority 5: developer-facing linter features
 
@@ -42,6 +51,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Add ignore patterns for generated files/directories.
 - [x] Add stable JSON/SARIF rule metadata and diagnostic deduplication.
 - [x] Add optional style rules for naming, whitespace, line length, and bracket style.
+- [ ] Add suppression justification checks, unused-suppression diagnostics, and baseline files.
 
 ## Priority 6: packaging and distribution
 
@@ -102,4 +112,6 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Return that metadata through MCP so Claude can explain functions, suggest
   likely alternatives, and provide context for type warnings.
 - [x] Mark metadata provenance and confidence; missing descriptions are normal
+- [ ] Add SARIF fingerprints, related locations, rule help URLs, and stable CI identities.
+- [ ] Add file watching, incremental editor linting, and an LSP adapter.
   for compiled engine functions and many mod functions.

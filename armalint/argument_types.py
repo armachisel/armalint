@@ -698,6 +698,18 @@ def _narrowed_type(tokens: list[Token], index: int, variables: dict[str, str]) -
     name = tokens[index].value.lower()
     if name == "_x":
         return None
+    # Common guard form: ``typeName _value == "SCALAR"``.  SQF exposes
+    # runtime type names as strings, so map the stable names back to the
+    # checker's canonical types inside the guarded expression.
+    type_names = {"scalar": "Number", "number": "Number", "bool": "Boolean", "boolean": "Boolean", "string": "String", "array": "Array", "object": "Object", "code": "Code", "config": "Config", "hashmap": "HashMap"}
+    for i in range(index - 1, -1, -1):
+        if tokens[i].type == "semicolon":
+            break
+        if (i + 3 < index and tokens[i].value.lower() == "typename"
+                and tokens[i + 1].type == "local" and tokens[i + 1].value.lower() == name
+                and tokens[i + 2].type == "operator" and tokens[i + 2].value in ("==", "isequalto")
+                and tokens[i + 3].type == "string"):
+            return type_names.get(tokens[i + 3].value.lower())
     for i in range(index - 1, -1, -1):
         if tokens[i].type == "semicolon":
             break
@@ -989,6 +1001,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('params [["_delay", "soon", [""]]]; sleep _delay;')[0].code == _CODE
     assert check_argument_types_text('params [["_n", ""]]; { _n isEqualType 0 && { abs _n < 100 } };') == []
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
+    assert check_argument_types_text('_value = 1; if (typeName _value == "SCALAR") then { sleep _value; };') == []
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(
         'private _remaining = +ALT_currentEnemyPositions; while { (count _remaining) > 0 } do {};'

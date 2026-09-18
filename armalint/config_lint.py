@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-from .diagnostic import Diagnostic
+from .diagnostic import Diagnostic, Severity
 from .linter import lint_text
 from .symbols import SymbolIndex
 from .tokenizer import tokenize
@@ -40,6 +40,31 @@ _TRIVIA = frozenset(("comment", "preprocessor"))
 
 # An underscore followed by a word character (an SQF local-variable marker).
 _LOCAL_MARKER = re.compile(r"_\w")
+
+
+def check_config_structure(source: str, filename: str = "") -> list[Diagnostic]:
+    """Check balanced config classes and duplicate properties in one class."""
+    tokens = tokenize(source)
+    diagnostics: list[Diagnostic] = []
+    stack: list[tuple[Token, set[str]]] = []
+    for i, token in enumerate(tokens):
+        if token.type == "lbrace":
+            stack.append((token, set()))
+        elif token.type == "rbrace":
+            if not stack:
+                diagnostics.append(Diagnostic(Severity.ERROR, "E010", "unmatched '}' in config", token.line, token.column, filename))
+            else:
+                stack.pop()
+        elif token.type == "ident" and stack:
+            j = _next_significant(tokens, i)
+            if j < len(tokens) and tokens[j].type == "operator" and tokens[j].value == "=":
+                key = token.value.lower()
+                if key in stack[-1][1]:
+                    diagnostics.append(Diagnostic(Severity.WARNING, "W214", f"config property defined more than once: {token.value}", token.line, token.column, filename))
+                stack[-1][1].add(key)
+    for opening, _properties in stack:
+        diagnostics.append(Diagnostic(Severity.ERROR, "E010", "unclosed '{' in config", opening.line, opening.column, filename))
+    return diagnostics
 
 
 def _next_significant(tokens, index: int) -> int:
@@ -90,6 +115,7 @@ def lint_config(
     tokens = tokenize(source)
     n = len(tokens)
     diags: list[Diagnostic] = []
+    diags.extend(check_config_structure(source, filename))
 
     for i, tok in enumerate(tokens):
         if tok.type != "ident":
@@ -146,5 +172,7 @@ if __name__ == "__main__":
     assert len(r201) == 1, r201
     assert (r201[0].line, r201[0].column) == (1, 23), (r201[0].line, r201[0].column)
     assert r201[0].file == "t.ext", r201[0].file
+    assert any(d.code == "W214" for d in check_config_structure("class X { title = 1; title = 2; };", "t.ext"))
+    assert any(d.code == "E010" for d in check_config_structure("class X {", "t.ext"))
 
     print("config_lint self-test passed")

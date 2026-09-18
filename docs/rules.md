@@ -18,6 +18,8 @@ These are errors and make the command exit with status 1.
 | `E007` | Reversed `forEach` syntax; the code block must come before `forEach`. |
 | `E008` | A code block or command expression is followed by a statement that needs a semicolon in a case where the boundary is clear. The check is deliberately conservative because a final semicolon before `}` is optional in SQF. |
 | `E009` | A statement uses a known command in postfix form, such as `_items reverse;`, which is not a complete SQF command expression. |
+| `E010` | A class-based config has unmatched or unclosed braces. |
+| `E011` | A text `mission.sqm` is missing its required `version` field. |
 
 ## Analysis warnings
 
@@ -39,6 +41,9 @@ mistakes are found.
 | `W209` | A `private` or `params` local has no later reference in its lexical scope. Files proven to be included fragments and files containing includes are skipped. |
 | `W210` | A local include cycle is detected. Ordinary repeated includes are not warned about. |
 | `W211` | A file is included repeatedly without `#pragma once` or a conventional `#ifndef`/`#define` guard. |
+| `W212` | A mission addon is listed more than once. |
+| `W213` | A mission addon name is malformed or no addon list is present. |
+| `W214` | A config property is assigned more than once in the same class. |
 | `W301` | Trailing whitespace when optional style checks are enabled with `--style`. |
 | `W302` | Tab character when optional style checks are enabled with `--style`. |
 
