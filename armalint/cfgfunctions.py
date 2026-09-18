@@ -38,9 +38,33 @@ _FUNCTION_PROPERTIES = frozenset(
 _CFG_FUNCTIONS_NAME = "cfgfunctions"
 
 
-def _is_function(node: ConfigClass) -> bool:
-    """True if ``node`` carries at least one function-defining property."""
-    return any(name.lower() in _FUNCTION_PROPERTIES for name in node.properties)
+def _effective_properties(
+    node: ConfigClass,
+    siblings: dict[str, ConfigClass] | None = None,
+    seen: set[str] | None = None,
+) -> dict:
+    """Return local properties plus properties inherited from a local base.
+
+    Rapified configs retain a class's base name, but do not encode a global
+    symbol table.  CfgFunctions inheritance is normally between classes at the
+    same level, so resolve only those local siblings.  This keeps extraction
+    conservative when a base comes from another addon that is not available.
+    """
+    result: dict = {}
+    if siblings and node.base:
+        key = node.base.lower()
+        seen = set() if seen is None else seen
+        if key not in seen:
+            parent = siblings.get(key)
+            if parent is not None:
+                result.update(_effective_properties(parent, siblings, seen | {key}))
+    result.update(node.properties)
+    return result
+
+
+def _is_function(node: ConfigClass, siblings: dict[str, ConfigClass] | None = None) -> bool:
+    """True if ``node`` or its local base carries a function marker."""
+    return any(name.lower() in _FUNCTION_PROPERTIES for name in _effective_properties(node, siblings))
 
 
 def extract_cfg_functions(config: ConfigClass) -> set[str]:
@@ -55,18 +79,19 @@ def extract_cfg_functions(config: ConfigClass) -> set[str]:
     """
     names: set[str] = set()
 
-    def collect(node: ConfigClass, tag: str) -> None:
-        if _is_function(node):
+    def collect(node: ConfigClass, tag: str, siblings: list[ConfigClass]) -> None:
+        sibling_map = {item.name.lower(): item for item in siblings}
+        if _is_function(node, sibling_map):
             names.add(f"{tag}_fnc_{node.name.lower()}")
         for child in node.children:
-            collect(child, tag)
+            collect(child, tag, node.children)
 
     def visit(node: ConfigClass) -> None:
         if node.name.lower() == _CFG_FUNCTIONS_NAME:
             for tag in node.children:
                 tag_name = tag.name.lower()
                 for child in tag.children:
-                    collect(child, tag_name)
+                    collect(child, tag_name, tag.children)
         for child in node.children:
             visit(child)
 
@@ -78,20 +103,21 @@ def extract_cfg_function_files(config: ConfigClass) -> dict[str, str]:
     """Return declared function names mapped to their explicit ``file`` paths."""
     result: dict[str, str] = {}
 
-    def collect(node: ConfigClass, tag: str) -> None:
-        if _is_function(node):
-            for key, value in node.properties.items():
+    def collect(node: ConfigClass, tag: str, siblings: list[ConfigClass]) -> None:
+        props = _effective_properties(node, {item.name.lower(): item for item in siblings})
+        if any(key.lower() in _FUNCTION_PROPERTIES for key in props):
+            for key, value in props.items():
                 if key.lower() == "file" and isinstance(value, str):
                     result[f"{tag}_fnc_{node.name.lower()}"] = value
                     break
         for child in node.children:
-            collect(child, tag)
+            collect(child, tag, node.children)
 
     def visit(node: ConfigClass) -> None:
         if node.name.lower() == _CFG_FUNCTIONS_NAME:
             for tag in node.children:
                 for child in tag.children:
-                    collect(child, tag.name.lower())
+                    collect(child, tag.name.lower(), tag.children)
         for child in node.children:
             visit(child)
 
@@ -224,6 +250,28 @@ if __name__ == "__main__":
         ],
     )
     assert extract_cfg_functions(multi) == {"one_fnc_f", "two_fnc_g"}
+
+    # A local derived class inherits the function marker and file path from a
+    # sibling base class.  External bases remain unresolved conservatively.
+    inherited = ConfigClass(
+        name="",
+        children=[ConfigClass(
+            name="CfgFunctions",
+            children=[ConfigClass(
+                name="tag",
+                children=[
+                    ConfigClass(name="baseFn", properties={"file": "base.sqf"}),
+                    ConfigClass(name="derivedFn", base="baseFn"),
+                    ConfigClass(name="externalFn", base="OtherAddonFn"),
+                ],
+            )],
+        )],
+    )
+    assert extract_cfg_functions(inherited) == {"tag_fnc_basefn", "tag_fnc_derivedfn"}
+    assert extract_cfg_function_files(inherited) == {
+        "tag_fnc_basefn": "base.sqf",
+        "tag_fnc_derivedfn": "base.sqf",
+    }
 
     # Empty tree yields an empty set.
     assert extract_cfg_functions(ConfigClass(name="")) == set()

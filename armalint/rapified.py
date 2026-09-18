@@ -136,14 +136,15 @@ class ConfigClass:
     * ``float``    — a float value
     * ``list``     — an array value (may nest arbitrarily)
 
-    ``children`` holds nested classes in file order. The inherited parent
-    class name is deliberately not retained (it is not needed to navigate the
-    tree or to read properties).
+    ``children`` holds nested classes in file order. ``base`` retains the
+    optional inherited parent class name so consumers can resolve inherited
+    config properties where that matters (for example ``CfgFunctions``).
     """
 
     name: str
     properties: dict = field(default_factory=dict)
     children: list = field(default_factory=list)
+    base: str = ""
 
 
 class _Reader:
@@ -246,7 +247,8 @@ def _parse_class_at(data: bytes, offset: int, name: str) -> ConfigClass:
     r.pos = offset
 
     try:
-        _base = r.read_cstring()  # inherited parent name (not retained)
+        base = r.read_cstring()
+        cls.base = base
         count = r.read_compressed_int()
     except _FormatError:
         return cls
@@ -407,7 +409,7 @@ def _property_entry_len(name: str, value) -> int:
 
 def _class_body_size(cls: ConfigClass) -> int:
     count = len(cls.properties) + len(cls.children)
-    size = len(_encode_cstring("")) + len(_encode_compressed_int(count))
+    size = len(_encode_cstring(cls.base)) + len(_encode_compressed_int(count))
     for name, value in cls.properties.items():
         size += _property_entry_len(name, value)
     for child in cls.children:
@@ -426,8 +428,7 @@ def rapify(config: ConfigClass) -> bytes:
     The layout follows the reference encoder (``WoozyMasta/rap``
     ``codec_encode.go``): a 16-byte header, class bodies carrying a base name,
     an entry count, entries, and a trailing next-class offset, plus an empty
-    enum table. Because ``ConfigClass`` drops the inherited parent name and
-    ``extern``/``delete`` entries, those never appear in the output.
+    enum table. ``extern``/``delete`` entries are not represented.
     """
     if not isinstance(config, ConfigClass):
         raise TypeError("rapify() expects a ConfigClass")
@@ -451,7 +452,7 @@ def rapify(config: ConfigClass) -> bytes:
     def emit(cls: ConfigClass) -> bytes:
         out = bytearray()
         count = len(cls.properties) + len(cls.children)
-        out += _encode_cstring("")
+        out += _encode_cstring(cls.base)
         out += _encode_compressed_int(count)
         for name, value in cls.properties.items():
             if isinstance(value, list):
@@ -514,6 +515,9 @@ if __name__ == "__main__":
     assert cfga.children[0].properties == {"x": 1}
     assert cfga.children[1].properties == {"y": 2}
     assert cfga.children[2].properties == {"z": 3}
+    assert cfga.children[0].base == ""
+    assert cfga.children[1].base == "A"
+    assert cfga.children[2].base == "B"
 
     # class_with_array: class A has arr[] = {1, 2, 3};.
     with_array = _real(
@@ -636,7 +640,7 @@ if __name__ == "__main__":
                         children=[
                             ConfigClass(name="medical", children=[
                                 ConfigClass(name="setUnconscious", properties={"file": "a.sqf"}),
-                                ConfigClass(name="setDamage", properties={"file": "b.sqf"}),
+                                ConfigClass(name="setDamage", base="setUnconscious", properties={"file": "b.sqf"}),
                             ]),
                         ],
                     ),
