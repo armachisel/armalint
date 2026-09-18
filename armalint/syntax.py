@@ -27,19 +27,27 @@ def _significant(tokens: list[Token]) -> list[Token]:
     return [t for t in tokens if t.type not in ("comment", "preprocessor", "eof")]
 
 
-def _matching_close(tokens: list[Token], start: int) -> int | None:
-    pairs = {"lparen": "rparen", "lbracket": "rbracket", "lbrace": "rbrace"}
-    stack: list[str] = []
-    for i in range(start, len(tokens)):
-        kind = tokens[i].type
-        if kind in pairs:
-            stack.append(pairs[kind])
-        elif kind in ("rparen", "rbracket", "rbrace"):
-            if not stack or stack.pop() != kind:
-                return None
-            if not stack:
-                return i
-    return None
+def _matching_closes(tokens: list[Token]) -> dict[int, int]:
+    """Build opener-to-closer indexes in one pass.
+
+    The previous implementation rescanned the remainder of the token stream
+    for every opener. Large mission files contain thousands of nested arrays
+    and code blocks, making that approach quadratic. Invalid/mismatched groups
+    are simply omitted; callers retain their existing conservative behavior.
+    """
+    expected = {"lparen": "rparen", "lbracket": "rbracket", "lbrace": "rbrace"}
+    stack: list[tuple[int, str]] = []
+    closes: dict[int, int] = {}
+    for index, token in enumerate(tokens):
+        kind = token.type
+        if kind in expected:
+            stack.append((index, expected[kind]))
+        elif kind in _CLOSERS:
+            if not stack or stack[-1][1] != kind:
+                continue
+            opener, _ = stack.pop()
+            closes[opener] = index
+    return closes
 
 
 def _ast_statement_boundary_diagnostics(tokens: list[Token]) -> list[Diagnostic]:
@@ -83,6 +91,7 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
     stack: list[tuple[Token, str]] = []  # (opener token, opener char)
     previous_significant: Token | None = None
     sig = _significant(tokens)
+    matching_closes = _matching_closes(sig)
 
     # A two-token statement of ``value command;`` is never a complete SQF
     # command expression when the second token is a known command. This catches
@@ -112,7 +121,7 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                 condition_start += 1
             if condition_start >= len(sig) or sig[condition_start].type != "lparen":
                 continue
-            close = _matching_close(sig, condition_start)
+            close = matching_closes.get(condition_start)
             if close is not None and (close + 1 == len(sig) or not (sig[close + 1].type == "keyword" and sig[close + 1].value.lower() in ("then", "exitwith"))):
                 bad = sig[close + 1] if close + 1 < len(sig) else sig[close]
                 diags.append(Diagnostic(Severity.ERROR, _MISSING_THEN, "expected 'then' after if condition", bad.line, bad.column))
@@ -123,7 +132,7 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
         if tok.type == "keyword" and tok.value.lower() == "foreach" and i + 2 < len(sig) and sig[i + 1].type in ("ident", "local") and sig[i + 2].type == "lbrace":
             diags.append(Diagnostic(Severity.ERROR, _FOREACH_ORDER, "expected code block before 'forEach'", tok.line, tok.column))
         if tok.type == "lbracket":
-            close = _matching_close(sig, i)
+            close = matching_closes.get(i)
             if close is not None:
                 for left, right in zip(sig[i + 1:close], sig[i + 2:close + 1]):
                     if left.type in ("number", "string") and right.type in ("number", "string"):
@@ -133,7 +142,7 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
         # next statement.  A final expression before the enclosing `}` is
         # valid SQF and is intentionally left alone.
         if tok.type == "lbrace" and i > 0 and sig[i - 1].type == "ident" and is_known(sig[i - 1].value):
-            close = _matching_close(sig, i)
+            close = matching_closes.get(i)
             if close is not None and close + 1 < len(sig):
                 nxt = sig[close + 1]
                 # Operators, delimiters, and control-flow keywords commonly

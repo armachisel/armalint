@@ -615,7 +615,9 @@ def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None
             j += 1
 
 
-def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str]) -> None:
+def _collect_foreach_element_types(
+    tokens: list[Token], variables: dict[str, str], nodes: list[Node] | None = None
+) -> None:
     """Infer loop element types from AST headers and body spans."""
     def collect_body(node: Node, element_type: str) -> None:
         if isinstance(node, Statement):
@@ -670,7 +672,7 @@ def _collect_foreach_element_types(tokens: list[Token], variables: dict[str, str
         if node.body:
             collect_loop(node.body)
 
-    for node in parse(tokens).statements:
+    for node in (nodes if nodes is not None else parse(tokens).statements):
         collect_loop(node)
 
 
@@ -746,8 +748,9 @@ def check_argument_types(
     diags: list[Diagnostic] = []
     variables: dict[str, str] = {}
     element_types: dict[str, str] = {}
+    ast_nodes = parse(tokens).statements
     _collect_param_types(tokens, variables)
-    _collect_foreach_element_types(tokens, variables)
+    _collect_foreach_element_types(tokens, variables, ast_nodes)
     # Collect simple literal assignments. If the same variable is assigned
     # values of different types, forget its type rather than guess.
     for i, tok in enumerate(tokens[:-2]):
@@ -770,19 +773,19 @@ def check_argument_types(
                 variables[key] = element_types[tokens[i + 2].value.lower()]
     # Re-apply precise loop-element facts after ordinary assignment collection;
     # the loop body may otherwise look like a conflicting global assignment.
-    for node in parse(tokens).statements:
+    for node in ast_nodes:
         if isinstance(node, Statement) and isinstance(node.expression, BinaryExpression) and node.expression.operator.value == "=":
             left = node.expression.left
             if isinstance(left, NameExpression) and left.name.value.lower() not in variables:
                 inferred = _infer_ast_expression(node.expression.right, variables, function_return_types)
                 if inferred:
                     variables[left.name.value.lower()] = inferred
-    _collect_foreach_element_types(tokens, variables)
+    _collect_foreach_element_types(tokens, variables, ast_nodes)
     # `_x` is an implicit loop-local and must never retain a type across
     # unrelated loops in the same file.
     variables.pop("_x", None)
     _collect_type_guards(tokens, variables)
-    _seed_ast_assignments(parse(tokens).statements, variables, function_return_types)
+    _seed_ast_assignments(ast_nodes, variables, function_return_types)
     # Infer local parameter types from unambiguous unary command uses before
     # checking binary commands such as HashMap get.
     for i, tok in enumerate(tokens):
