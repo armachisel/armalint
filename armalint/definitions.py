@@ -32,7 +32,13 @@ def check_definitions(tokens: list[Token]) -> list[Diagnostic]:
         if value >= len(tokens):
             continue
         name = token.value.lower()
-        is_function = tokens[value].type == "lbrace" or tokens[value].value.lower() in _COMPILE
+        # Function-style globals conventionally use the Arma ``_fnc_`` marker.
+        # Other globals are often callbacks or state values that legitimately
+        # change type over a mission's lifetime.
+        is_function = (
+            "_fnc_" in name
+            and (tokens[value].type == "lbrace" or tokens[value].value.lower() in _COMPILE)
+        )
         if is_function:
             if name in functions:
                 diagnostics.append(Diagnostic(Severity.WARNING, _DUPLICATE, f"duplicate function definition: {token.value}", token.line, token.column))
@@ -50,5 +56,6 @@ def check_definitions_text(source: str) -> list[Diagnostic]:
 if __name__ == "__main__":
     assert check_definitions_text("TAG_fnc_a = {}; TAG_fnc_a = {}; ")[0].code == _DUPLICATE
     assert check_definitions_text("TAG_fnc_a = {}; TAG_fnc_a = 1;")[0].code == _OVERWRITE
+    assert check_definitions_text("ALT_callback = {}; ALT_callback = false;") == []
     assert check_definitions_text("private _fn = {}; _value = 1;") == []
     print("definitions self-test passed")
