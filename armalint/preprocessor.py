@@ -20,6 +20,7 @@ _IFDEF_RE = re.compile(r'^\s*#\s*(ifdef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IF_DEFINED_RE = re.compile(r'^\s*#\s*if\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
 _IF_LITERAL_RE = re.compile(r'^\s*#\s*if\s+(0|1|true|false)\s*$')
 _ELIF_RE = re.compile(r'^\s*#\s*elif\s+(0|1|true|false)\s*$')
+_ELIF_DEFINED_RE = re.compile(r'^\s*#\s*elif\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
 _ELSE_RE = re.compile(r'^\s*#\s*else\s*$')
 _ENDIF_RE = re.compile(r'^\s*#\s*endif\s*$')
 
@@ -101,6 +102,16 @@ def _preprocess_lines(
         if match:
             if _conditions:
                 enabled = match.group(1).lower() in ("1", "true")
+                _conditions[-1] = enabled and all(_conditions[:-1])
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _ELIF_DEFINED_RE.match(line)
+        if match:
+            if _conditions:
+                enabled = match.group(2).lower() in _defines
+                if match.group(1):
+                    enabled = not enabled
                 _conditions[-1] = enabled and all(_conditions[:-1])
             lines.append("")
             line_map.append((filename, orig_line))
@@ -248,5 +259,8 @@ if __name__ == "__main__":
 
         literals, _ = preprocess('#if 0\nhint "no";\n#elif 1\nhint "yes";\n#endif\n', main_path, tmpdir)
         assert 'hint "yes";' in literals and 'hint "no";' not in literals
+
+        defined_elif, _ = preprocess('#define READY\n#if 0\nhint "no";\n#elif defined(READY)\nhint "yes";\n#endif\n', main_path, tmpdir)
+        assert 'hint "yes";' in defined_elif and 'hint "no";' not in defined_elif
 
     print("preprocessor self-test passed")
