@@ -83,17 +83,17 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 8: editor and agent integration
 
-- [ ] Expose Armalint through a standard MCP server usable by Claude and other
+- [x] Expose Armalint through a standard MCP server usable by Claude and other
   MCP clients. The initial read-only tools should include:
   - lint SQF text and return structured diagnostics with file/line/column data;
   - lint a mission file or directory using its discovered project config;
   - look up whether a command or function name is known;
   - look up extracted mission/mod function signatures and source addons.
-- [ ] Support stdio transport first, with clear setup instructions for Claude
+- [x] Support stdio transport first, with clear setup instructions for Claude
   Desktop and other local MCP hosts.
-- [ ] Keep MCP calls isolated from cache mutation by default; expose updating
+- [x] Keep MCP calls isolated from cache mutation by default; expose updating
   or cache-clearing as separate explicitly named operations if needed.
-- [ ] Version the MCP response schema and include rule codes, severity, and
+- [x] Version the MCP response schema and include rule codes, severity, and
   actionable messages so clients can present or auto-fix diagnostics safely.
 - [ ] Extract useful function metadata where it is available locally:
   - descriptions/documentation fields from `CfgFunctions` and `CfgPatches`;

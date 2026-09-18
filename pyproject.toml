@@ -28,6 +28,7 @@ docs = ["mkdocs-material>=9.6,<10"]
 armalint = "armalint.__main__:_main"
 armalint-update = "armalint.update:main"
 armalint-update-commands = "armalint.update_commands:main"
+armalint-mcp = "armalint.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["armalint*"]

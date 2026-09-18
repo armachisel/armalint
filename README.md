@@ -40,7 +40,8 @@ pipx install .
 
 The package also installs `armalint-update` and
 `armalint-update-commands` entry points for refreshing the extracted mod and
-engine command data.
+engine command data. It also installs `armalint-mcp`, a read-only stdio MCP
+server for Claude and other MCP clients.
 
 ## Usage
 
