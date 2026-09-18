@@ -62,12 +62,13 @@ def lint_text(
     diags: list[Diagnostic] = []
     diags.extend(check_syntax(tokens))
     from .ast import parse
-    diags.extend(check_control_flow(parse(tokens)))
+    tree = parse(tokens)
+    diags.extend(check_control_flow(tree))
     diags.extend(check_definitions(tokens))
     # Type inference is file-local. Include expansion is useful for symbol and
     # undefined-variable analysis, but carrying inferred locals across included
     # files creates false positives when common names are reused.
-    diags.extend(check_argument_types(tokens, function_signatures, function_return_types))
+    diags.extend(check_argument_types(tokens, function_signatures, function_return_types, tree.statements))
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
@@ -83,6 +84,7 @@ def lint_file(
     function_signatures: dict[str, list[str | None]] | None = None,
     function_return_types: dict[str, str] | None = None,
     ignored_rules: set[str] | frozenset[str] | None = None,
+    pretokenized: list | None = None,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -97,7 +99,7 @@ def lint_file(
     combined, line_map = preprocess(
         source, path, os.path.dirname(os.path.abspath(path))
     )
-    tokens = tokenize(combined)
+    tokens = pretokenized if combined == source and pretokenized is not None else tokenize(combined)
     from .ast import parse
     tree = parse(tokens)
 
@@ -105,7 +107,9 @@ def lint_file(
     diags.extend(check_syntax(tokens))
     diags.extend(check_control_flow(tree))
     diags.extend(check_definitions(tokens))
-    diags.extend(check_argument_types(tokenize(source), function_signatures, function_return_types))
+    source_tokens = tokens if combined == source else tokenize(source)
+    source_nodes = tree.statements if combined == source else None
+    diags.extend(check_argument_types(source_tokens, function_signatures, function_return_types, source_nodes))
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
@@ -121,7 +125,7 @@ def lint_file(
     return _deduplicate(filter_suppressed(diags, source, ignored_rules))
 
 
-def build_symbol_index(file_paths: list[str]) -> SymbolIndex:
+def build_symbol_index(file_paths: list[str], token_cache: dict[str, list] | None = None) -> SymbolIndex:
     """Build a mission-wide :class:`SymbolIndex` from ``file_paths``.
 
     For each path, the file is read as UTF-8 (with ``errors="replace"``) and the
@@ -145,5 +149,8 @@ def build_symbol_index(file_paths: list[str]) -> SymbolIndex:
         if ext in _CONFIG_EXTENSIONS:
             collect_description_cfg_functions(source, index)
         else:
-            collect_code_functions(source, index)
+            tokens = tokenize(source)
+            if token_cache is not None:
+                token_cache[path] = tokens
+            collect_code_functions(source, index, tokens=tokens)
     return index
