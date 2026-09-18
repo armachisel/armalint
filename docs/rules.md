@@ -39,6 +39,8 @@ mistakes are found.
 | `W209` | A `private` or `params` local has no later reference in its lexical scope. Files proven to be included fragments and files containing includes are skipped. |
 | `W210` | A local include cycle is detected. Ordinary repeated includes are not warned about. |
 | `W211` | A file is included repeatedly without `#pragma once` or a conventional `#ifndef`/`#define` guard. |
+| `W301` | Trailing whitespace when optional style checks are enabled with `--style`. |
+| `W302` | Tab character when optional style checks are enabled with `--style`. |
 
 ## How cautious is the analysis?
 
@@ -50,6 +52,8 @@ unrelated to the problem you are trying to find.
 
 Config files are handled as config files. SQF embedded in code-valued config
 properties is linted, while the class hierarchy itself is not treated as SQF.
+Local includes, object-like macros, and simple literal/defined conditional
+directives are supported; arbitrary preprocessor expressions are not executed.
 
 The parser builds source-spanned nodes for `if`/`else`, `for`, `while`,
 `waitUntil`, `try`/`catch`, `switch`, `exitWith`, `forEach`, and direct `call`/`spawn` code

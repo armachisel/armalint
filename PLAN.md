@@ -65,20 +65,20 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 7: documentation and project communication
 
-- [ ] Create a contributor and user documentation set covering installation,
+- [x] Create a contributor and user documentation set covering installation,
   CLI usage, mission updates, cache management, configuration, diagnostics,
   signature extraction, and troubleshooting.
-- [ ] Keep a concise README as the landing page, with the full documentation
+- [x] Keep a concise README as the landing page, with the full documentation
   in a `docs/` tree and examples that can be copied and run on Windows.
-- [ ] Document the rule catalog, severity model, JSON output, supported Arma
+- [x] Document the rule catalog, severity model, JSON output, supported Arma
   data sources, and the limits of static type/control-flow analysis.
-- [ ] Add contributor guidance for tests, packaging, updater changes, adding
+- [x] Add contributor guidance for tests, packaging, updater changes, adding
   command/function signatures, and release procedures.
-- [ ] Build the site with MkDocs (Material theme can be evaluated during
+- [x] Build the site with MkDocs (Material theme can be evaluated during
   implementation) and deploy it from GitHub Actions to GitHub Pages. Keep the
   source Markdown and build configuration in this repository so the site can
   later move to another static host without rewriting the docs.
-- [ ] Add documentation checks and link validation to CI, and publish versioned
+- [x] Add documentation checks and link validation to CI, and publish versioned
   release notes alongside package releases.
 
 ## Priority 8: editor and agent integration

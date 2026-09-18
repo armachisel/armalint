@@ -9,8 +9,8 @@ from anywhere, or keep a checkout around while working on the linter itself.
 uv tool install .
 ```
 
-That gives you `armalint`, `armalint-update`, and
-`armalint-update-commands`. `pipx install .` does the same job if that is what
+That gives you `armalint`, `armalint-update`, `armalint-update-commands`, and
+`armalint-mcp`. `pipx install .` does the same job if that is what
 you already use.
 
 For a reproducible development environment, install `uv`, then run:

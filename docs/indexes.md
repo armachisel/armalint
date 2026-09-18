@@ -53,13 +53,14 @@ armalint-update `
   --workshop D:\SteamLibrary\steamapps\workshop\content\107410
 ```
 
-The updater writes three files:
+The updater writes four files:
 
 | File | Purpose |
 | --- | --- |
 | `armalint_mods.json` | Exact function names found in the selected base-game, DLC, and mod data. |
 | `armalint_mods_types.json` | Argument types extracted from function source. |
 | `armalint_scan_cache.json` | Hashes and scan results used to skip unchanged PBOs and files. |
+| `armalint_mods_metadata.json` | Versioned descriptions, lifecycle flags, source PBOs, confidence, and scan errors. |
 
 The first scan may take a while. That is the price of looking inside the game
 and mod data. Later scans reuse unchanged results. Use `--clear-cache` when
@@ -97,6 +98,16 @@ one mission's data with another's.
 The scan cache belongs to the same project for the same reason. A changed
 mod, Arma installation, extractor, or mission configuration must not make an
 unrelated mission's index change underneath it.
+
+To record the game version used for an index, pass it explicitly:
+
+```powershell
+armalint-update --mission C:\path\to\MyMission.Altis --arma-version 2.18.152
+```
+
+The metadata cache records which addon/PBO supplied each function and notes
+unreadable or unsupported PBOs. This makes an apparently valid partial scan
+visible to editors and MCP clients.
 
 ## Broad tags and exact names
 
