@@ -765,8 +765,24 @@ def check_argument_types(
                 variables[key] = inferred
             elif variables[key] != inferred:
                 variables.pop(key, None)
+        # Restrict producer detection to this assignment's expression.  The
+        # old suffix-wide ``any`` scan revisited the rest of the file for every
+        # assignment, making large missions quadratic and incorrectly allowing
+        # a producer in a later statement to affect an earlier variable.
+        rhs_end = i + 2
+        depth = 0
+        while rhs_end < len(tokens):
+            kind = tokens[rhs_end].type
+            if kind in ("lparen", "lbracket", "lbrace"):
+                depth += 1
+            elif kind in ("rparen", "rbracket", "rbrace"):
+                depth = max(0, depth - 1)
+            elif kind == "semicolon" and depth == 0:
+                break
+            rhs_end += 1
+        producer_names = {t.value.lower() for t in tokens[i + 2:rhs_end] if t.type in ("ident", "keyword")}
         for producer, element_type in _ARRAY_ELEMENT_TYPES.items():
-            if any(t.value.lower() == producer for t in tokens[i + 2:]):
+            if producer in producer_names:
                 element_types[key] = element_type
         if i + 4 < len(tokens) and tokens[i + 2].type == "local" and tokens[i + 3].value.lower() == "select" and tokens[i + 4].type == "number":
             if tokens[i + 2].value.lower() in element_types:
