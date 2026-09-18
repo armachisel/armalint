@@ -14,7 +14,7 @@ import re
 
 # ``#include "..."`` or ``#include <...>``, with optional surrounding whitespace.
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s+(?:"([^"]*)"|<([^>]*)>)\s*$')
-_DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)')
+_DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(.*?))?\s*$')
 _UNDEF_RE = re.compile(r'^\s*#\s*undef\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IFDEF_RE = re.compile(r'^\s*#\s*(ifdef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IF_DEFINED_RE = re.compile(r'^\s*#\s*if\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
@@ -27,12 +27,52 @@ def _normalized(path: str) -> str:
     return os.path.normcase(os.path.abspath(path))
 
 
+def _expand_macros(line: str, defines: dict[str, str]) -> str:
+    """Expand object-like macros outside strings and ``//`` comments."""
+    if not defines:
+        return line
+    output: list[str] = []
+    index = 0
+    quote = ""
+    while index < len(line):
+        char = line[index]
+        if quote:
+            output.append(char)
+            if char == quote:
+                if index + 1 < len(line) and line[index + 1] == quote:
+                    output.append(line[index + 1])
+                    index += 2
+                    continue
+                quote = ""
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        if char == "/" and index + 1 < len(line) and line[index + 1] == "/":
+            output.append(line[index:])
+            break
+        if char.isalpha() or char == "_":
+            end = index + 1
+            while end < len(line) and (line[end].isalnum() or line[end] == "_"):
+                end += 1
+            word = line[index:end]
+            output.append(defines.get(word.lower(), word))
+            index = end
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
 def _preprocess_lines(
     source: str,
     filename: str,
     base_dir: str,
     _include_stack: tuple[str, ...],
-    _defines: set[str],
+    _defines: dict[str, str],
     _conditions: list[bool],
 ) -> tuple[list[str], list[tuple[str, int]]]:
     """Split out the line-by-line work; returns ``(lines, line_map)``."""
@@ -76,13 +116,13 @@ def _preprocess_lines(
             continue
         match = _DEFINE_RE.match(line)
         if match and all(_conditions):
-            _defines.add(match.group(1).lower())
+            _defines[match.group(1).lower()] = match.group(2) or "1"
             lines.append("")
             line_map.append((filename, orig_line))
             continue
         match = _UNDEF_RE.match(line)
         if match and all(_conditions):
-            _defines.discard(match.group(1).lower())
+            _defines.pop(match.group(1).lower(), None)
             lines.append("")
             line_map.append((filename, orig_line))
             continue
@@ -110,7 +150,7 @@ def _preprocess_lines(
                 line_map.extend(sub_map)
                 continue
         # Not an include (or missing/cyclic): keep the line as-is.
-        lines.append(line)
+        lines.append(_expand_macros(line, _defines))
         line_map.append((filename, orig_line))
 
     return lines, line_map
@@ -127,7 +167,7 @@ def preprocess(
     Returns ``(combined_source, line_map)`` where ``line_map[i]`` is the
     ``(file, orig_line)`` (1-based) of combined line ``i + 1``.
     """
-    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, set(), [])
+    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, {}, [])
     return "\n".join(lines), line_map
 
 
@@ -183,5 +223,11 @@ if __name__ == "__main__":
         assert 'hint "yes";' in combined5 and 'hint "still";' in combined5
         assert 'hint "no";' not in combined5
         assert len(map5) == combined5.count("\n") + 1
+
+        macro_source = '#define LIMIT 42\nprivate _value = LIMIT;\nhint "LIMIT"; // LIMIT\n'
+        macro_expanded, _ = preprocess(macro_source, main_path, tmpdir)
+        assert "private _value = 42;" in macro_expanded
+        assert 'hint "LIMIT";' in macro_expanded
+        assert "// LIMIT" in macro_expanded
 
     print("preprocessor self-test passed")
