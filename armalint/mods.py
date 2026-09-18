@@ -36,6 +36,7 @@ from .tokenizer import Token, tokenize
 
 MOD_TYPE_CACHE_FILENAME = "armalint_mods_types.json"
 MOD_SCAN_CACHE_FILENAME = "armalint_scan_cache.json"
+MOD_SCAN_CACHE_VERSION = 2
 
 #: Steam app id for Arma 3 (the numeric folder under ``workshop/content``).
 _ARMA_APP_ID = "107410"
@@ -907,7 +908,7 @@ def load_mod_scan_cache(path: str) -> dict:
             data = json.load(fh)
     except (OSError, json.JSONDecodeError):
         return {}
-    if not isinstance(data, dict) or data.get("version") != 1:
+    if not isinstance(data, dict) or data.get("version") != MOD_SCAN_CACHE_VERSION:
         return {}
     roots = data.get("roots")
     return roots if isinstance(roots, dict) else {}
@@ -916,7 +917,7 @@ def load_mod_scan_cache(path: str) -> dict:
 def save_mod_scan_cache(path: str, roots: dict) -> None:
     """Persist scan results for roots whose files are unchanged on later runs."""
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump({"version": 1, "roots": roots}, fh, sort_keys=True)
+        json.dump({"version": MOD_SCAN_CACHE_VERSION, "roots": roots}, fh, sort_keys=True)
 
 
 def extract_mod_data_cached(
@@ -924,6 +925,7 @@ def extract_mod_data_cached(
     cache: dict,
     progress=None,
     addon_names: set[str] | None = None,
+    stats: dict[str, int] | None = None,
 ) -> tuple[set[str], dict[str, list[str | None]]]:
     """Reuse a root's prior extraction when its file metadata is unchanged."""
     key = os.path.normcase(os.path.abspath(mod_dir))
@@ -931,6 +933,8 @@ def extract_mod_data_cached(
     entry = cache.get(key)
     addons = list_addons(mod_dir)
     if isinstance(entry, dict) and entry.get("fingerprint") == fingerprint:
+        if stats is not None:
+            stats["reused"] = stats.get("reused", 0) + 1
         if addon_names is not None and isinstance(entry.get("addon_names"), list):
             addon_names.update(x for x in entry["addon_names"] if isinstance(x, str))
         if progress:
@@ -945,6 +949,8 @@ def extract_mod_data_cached(
         )
 
     extracted_addon_names: set[str] = set()
+    if stats is not None:
+        stats["rescanned"] = stats.get("rescanned", 0) + 1
     functions, signatures = extract_mod_data(
         mod_dir, progress, extracted_addon_names
     )
@@ -955,6 +961,7 @@ def extract_mod_data_cached(
         "functions": sorted(functions),
         "signatures": signatures,
         "addon_names": sorted(extracted_addon_names),
+        "source_root": os.path.abspath(mod_dir),
     }
     return functions, signatures
 
