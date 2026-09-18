@@ -9,10 +9,10 @@ from .argument_types import check_argument_types
 from .commands import check_commands
 from .control_flow import check_control_flow
 from .definitions import check_definitions
-from .diagnostic import Diagnostic
+from .diagnostic import Diagnostic, Severity
 from .functions import check_functions
 from .locals import check_unused_locals
-from .preprocessor import preprocess
+from .preprocessor import find_include_cycles, preprocess
 from .symbols import SymbolIndex
 from .suppression import filter_suppressed
 from .syntax import check_syntax
@@ -107,6 +107,14 @@ def lint_file(
     tree = parse(tokens)
 
     diags: list[Diagnostic] = []
+    normalized_path = os.path.normcase(os.path.abspath(path))
+    for cycle_file, cycle_line, cycle_target in find_include_cycles(path):
+        if os.path.normcase(os.path.abspath(cycle_file)) == normalized_path:
+            diags.append(Diagnostic(
+                Severity.WARNING, "W210",
+                f"include cycle detected through {cycle_target}",
+                cycle_line, 1,
+            ))
     diags.extend(check_syntax(tokens))
     diags.extend(check_control_flow(tree))
     diags.extend(check_definitions(tokens))

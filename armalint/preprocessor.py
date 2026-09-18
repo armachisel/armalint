@@ -25,6 +25,42 @@ _ELSE_RE = re.compile(r'^\s*#\s*else\s*$')
 _ENDIF_RE = re.compile(r'^\s*#\s*endif\s*$')
 
 
+def find_include_cycles(path: str) -> list[tuple[str, int, str]]:
+    """Return proven include-cycle edges as ``(file, line, target)`` tuples."""
+    cycles: list[tuple[str, int, str]] = []
+    seen_edges: set[tuple[str, int, str]] = set()
+
+    def visit(current: str, stack: tuple[str, ...]) -> None:
+        normalized = _normalized(current)
+        if normalized in stack:
+            return
+        try:
+            with open(current, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return
+        next_stack = stack + (normalized,)
+        base_dir = os.path.dirname(os.path.abspath(current))
+        for line_number, line in enumerate(lines, start=1):
+            match = _INCLUDE_RE.match(line)
+            if not match:
+                continue
+            target = os.path.normpath(os.path.join(base_dir, match.group(1) or match.group(2)))
+            if not os.path.isfile(target):
+                continue
+            target_normalized = _normalized(target)
+            edge = (current, line_number, target)
+            if target_normalized in next_stack:
+                if edge not in seen_edges:
+                    seen_edges.add(edge)
+                    cycles.append(edge)
+                continue
+            visit(target, next_stack)
+
+    visit(path, ())
+    return cycles
+
+
 def _normalized(path: str) -> str:
     """Absolute, case-normalized (Windows) path used for cycle detection."""
     return os.path.normcase(os.path.abspath(path))
@@ -262,5 +298,13 @@ if __name__ == "__main__":
 
         defined_elif, _ = preprocess('#define READY\n#if 0\nhint "no";\n#elif defined(READY)\nhint "yes";\n#endif\n', main_path, tmpdir)
         assert 'hint "yes";' in defined_elif and 'hint "no";' not in defined_elif
+
+        cycle_a = os.path.join(tmpdir, "cycle_a.sqf")
+        cycle_b = os.path.join(tmpdir, "cycle_b.sqf")
+        with open(cycle_a, "w", encoding="utf-8") as fh:
+            fh.write('#include "cycle_b.sqf"\n')
+        with open(cycle_b, "w", encoding="utf-8") as fh:
+            fh.write('#include "cycle_a.sqf"\n')
+        assert find_include_cycles(cycle_a) == [(cycle_b, 1, cycle_a)]
 
     print("preprocessor self-test passed")
