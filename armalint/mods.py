@@ -35,8 +35,9 @@ from .symbols import SymbolIndex
 from .tokenizer import Token, tokenize
 
 MOD_TYPE_CACHE_FILENAME = "armalint_mods_types.json"
+MOD_METADATA_CACHE_FILENAME = "armalint_mods_metadata.json"
 MOD_SCAN_CACHE_FILENAME = "armalint_scan_cache.json"
-MOD_SCAN_CACHE_VERSION = 2
+MOD_SCAN_CACHE_VERSION = 3
 
 #: Steam app id for Arma 3 (the numeric folder under ``workshop/content``).
 _ARMA_APP_ID = "107410"
@@ -771,6 +772,7 @@ def extract_mod_data(
     mod_dir: str,
     progress=None,
     addon_names: set[str] | None = None,
+    metadata: dict | None = None,
 ) -> tuple[set[str], dict[str, list[str | None]]]:
     """Extract function names and explicit argument types in one addon pass.
 
@@ -778,7 +780,10 @@ def extract_mod_data(
     SQF sources are retained until the mod-wide HATG prefix is known, then
     names and signatures are attributed together.
     """
-    records: list[tuple[str, str, str | None, set[str], dict[str, str], dict[str, bytes]]] = []
+    records: list[tuple[str, str, str | None, set[str], dict[str, str], dict[str, bytes], str]] = []
+    if metadata is not None:
+        metadata.setdefault("errors", [])
+        metadata.setdefault("sources", {})
     mod_prefix: str | None = None
 
     addons = list_addons(mod_dir)
@@ -788,7 +793,9 @@ def extract_mod_data(
         if kind == "pbo":
             try:
                 files = read_pbo(path)
-            except Exception:
+            except Exception as exc:
+                if metadata is not None:
+                    metadata["errors"].append({"path": path, "kind": "unreadable-or-unsupported-pbo", "error": str(exc)})
                 if progress:
                     progress(path, True)
                 continue
@@ -833,14 +840,17 @@ def extract_mod_data(
             sources = {name: data for name, data in files.items() if name.lower().endswith(".sqf")}
         if prefix and mod_prefix is None:
             mod_prefix = prefix
-        records.append((kind, tag, prefix, cfg_names, cfg_files, sources))
+        records.append((kind, tag, prefix, cfg_names, cfg_files, sources, path))
         if progress:
             progress(path, True)
 
     functions: set[str] = set()
     signatures: dict[str, list[str | None]] = {}
-    for kind, tag, prefix, cfg_names, cfg_files, sources in records:
+    for kind, tag, prefix, cfg_names, cfg_files, sources, addon_path in records:
         functions.update(cfg_names)
+        if metadata is not None:
+            for name in cfg_names:
+                metadata["sources"].setdefault(name, addon_path)
         hatg_tag = prefix or mod_prefix or tag
         cfg_by_suffix: dict[str, set[str]] = {}
         for name in cfg_names:
@@ -866,6 +876,9 @@ def extract_mod_data(
                     if suffix.endswith("_fnc_" + base):
                         function_names.update(candidates)
             functions.update(function_names)
+            if metadata is not None:
+                for name in function_names:
+                    metadata["sources"].setdefault(name, addon_path)
             types = _extract_params_types(raw.decode("utf-8", errors="replace"))
             if types and any(types):
                 for name in function_names:
@@ -951,9 +964,8 @@ def extract_mod_data_cached(
     extracted_addon_names: set[str] = set()
     if stats is not None:
         stats["rescanned"] = stats.get("rescanned", 0) + 1
-    functions, signatures = extract_mod_data(
-        mod_dir, progress, extracted_addon_names
-    )
+    metadata: dict = {}
+    functions, signatures = extract_mod_data(mod_dir, progress, extracted_addon_names, metadata)
     if addon_names is not None:
         addon_names.update(extracted_addon_names)
     cache[key] = {
@@ -962,6 +974,7 @@ def extract_mod_data_cached(
         "signatures": signatures,
         "addon_names": sorted(extracted_addon_names),
         "source_root": os.path.abspath(mod_dir),
+        "metadata": metadata,
     }
     return functions, signatures
 
@@ -1008,6 +1021,22 @@ def save_mod_type_cache(path: str, signatures: dict[str, list[str | None]]) -> N
     normalized = {name.lower(): types for name, types in sorted(signatures.items())}
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(normalized, fh, sort_keys=True)
+
+
+def save_mod_metadata_cache(path: str, metadata: dict) -> None:
+    """Write versioned extraction provenance and scan diagnostics."""
+    payload = {"schema": 1, **metadata}
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, sort_keys=True)
+
+
+def load_mod_metadata_cache(path: str) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) and data.get("schema") == 1 else {}
 
 
 if __name__ == "__main__":

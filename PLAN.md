@@ -24,17 +24,17 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 3: preprocessor and config coverage
 
-- [ ] Add include-guard diagnostics; object-like macro substitution, conditional compilation, and nested includes are supported.
+- [x] Add include-guard diagnostics; object-like macro substitution, conditional compilation, and nested includes are supported.
 - [x] Make CfgFunctions inheritance and custom `file` mappings fully parser-based.
-- [ ] Improve callback discovery through event handlers and namespace variables.
+- [x] Improve callback discovery through event handlers and namespace variables.
 
 ## Priority 4: registry and updater quality
 
-- [ ] Generate built-in, DLC, and mod signatures with versioned metadata.
+- [x] Generate built-in, DLC, and mod signatures with versioned metadata.
 - [x] Invalidate scan caches when the extractor/parser schema changes.
 - [x] Remove stale functions when addons disappear; source-root provenance is recorded in the scan cache.
 - [x] Report reused versus rescanned roots.
-- [ ] Include Arma-version metadata, per-function source-PBO provenance, and unreadable/unsupported PBO diagnostics.
+- [x] Include Arma-version metadata, per-function source-PBO provenance, and unreadable/unsupported PBO diagnostics.
 
 ## Priority 5: developer-facing linter features
 
