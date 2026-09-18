@@ -6,6 +6,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import sys
 
 from . import __version__
@@ -67,6 +68,42 @@ def _collect_files(path: str, ignores: list[str]) -> list[str]:
     elif os.path.isfile(path):
         files.append(path)
     return files
+
+
+_INCLUDE_LINE_RE = re.compile(r'^\s*#\s*include\s+(?:"([^"]*)"|<([^>]*)>)')
+
+
+def _collect_included_files(files: list[str]) -> set[str]:
+    """Return files referenced by local include directives.
+
+    Included fragments are linted on their own for syntax and type errors, but
+    unused-local analysis is suppressed because their declarations may be
+    consumed by the including file.
+    """
+    included: set[str] = set()
+    pending = list(files)
+    seen: set[str] = set()
+    while pending:
+        path = pending.pop()
+        normalized = os.path.normcase(os.path.abspath(path))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            continue
+        base_dir = os.path.dirname(os.path.abspath(path))
+        for line in lines:
+            match = _INCLUDE_LINE_RE.match(line)
+            if not match:
+                continue
+            target = os.path.normpath(os.path.join(base_dir, match.group(1) or match.group(2)))
+            if os.path.isfile(target):
+                included.add(os.path.normcase(os.path.abspath(target)))
+                pending.append(target)
+    return included
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -176,6 +213,7 @@ def _main(argv: list[str] | None = None) -> int:
 
     # De-duplicate while preserving determinism, then sort.
     files = sorted(set(files))
+    included_files = _collect_included_files(files)
 
     # Resolve mod function tags from project config, then register them on the
     # symbol index so mod-provided functions are not reported as unknown.
@@ -240,7 +278,7 @@ def _main(argv: list[str] | None = None) -> int:
     for f in files:
         if _is_sqf_file(f):
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, pretokenized=token_cache.get(f)))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:

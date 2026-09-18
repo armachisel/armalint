@@ -20,7 +20,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Distinguish unary, binary, and nular command usage using command metadata.
 - [x] Detect calls to values that are known not to contain code.
 - [x] Report duplicate function definitions, suspicious overwrites, and constant conditions.
-- [ ] Report unused locals conservatively across include and nested-scope boundaries.
+- [x] Report unused locals conservatively across include and nested-scope boundaries.
 
 ## Priority 3: preprocessor and config coverage
 
