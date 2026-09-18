@@ -52,6 +52,12 @@ The parser builds source-spanned nodes for `if`/`else`, `for`, `while`,
 blocks. Scope and type analysis use those nodes where the syntax is
 unambiguous; dynamic expressions remain unchecked.
 
+The duplicate-definition checks use the conventional Arma function marker
+`_fnc_`. They report repeated definitions and overwrites for names such as
+`ALT_fnc_buildRoute`, but do not infer that every global code value is a
+function. Global state and callback variables may use any naming scheme and
+are left alone by these checks.
+
 ## Suppressing rules
 
 Use `--ignore-rule W206` to suppress a rule for one command invocation. A
