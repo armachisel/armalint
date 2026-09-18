@@ -16,6 +16,7 @@ from armalint.syntax import check_syntax
 from armalint.update_commands import _metadata_return_type, _parse_command_xml
 from armalint.undefined import check_undefined_text
 from armalint.locals import check_unused_locals_text
+from armalint.sqf_contracts import check_sqf_contracts_text
 from armalint.diagnostic import Diagnostic, Severity
 
 
@@ -33,6 +34,22 @@ def _unused_locals() -> bool:
         and not included
         and not nested
     )
+
+
+def _sqf_contracts() -> bool:
+    valid = check_sqf_contracts_text(
+        'params ["_x", ["_delay", 0, [0]]]; '
+        'missionNamespace setVariable ["ready", true]; '
+        'player addEventHandler ["Killed", { hint "x"; }]; '
+        '[] remoteExec ["TAG_fnc_update", 2, true]; publicVariable "ready";'
+    )
+    invalid = check_sqf_contracts_text(
+        'params "_x"; missionNamespace setVariable 1; '
+        'player removeEventHandler ["Killed", 9]; '
+        '[] remoteExec ["TAG_fnc_update", 2, "yes"]; publicVariable 42;'
+    )
+    codes = {item.code for item in invalid}
+    return not valid and {"W217", "W218", "W219", "W220", "W221"} <= codes
 
 
 def _ast_try_catch() -> bool:
@@ -468,6 +485,7 @@ CASES = (
     ("in checks right array operand", _in_checks_right_array_operand),
     ("function definition overwrite checks", _definition_overwrite_checks),
     ("conservative unused locals", _unused_locals),
+    ("SQF API contract checks", _sqf_contracts),
     ("postfix command syntax", _postfix_command_syntax),
     ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),

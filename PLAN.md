@@ -24,7 +24,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Detect variable shadowing, duplicate locals, and more use-before-assignment paths.
 - [ ] Add union-type narrowing after `isEqualType`, `isNull`, `typeName`, and guard branches.
 - [x] Propagate types through common command chains and detect impossible comparisons.
-- [ ] Add SQF-specific checks for `params` shapes, namespace misuse, event-handler lifecycle, remote execution, and public-variable contracts.
+- [x] Add SQF-specific checks for `params` shapes, namespace misuse, event-handler lifecycle, remote execution, and public-variable contracts.
 - [ ] Add value-flow diagnostics for overwritten-before-use, constant assignments, and ineffective empty code/array expressions.
 
 ## Priority 3: preprocessor and config coverage

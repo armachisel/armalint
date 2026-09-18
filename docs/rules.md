@@ -46,6 +46,20 @@ mistakes are found.
 | `W214` | A config property is assigned more than once in the same class. |
 | `W215` | A local declaration shadows or duplicates another local. |
 | `W216` | A comparison uses incompatible statically known primitive types. |
+| `W217` | A `params` declaration has an invalid shape. |
+| `W218` | A namespace variable operation has an invalid argument shape. |
+| `W219` | An event-handler declaration or removal has an invalid lifecycle shape. |
+| `W220` | A `remoteExec` or `remoteExecCall` contract is malformed. |
+| `W221` | A public-variable command does not receive a variable name string. |
+
+The SQF contract checks are intentionally conservative. `params` declarations
+are checked for the supported string and `[name, default, validators]` shapes;
+dynamic declarations are left alone. Namespace checks cover malformed
+`getVariable`/`setVariable` calls on explicit namespace objects. Event-handler
+checks pair static registrations with removals in the same file, while dynamic
+handler IDs remain unchecked. Remote execution checks the required argument
+array and Boolean JIP position. Public-variable commands require a literal
+variable-name string so typos and accidental value publication are visible.
 | `W301` | Trailing whitespace when optional style checks are enabled with `--style`. |
 | `W302` | Tab character when optional style checks are enabled with `--style`. |
 
