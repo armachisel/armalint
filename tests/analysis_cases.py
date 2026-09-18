@@ -10,6 +10,7 @@ from armalint.argument_types import _BINARY_SIGNATURES, _COMMAND_ARITIES, _SIGNA
 from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpression, GroupExpression, LoopStatement, TerminatorStatement, TryCatchStatement, parse, parse_expression, walk_expression
 from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
+from armalint.definitions import check_definitions_text
 from armalint.suppression import filter_suppressed
 from armalint.syntax import check_syntax
 from armalint.update_commands import _metadata_return_type, _parse_command_xml
@@ -175,6 +176,13 @@ def _isnull_accepts_engine_handles() -> bool:
 def _in_checks_right_array_operand() -> bool:
     diagnostics = check_argument_types_text('{ if !(_x in (assignedItems player)) then {}; } forEach ["NVGoggles", "ItemMap"];')
     return not any(d.code == "W203" and " in " in d.message for d in diagnostics)
+
+
+def _definition_overwrite_checks() -> bool:
+    duplicate = check_definitions_text('ALT_fnc_a = {}; ALT_fnc_a = {};')
+    overwrite = check_definitions_text('ALT_fnc_a = {}; ALT_fnc_a = 1;')
+    local = check_definitions_text('private _fn = {}; _value = 1;')
+    return duplicate and duplicate[0].code == "W207" and overwrite and overwrite[0].code == "W208" and not local
 
 
 def _generated_signature_forms() -> bool:
@@ -430,6 +438,7 @@ CASES = (
     ("extended object producer returns", _extended_object_producer_returns),
     ("isNull accepts engine handles", _isnull_accepts_engine_handles),
     ("in checks right array operand", _in_checks_right_array_operand),
+    ("function definition overwrite checks", _definition_overwrite_checks),
     ("generated signature forms", _generated_signature_forms),
     ("UI and array-encoded commands stay unchecked", _ui_and_array_encoded_commands_stay_unchecked),
     ("engine array operand commands", _engine_array_operand_commands),

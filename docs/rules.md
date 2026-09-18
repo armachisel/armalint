@@ -33,6 +33,8 @@ mistakes are found.
 | `W203` | A known command or indexed function receives an argument whose statically inferred type is incompatible with its signature. |
 | `W204` | A statically indexed function receives more arguments than its indexed signature declares. Shorter calls are allowed because extracted signatures may include optional parameters. |
 | `W205` | `call` or `spawn` is targeting a literal value known not to contain code. |
+| `W207` | A global function name is defined more than once in the same file. |
+| `W208` | A global function definition is later overwritten by a non-code value. |
 
 ## How cautious is the analysis?
 

@@ -8,6 +8,7 @@ from .collect import collect_code_functions, collect_description_cfg_functions
 from .argument_types import check_argument_types
 from .commands import check_commands
 from .control_flow import check_control_flow
+from .definitions import check_definitions
 from .diagnostic import Diagnostic
 from .functions import check_functions
 from .preprocessor import preprocess
@@ -62,6 +63,7 @@ def lint_text(
     diags.extend(check_syntax(tokens))
     from .ast import parse
     diags.extend(check_control_flow(parse(tokens)))
+    diags.extend(check_definitions(tokens))
     # Type inference is file-local. Include expansion is useful for symbol and
     # undefined-variable analysis, but carrying inferred locals across included
     # files creates false positives when common names are reused.
@@ -102,6 +104,7 @@ def lint_file(
     diags: list[Diagnostic] = []
     diags.extend(check_syntax(tokens))
     diags.extend(check_control_flow(tree))
+    diags.extend(check_definitions(tokens))
     diags.extend(check_argument_types(tokenize(source), function_signatures, function_return_types))
     diags.extend(check_undefined(tokens))
     diags.extend(check_functions(tokens, index=index))
