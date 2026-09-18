@@ -14,6 +14,7 @@ __pycache__/
 armalint_mods.json
 armalint_mods_types.json
 armalint_scan_cache.json
+armalint_mods_metadata.json
 
 # Local documentation editing notes
 .documentation-style.md

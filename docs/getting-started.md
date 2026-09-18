@@ -13,6 +13,22 @@ That gives you `armalint`, `armalint-update`, and
 `armalint-update-commands`. `pipx install .` does the same job if that is what
 you already use.
 
+For a reproducible development environment, install `uv`, then run:
+
+```powershell
+uv sync
+uv run python tests/run_all.py
+uv build
+```
+
+The project uses Hatchling as its PEP 621 build backend. Both the wheel and
+source archive include the bundled command and function data needed for normal
+linting; extracted mission and mod caches remain outside the package.
+
+On Windows, `uv tool install .` places the three CLI tools and `armalint-mcp`
+on the uv tool bin directory. `uv tool upgrade armalint` upgrades a published
+release, while `uv tool install --force .` refreshes a local checkout.
+
 ## Lint a mission
 
 Point Armalint at a mission folder:

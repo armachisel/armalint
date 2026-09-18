@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
 
 [project]
 name = "armalint"
@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Arma 3 SQF linter"
 readme = "README.md"
 license = {file = "LICENSE"}
+license-files = ["LICENSE"]
+authors = [{name = "Armalint contributors"}]
+requires-python = ">=3.9"
 keywords = ["arma 3", "sqf", "linter", "static analysis"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -18,7 +21,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Quality Assurance",
 ]
-requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
@@ -30,8 +32,8 @@ armalint-update = "armalint.update:main"
 armalint-update-commands = "armalint.update_commands:main"
 armalint-mcp = "armalint.mcp_server:main"
 
-[tool.setuptools.packages.find]
-include = ["armalint*"]
+[tool.hatch.build.targets.wheel]
+packages = ["armalint"]
 
-[tool.setuptools.package-data]
-armalint = ["data/commands.txt"]
+[tool.hatch.build.targets.sdist]
+include = ["armalint", "docs", "tests", "README.md", "LICENSE", "pyproject.toml"]

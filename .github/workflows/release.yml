@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to PyPI after building and testing
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+      - name: Validate distributions
+        run: |
+          python -m venv "$RUNNER_TEMP/armalint-release"
+          "$RUNNER_TEMP/armalint-release/bin/python" -m pip install --no-deps dist/*.whl
+          "$RUNNER_TEMP/armalint-release/bin/python" -I -m armalint --version
+      - name: Publish to PyPI
+        if: inputs.publish
+        uses: pypa/gh-action-pypi-publish@release/v1
