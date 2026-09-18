@@ -29,6 +29,7 @@ SELF_TEST_MODULES = (
     "tokenizer",
     "ast",
     "control_flow",
+    "definitions",
     "syntax",
     "argument_types",
     "undefined",
