@@ -66,6 +66,18 @@ class SymbolIndex:
         """Total number of collected symbols (tags + functions)."""
         return len(self.tags) + len(self.functions)
 
+    def to_json(self) -> dict:
+        return {"tags": sorted(self.tags), "functions": sorted(self.functions), "macros": sorted(self.macros), "cba_declared": self.cba_declared}
+
+    @classmethod
+    def from_json(cls, data: dict) -> "SymbolIndex":
+        return cls(
+            tags={str(x) for x in data.get("tags", []) if isinstance(x, str)},
+            functions={str(x) for x in data.get("functions", []) if isinstance(x, str)},
+            macros={str(x) for x in data.get("macros", []) if isinstance(x, str)},
+            cba_declared=bool(data.get("cba_declared", False)),
+        )
+
 
 if __name__ == "__main__":
     idx = SymbolIndex()

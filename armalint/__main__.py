@@ -33,11 +33,13 @@ from .config import (
     find_mod_macro_cache,
     load_config_file,
     extract_dependencies,
+    project_state_dir,
 )
 from .config_lint import lint_config
 from .contracts import discover_external_locals
 from .diagnostic import Diagnostic, Severity, format_diagnostic
 from .linter import build_symbol_index, lint_file, lint_text
+from .symbols import SymbolIndex
 from .mods import load_mod_cache
 from .mods import load_mod_type_cache, load_mod_macro_cache
 from .sqm import check_mission_sqm
@@ -188,6 +190,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--github-actions", action="store_true", help="emit GitHub Actions workflow-command annotations")
     parser.add_argument("--timings", action="store_true", help="report scan duration and phase timings as JSON on stderr")
     parser.add_argument("--max-issues", type=int, metavar="N", help="stop after reporting at most N diagnostics")
+    parser.add_argument("--clear-cache", action="store_true", help="clear the project symbol-index cache before linting")
     parser.add_argument("--check-suppressions", action="store_true", help="report unjustified and unused inline suppressions")
     parser.add_argument("--baseline", metavar="PATH", help="suppress diagnostics recorded in a JSON baseline file")
     parser.add_argument(
@@ -557,11 +560,41 @@ def _main(argv: list[str] | None = None) -> int:
     if args.mission:
         index_files.extend(_collect_files(args.mission, collection_ignores))
         index_files.extend(_collect_macro_files(args.mission))
+    index_files = sorted(set(index_files))
     token_cache = {}
-    index = build_symbol_index(
-        sorted(set(index_files)), token_cache=token_cache,
-        source_cache=source_cache,
-    )
+    cache_anchor = next(iter(file_configs.values()), None) or args.mission or (input_paths[0] if input_paths else os.getcwd())
+    symbol_cache_path = os.path.join(project_state_dir(cache_anchor), "armalint_symbols.json")
+    if args.clear_cache:
+        try:
+            os.remove(symbol_cache_path)
+        except OSError:
+            pass
+    fingerprints = {}
+    for path in index_files:
+        try:
+            stat = os.stat(path)
+            fingerprints[path] = [stat.st_mtime_ns, stat.st_size]
+        except OSError:
+            fingerprints[path] = None
+    cached_index = None
+    if not args.clear_cache:
+        try:
+            with open(symbol_cache_path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+            if payload.get("fingerprints") == fingerprints:
+                cached_index = SymbolIndex.from_json(payload.get("index", {}))
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+    if cached_index is not None:
+        index = cached_index
+    else:
+        index = build_symbol_index(index_files, token_cache=token_cache, source_cache=source_cache)
+        try:
+            os.makedirs(os.path.dirname(symbol_cache_path), exist_ok=True)
+            with open(symbol_cache_path, "w", encoding="utf-8") as fh:
+                json.dump({"version": 1, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
+        except OSError:
+            pass
     index.cba_declared |= any(dep.startswith("cba_") for dep in declared_dependencies)
     timings["index_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]), 2)
     timings["index_files"] = len(index_files)
