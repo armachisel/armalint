@@ -578,6 +578,10 @@ def _main(argv: list[str] | None = None) -> int:
     token_cache = {}
     cache_anchor = next(iter(file_configs.values()), None) or args.mission or (input_paths[0] if input_paths else os.getcwd())
     symbol_cache_path = os.path.join(project_state_dir(cache_anchor), "armalint_symbols.json")
+    # A project-wide cache must not be replaced by a later one-file or
+    # snippet invocation.  Directory/mission scans own the persistent cache;
+    # targeted checks build an in-memory index only.
+    persist_symbol_cache = bool(args.mission) or any(os.path.isdir(path) for path in input_paths)
     if args.clear_cache:
         try:
             os.remove(symbol_cache_path)
@@ -591,7 +595,7 @@ def _main(argv: list[str] | None = None) -> int:
         except OSError:
             fingerprints[path] = None
     cached_index = None
-    if not args.clear_cache:
+    if persist_symbol_cache and not args.clear_cache:
         try:
             with open(symbol_cache_path, "r", encoding="utf-8") as fh:
                 payload = json.load(fh)
@@ -622,8 +626,9 @@ def _main(argv: list[str] | None = None) -> int:
             spinner_thread.join(timeout=1)
         try:
             os.makedirs(os.path.dirname(symbol_cache_path), exist_ok=True)
-            with open(symbol_cache_path, "w", encoding="utf-8") as fh:
-                json.dump({"version": 1, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
+            if persist_symbol_cache:
+                with open(symbol_cache_path, "w", encoding="utf-8") as fh:
+                    json.dump({"version": 1, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
         except OSError:
             pass
     index.cba_declared |= any(dep.startswith("cba_") for dep in declared_dependencies)
