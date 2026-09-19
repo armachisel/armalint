@@ -276,7 +276,7 @@ _INLINE_FUNCTIONS: set[str] = {
     "BIS_fnc_selectRandom", "BIS_fnc_findInPairs", "BIS_fnc_sortBy",
     "BIS_fnc_areEqual", "BIS_fnc_bitflagsCheck", "BIS_fnc_error",
     "BIS_fnc_errorMsg", "BIS_fnc_log", "BIS_fnc_logFormat", "BIS_fnc_diagKey",
-    "BIS_fnc_helicopterDustEfx", "BIS_fnc_ambientAnim", "BIS_fnc_ambientFlyby",
+    "BIS_fnc_helicopterDustEfx", "BIS_fnc_ambientAnim", "BIS_fnc_ambientAnim__terminate", "BIS_fnc_ambientFlyby",
     "BIS_fnc_camp_artillery", "BIS_fnc_weaponHoldActionAdd",
     "BIS_fnc_holdActionAdd", "BIS_fnc_holdActionRemove", "BIS_fnc_advHint",
     "BIS_fnc_3DENExportOldSQM", "BIS_fnc_wp", "BIS_fnc_help",

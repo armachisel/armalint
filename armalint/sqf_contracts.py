@@ -148,7 +148,9 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                 diagnostics.append(_diag(_REMOTE, f"{token.value} expects [function, targets, jip]", token))
             elif len(parsed[0]) == 3:
                 jip = _first(parsed[0][2])
-                if jip is not None and not (jip.type == "keyword" and jip.value.lower() in ("true", "false")):
+                # Dynamic JIP identifiers (including objects) are valid. Only
+                # a statically numeric literal is unambiguously invalid.
+                if jip is not None and jip.type == "number":
                     diagnostics.append(_diag(_REMOTE, f"{token.value} JIP argument must be Boolean", jip))
 
         if name in ("publicvariable", "publicvariableserver", "publicvariableclient"):
@@ -172,6 +174,6 @@ if __name__ == "__main__":
     assert check_sqf_contracts_text('uiNamespace getVariable (_this select 0);') == []
     assert check_sqf_contracts_text('player addEventHandler ["Killed", { hint "x"; }]; player removeEventHandler ["Killed", 0];') == []
     assert any(d.code == _EVENT for d in check_sqf_contracts_text('player removeEventHandler ["Killed", 0];'))
-    assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, "yes"];'))
+    assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, 1];'))
     assert any(d.code == _PUBLIC for d in check_sqf_contracts_text('publicVariable 42;'))
     print("sqf_contracts self-test passed")
