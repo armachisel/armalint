@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Statement, SwitchStatement, TryCatchStatement, parse
+from .ast import Block, ExitWithStatement, IfStatement, LoopStatement, Node, Program, Statement, SwitchStatement, TryCatchStatement, parse
 from .tokenizer import Token, tokenize
 
 _CODE = "W101"
@@ -357,9 +357,9 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
     return [], set(incoming)
 
 
-def check_undefined(tokens: list[Token]) -> list[Diagnostic]:
+def check_undefined(tokens: list[Token], tree: Program | None = None) -> list[Diagnostic]:
     """Return W101 warnings with conservative branch-aware definition merging."""
-    tree = parse(tokens)
+    tree = tree if tree is not None else parse(tokens)
     diags: list[Diagnostic] = []
     defined: set[str] = set()
     for node in tree.statements:
