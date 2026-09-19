@@ -15,6 +15,7 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     defines: set[str] = set()
     conditionals: list[int] = []
+    branch_defines: list[set[str]] = []
     for line_number, line in enumerate(source.splitlines(), 1):
         match = _DIRECTIVE.match(line)
         if not match:
@@ -32,9 +33,13 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
             if not _NAME.match(name):
                 diagnostics.append(Diagnostic(Severity.WARNING, "W228", "malformed #define directive", line_number, token_column))
                 continue
-            if name.lower() in defines:
+            key = name.lower()
+            already_in_branch = bool(branch_defines and key in branch_defines[-1])
+            if key in defines and (not branch_defines or already_in_branch):
                 diagnostics.append(Diagnostic(Severity.WARNING, "W225", f"macro redefined: {name}", line_number, token_column))
-            defines.add(name.lower())
+            defines.add(key)
+            if branch_defines:
+                branch_defines[-1].add(key)
         elif directive == "undef":
             name = rest.split(None, 1)[0] if rest else ""
             if name.lower() not in defines:
@@ -45,22 +50,30 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
             if not _NAME.match(name):
                 diagnostics.append(Diagnostic(Severity.WARNING, "W228", f"malformed #{directive} directive", line_number, token_column))
             conditionals.append(line_number)
+            branch_defines.append(set())
         elif directive == "if":
             expression = rest.replace(" ", "")
-            if expression and not (expression in ("0", "1", "true", "false") or expression.startswith("defined(") or expression.startswith("!defined(")):
+            if expression and not (expression in ("0", "1", "true", "false") or re.fullmatch(r"!?[A-Za-z_][A-Za-z0-9_]*", expression) or expression.startswith("defined(") or expression.startswith("!defined(")):
                 diagnostics.append(Diagnostic(Severity.WARNING, "W226", f"macro or expression cannot be resolved in #if: {rest}", line_number, token_column))
             conditionals.append(line_number)
+            branch_defines.append(set())
         elif directive == "elif":
             if not conditionals:
                 diagnostics.append(Diagnostic(Severity.WARNING, "W227", "#elif without a matching conditional", line_number, token_column))
+            elif branch_defines:
+                branch_defines[-1] = set()
         elif directive == "else":
             if not conditionals:
                 diagnostics.append(Diagnostic(Severity.WARNING, "W227", "#else without a matching conditional", line_number, token_column))
+            elif branch_defines:
+                branch_defines[-1] = set()
         elif directive == "endif":
             if not conditionals:
                 diagnostics.append(Diagnostic(Severity.WARNING, "W227", "#endif without a matching conditional", line_number, token_column))
             else:
                 conditionals.pop()
+                if branch_defines:
+                    branch_defines.pop()
         elif directive == "pragma" and rest.lower() != "once":
             diagnostics.append(Diagnostic(Severity.WARNING, "W228", f"unsupported #pragma: {rest}", line_number, token_column))
     for opening in conditionals:

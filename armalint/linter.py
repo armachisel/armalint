@@ -26,7 +26,7 @@ from .preprocessor_checks import check_preprocessor
 from .plugins import PluginRule, run_plugin_checks
 
 # Extensions treated as config files for symbol collection.
-_CONFIG_EXTENSIONS = (".hpp", ".ext", ".cpp", ".cfg")
+_CONFIG_EXTENSIONS = (".hpp", ".ext", ".cpp", ".cfg", ".inc")
 
 
 def _deduplicate(diags: list[Diagnostic]) -> list[Diagnostic]:
@@ -230,6 +230,11 @@ def build_symbol_index(
             continue
         if source_cache is not None:
             source_cache[path] = source
+        # Include fragments often provide project-wide macro contracts (for
+        # example Antistasi's common.inc) without being included literally in
+        # every SQF file.  Index their names so calls are checked in context.
+        for macro in re.findall(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)", source, re.MULTILINE):
+            index.add_macro(macro)
         if ext in _CONFIG_EXTENSIONS:
             # CBA preprocessor helpers are available only when the project
             # explicitly declares a CBA addon patch.  Merely using a copied
