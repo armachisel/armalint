@@ -78,7 +78,7 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
     try:
         login = steam_user or "anonymous"
         process = subprocess.Popen(
-            [steamcmd, "+login", login, "+force_install_dir", install_dir,
+            [steamcmd, "+force_install_dir", install_dir, "+login", login,
              "+workshop_download_item", "107410", workshop_id, "+quit"],
             # Authentication prompts and Steam Guard challenges must remain
             # visible; anonymous downloads can stay quiet behind the spinner.
