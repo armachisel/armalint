@@ -18,6 +18,7 @@ _ALWAYS_DEFINED = frozenset(
         "_thisArgs", "_thisEventHandler", "_thisFSM", "_fnc_scriptNameParent",
     )
 )
+_ALWAYS_DEFINED_LOWER = frozenset(name.lower() for name in _ALWAYS_DEFINED)
 
 # Token types that are transparent to variable analysis.
 _TRIVIA = frozenset(("comment", "preprocessor"))
@@ -168,7 +169,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     ``defined`` is supplied by the structured walker so each branch can be
     analyzed independently before definitions are merged at control-flow joins.
     """
-    defined = set() if defined is None else set(defined)
+    defined = set() if defined is None else {name.lower() for name in defined}
     diags: list[Diagnostic] = []
     n = len(tokens)
     i = 0
@@ -182,7 +183,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
             # An assignment makes its target available after its RHS has been
             # evaluated.  Delaying this update catches ``_x = _x + 1`` while
             # preserving the normal sequential flow for later statements.
-            defined.update(pending_assignments)
+            defined.update(name.lower() for name in pending_assignments)
             pending_assignments.clear()
             i += 1
             continue
@@ -199,12 +200,12 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
                 if j < n and tokens[j].type == "lbracket":
                     # private ["_a", "_b"]; — strings inside the brackets.
                     names, i = _collect_string_names(tokens, j, top_level_only=False)
-                    defined.update(names)
+                    defined.update(name.lower() for name in names)
                     continue
                 # private _a; / private _a = ...; — local(s) before ';' or '='.
                 k = j
                 while k < n and tokens[k].type == "local":
-                    defined.add(tokens[k].value)
+                    defined.add(tokens[k].value.lower())
                     k += 1
                 i = k
                 continue
@@ -215,7 +216,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
                     # params ["_a", ["_b", 2], ["_c", false]]; — top-level
                     # strings plus the first element of each nested array.
                     names, i = _collect_params_names(tokens, j)
-                    defined.update(names)
+                    defined.update(name.lower() for name in names)
                     continue
                 i += 1
                 continue
@@ -224,7 +225,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
                 # for "_i" from ... — first string after 'for' defines the local.
                 j = _next_significant(tokens, i)
                 if j < n and tokens[j].type == "string" and tokens[j].value.startswith("_"):
-                    defined.add(tokens[j].value)
+                    defined.add(tokens[j].value.lower())
                 i += 1
                 continue
 
@@ -234,7 +235,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
         if ttype == "local":
             if _is_assignment_lhs(tokens, i):
                 pending_assignments.add(tok.value)
-            elif tok.value not in _ALWAYS_DEFINED and tok.value not in defined:
+            elif tok.value.lower() not in _ALWAYS_DEFINED_LOWER and tok.value.lower() not in defined:
                 diags.append(
                     Diagnostic(
                         Severity.WARNING,
@@ -249,7 +250,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
 
         i += 1
 
-    defined.update(pending_assignments)
+    defined.update(name.lower() for name in pending_assignments)
     return diags, defined
 
 
@@ -265,16 +266,16 @@ def _local_names(nodes: list[Node]) -> set[str]:
                 continue
             j = _next_significant(tokens, i)
             if j < len(tokens) and tokens[j].type == "local":
-                names.add(tokens[j].value)
+                names.add(tokens[j].value.lower())
             elif j < len(tokens) and tokens[j].type == "lbracket":
-                names.update(name for name in _collect_string_names(tokens, j, True)[0])
+                names.update(name.lower() for name in _collect_string_names(tokens, j, True)[0])
             continue
         for i, token in enumerate(tokens):
             if token.type != "keyword" or token.value.lower() != "params":
                 continue
             j = _next_significant(tokens, i)
             if j < len(tokens) and tokens[j].type == "lbracket":
-                names.update(_collect_params_names(tokens, j)[0])
+                names.update(name.lower() for name in _collect_params_names(tokens, j)[0])
     return names
 
 
@@ -369,7 +370,7 @@ def check_undefined(
     # the existing flow walker can continue using its fast exact-set checks.
     external_names = {name.lower() for name in (external_locals or ())}
     defined: set[str] = {
-        token.value for token in tokens
+        token.value.lower() for token in tokens
         if token.type == "local" and token.value.lower() in external_names
     }
     for node in tree.statements:
