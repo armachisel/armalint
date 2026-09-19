@@ -111,6 +111,7 @@ def lint_file(
     style: bool = False,
     check_suppressions: bool = False,
     plugin_rules: list[PluginRule] | None = None,
+    source_text: str | None = None,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -119,8 +120,11 @@ def lint_file(
     diagnostic is remapped back to the original file/line it came from so
     findings still point at the source the user actually wrote.
     """
-    with open(path, "r", encoding="utf-8", errors="replace") as fh:
-        source = fh.read()
+    if source_text is None:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            source = fh.read()
+    else:
+        source = source_text
 
     combined, line_map = preprocess(
         source, path, os.path.dirname(os.path.abspath(path))
@@ -187,7 +191,10 @@ def lint_file(
     return _deduplicate(filter_suppressed(adjusted, source, ignored_rules))
 
 
-def build_symbol_index(file_paths: list[str], token_cache: dict[str, list] | None = None) -> SymbolIndex:
+def build_symbol_index(
+    file_paths: list[str], token_cache: dict[str, list] | None = None,
+    source_cache: dict[str, str] | None = None,
+) -> SymbolIndex:
     """Build a mission-wide :class:`SymbolIndex` from ``file_paths``.
 
     For each path, the file is read as UTF-8 (with ``errors="replace"``) and the
@@ -208,6 +215,8 @@ def build_symbol_index(file_paths: list[str], token_cache: dict[str, list] | Non
                 source = fh.read()
         except OSError:
             continue
+        if source_cache is not None:
+            source_cache[path] = source
         if ext in _CONFIG_EXTENSIONS:
             collect_description_cfg_functions(source, index)
         else:
