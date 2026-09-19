@@ -8,7 +8,7 @@ by an operand, e.g. ``roadSurface _r``.
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .known import is_known, is_known_macro
+from .known import is_known
 from .symbols import SymbolIndex
 from .tokenizer import Token, tokenize
 
@@ -62,7 +62,7 @@ def check_commands(
             continue
 
         name = tok.value.lower()
-        if is_known(name) or is_known_macro(name):
+        if is_known(name) or (index is not None and index.is_known_macro(name)):
             continue
         if index is not None and index.is_known_function(name):
             continue
@@ -107,6 +107,9 @@ if __name__ == "__main__":
     assert check_commands_text("ceil (ALT_postSuccessRecordingEndsAt - diag_tickTime);") == []
     # CBA/addon preprocessor helpers can remain unresolved when their external
     # header is outside the project being linted.
-    assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);') == []
+    from .symbols import SymbolIndex
+    cba_index = SymbolIndex(cba_declared=True)
+    assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);')
+    assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);', cba_index) == []
 
     print("commands self-test passed")

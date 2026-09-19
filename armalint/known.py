@@ -298,7 +298,7 @@ _INLINE_FUNCTIONS: set[str] = {
 # Preprocessor helpers supplied by CBA (and commonly copied into addon
 # headers).  These are expanded before SQF reaches the engine, so an unresolved
 # include must not turn their names into W202 command diagnostics.
-_INLINE_MACROS: set[str] = {
+CBA_MACROS: set[str] = {
     "QUOTE", "QQUOTE", "PATHTO_SYS", "PATHTOF_SYS", "PATHTO", "PATHTOF",
     "DOUBLES", "TRIPLES", "ARR_2", "ARR_3", "ARR_4", "ARR_5", "ARR_6",
     "FUNC", "FUNCMAIN", "GVAR", "GVARMAIN", "QGVAR", "QFUNC", "QFUNCMAIN",
@@ -310,7 +310,7 @@ _INLINE_MACROS: set[str] = {
 # union the inline fallbacks with the comprehensive generated data files.
 _INLINE_COMMANDS = {_normalize(name) for name in _INLINE_COMMANDS}
 _INLINE_FUNCTIONS = {_normalize(name) for name in _INLINE_FUNCTIONS}
-_INLINE_MACROS = {_normalize(name) for name in _INLINE_MACROS}
+CBA_MACROS = {_normalize(name) for name in CBA_MACROS}
 KNOWN_COMMANDS = _INLINE_COMMANDS | _load_commands_from_data()
 KNOWN_FUNCTIONS = _INLINE_FUNCTIONS | _load_functions_from_data()
 
@@ -325,9 +325,13 @@ def is_known_function(name: str) -> bool:
     return _normalize(name) in KNOWN_FUNCTIONS
 
 
-def is_known_macro(name: str) -> bool:
-    """True for standard CBA/addon preprocessor helpers."""
-    return _normalize(name) in _INLINE_MACROS
+def is_known_macro(name: str, *, cba_declared: bool = False) -> bool:
+    """True for standard project macros, optionally including CBA helpers.
+
+    CBA helpers are deliberately opt-in.  A project must declare a CBA addon
+    in its config before they are treated as available.
+    """
+    return cba_declared and _normalize(name) in CBA_MACROS
 
 
 def is_known(name: str) -> bool:
@@ -361,7 +365,7 @@ if __name__ == "__main__":
     assert is_known_command("HINT")
     assert is_known_function("BIS_fnc_param")
     assert is_known_function("bis_fnc_param")
-    assert is_known_macro("PATHTOF_SYS")
+    assert is_known_macro("PATHTOF_SYS", cba_declared=True)
     assert is_known("setPos") and is_known("BIS_fnc_spawn")
     assert not is_known("definitelyNotReal")
     register("myCustomCommand", "command")
