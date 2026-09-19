@@ -67,12 +67,12 @@ names are never inferred from variable names or file paths alone.
 
 | File | Purpose |
 | --- | --- |
-| `armalint_mods.json` | Exact indexed function names. |
-| `armalint_mods_types.json` | Extracted argument contracts. |
-| `armalint_mods_metadata.json` | Schema, descriptions, lifecycle flags, provenance, confidence, and scan errors. |
-| `armalint_scan_cache.json` | Fingerprints and reusable per-root scan results. |
+| `.armalint/armalint_mods.json` | Exact indexed function names. |
+| `.armalint/armalint_mods_types.json` | Extracted argument contracts. |
+| `.armalint/armalint_mods_metadata.json` | Schema, descriptions, lifecycle flags, provenance, confidence, and scan errors. |
+| `.armalint/armalint_scan_cache.json` | Fingerprints and reusable per-root scan results. |
 
-The caches are safe to delete and regenerate. `--clear-cache` removes only the
+The project state directory is safe to delete and regenerate. `--clear-cache` removes only the
 incremental scan cache, preserving the last completed function and type index
 until the next update writes a replacement.
 

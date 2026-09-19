@@ -30,7 +30,7 @@ import sys
 import threading
 import time
 
-from .config import extract_mods, find_config, load_config_file
+from .config import extract_mods, find_config, load_config_file, project_state_dir
 from .mods import (
     discover_workshop_roots,
     discover_game_addon_roots,
@@ -167,11 +167,11 @@ def run_update(args) -> int:
     if getattr(args, "out", None):
         out_path = os.path.abspath(args.out)
     elif config_path:
-        out_path = os.path.join(
-            os.path.dirname(os.path.abspath(config_path)), _DEFAULT_CACHE_NAME
-        )
+        out_path = os.path.join(project_state_dir(os.path.dirname(os.path.abspath(config_path))), _DEFAULT_CACHE_NAME)
     else:
-        out_path = os.path.join(mission_dir, _DEFAULT_CACHE_NAME)
+        out_path = os.path.join(project_state_dir(mission_dir), _DEFAULT_CACHE_NAME)
+    if not getattr(args, "dry_run", False):
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
     scan_cache_path = os.path.join(os.path.dirname(out_path), MOD_SCAN_CACHE_FILENAME)
     scan_cache = load_mod_scan_cache(scan_cache_path)
 
@@ -578,9 +578,9 @@ def main(argv: list[str] | None = None) -> int:
         if parsed.out:
             out_path = os.path.abspath(parsed.out)
         elif config_path:
-            out_path = os.path.join(os.path.dirname(os.path.abspath(config_path)), _DEFAULT_CACHE_NAME)
+            out_path = os.path.join(project_state_dir(os.path.dirname(os.path.abspath(config_path))), _DEFAULT_CACHE_NAME)
         else:
-            out_path = os.path.join(mission_dir, _DEFAULT_CACHE_NAME)
+            out_path = os.path.join(project_state_dir(mission_dir), _DEFAULT_CACHE_NAME)
         scan_cache_path = os.path.join(os.path.dirname(out_path), MOD_SCAN_CACHE_FILENAME)
         try:
             os.remove(scan_cache_path)

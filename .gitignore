@@ -11,6 +11,7 @@ __pycache__/
 .pytest_cache/
 
 # Armalint-generated mission/mod data
+.armalint/
 armalint_mods.json
 armalint_mods_types.json
 armalint_scan_cache.json
