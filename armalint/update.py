@@ -251,6 +251,11 @@ def _extract_with_progress(path: str, label: str, root_number: int, root_total: 
         state["item"] = os.path.basename(item)
         if finished:
             state["done"] += 1
+        else:
+            # Draw synchronously before entering a potentially CPU-heavy PBO
+            # parse.  The spinner thread may not get scheduled while a parser
+            # holds the interpreter, but the user still sees what is active.
+            draw(status())
 
     def draw(message: str, end: str = "") -> None:
         # Pad the entire line so shorter updates erase leftovers without ANSI
