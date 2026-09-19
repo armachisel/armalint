@@ -83,7 +83,10 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str) -
 
 
 def _ensure_steamcmd(project_state: str, detected: str | None) -> str | None:
-    if detected:
+    # A user-supplied --steamcmd path may be stale or mistyped.  Treat it the
+    # same as an undiscovered executable so the interactive installer can
+    # still offer a working local copy.
+    if detected and os.path.isfile(detected):
         return detected
     if not sys.stdin.isatty():
         _warn("SteamCMD was not found; rerun interactively to download it into .armalint/bin")
