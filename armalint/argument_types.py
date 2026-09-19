@@ -46,6 +46,7 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "acos": (frozenset(("Number",)), "Number"),
     "atan": (frozenset(("Number",)), "Number"),
     "selectrandom": (frozenset(("Array",)), "Array"),
+    "assert": (frozenset(("Boolean",)), "Boolean"),
     "count": (frozenset(("String", "Array", "Config", "HashMap", "Code")), "String, Array, Config, HashMap or Code"),
     "isnil": (frozenset(("String", "Code")), "String or Code"),
     "getroadinfo": (frozenset(("Object",)), "Object"),
@@ -105,6 +106,7 @@ _BINARY_SIGNATURES.update({
     # Arma accepts the array-encoded [road, includeJunctions] form in
     # addition to the older unary road-object form.
     "roadsconnectedto": (frozenset(("Object", "Array")), "Object or Array"),
+    "nearentities": (frozenset(("Number", "Array")), "Number or Array"),
 })
 
 _RETURN_TYPES = {
@@ -314,7 +316,7 @@ for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
     if _handle_command in _SIGNATURES:
         accepted, label = _SIGNATURES[_handle_command]
         _SIGNATURES[_handle_command] = (accepted | frozenset(("Group",)), label + " or Group")
-_SIGNATURES["units"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["units"] = (frozenset(("Group", "Object", "Array")), "Group, Object or Array")
 _SIGNATURES["deletegroup"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["joinsilent"] = (frozenset(("Object", "Group")), "Object or Group")
 _BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group", "Object")), "Group or Object")
@@ -432,6 +434,15 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
             return None
         inferred = variables.get(tok.value.lower())
         if inferred == "Array":
+            # Position/vector and record arrays commonly use scalar #index
+            # access.  Preserve the container as Array for the unindexed
+            # form, but infer a direct element access as Number.
+            probe = i + 1
+            while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                probe += 1
+            if (probe < len(tokens) and tokens[probe].value == "#"
+                    and probe + 1 < len(tokens) and tokens[probe + 1].type == "number"):
+                return "Number"
             # Chained hash indexing (``_records#0#1``) selects a field from a
             # nested record.  The common SQF shape is an array of records
             # whose second field is an engine handle; retain that useful fact
@@ -489,6 +500,13 @@ def _infer_expression(
                     branch_types.append("String")
         if len(branch_types) == 1:
             return branch_types[0]
+    if (start + 2 < rhs_end and tokens[start + 1].value.lower() == "get"
+            and tokens[start + 2].type == "string"):
+        # HashMap `get` returns the value stored under a key; the key string is
+        # not evidence that the result itself is a String.
+        return None
+    if any(t.value.lower() == "nearroads" for t in tokens[start:rhs_end]):
+        return "Array"
     if start < len(tokens) and tokens[start].value.lower() in {"getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}:
         # A coordinate selected from a position command is scalar even when
         # the whole expression is wrapped in parentheses.
@@ -975,6 +993,7 @@ def check_argument_types(
     diags: list[Diagnostic] = []
     variables: dict[str, str] = {}
     code_locals: set[str] = set()
+    conditional_locals: set[str] = set()
     element_types: dict[str, str] = {}
     ast_nodes = ast_nodes if ast_nodes is not None else parse(tokens).statements
     _collect_param_types(tokens, variables)
@@ -986,6 +1005,10 @@ def check_argument_types(
             continue
         inferred = _infer_expression(tokens, i + 2, variables, function_return_types)
         key = tok.value.lower()
+        if i + 2 < len(tokens) and tokens[i + 2].value.lower() == "if":
+            # Branch values may come from unrelated engine handles and cannot
+            # be safely collapsed into one static type.
+            conditional_locals.add(key)
         if i + 2 < len(tokens) and tokens[i + 2].type == "lbrace":
             code_locals.add(key)
         if (variables.get(key) == "Array"
@@ -1077,7 +1100,13 @@ def check_argument_types(
             continue
         if tokens[j].type == "local" and tokens[j].value.lower() == "_x":
             continue
+        if tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
+            continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if (tok.value.lower() == "assert" and tokens[j].type == "lparen"
+                and any(t.type == "operator" and t.value in ("==", "!=", "<", ">", "<=", ">=")
+                        for t in tokens[j:])):
+            actual = "Boolean"
         if actual == "Group" and j < len(tokens) and tokens[j].type == "local" and _units_loop_element(tokens, j):
             actual = "Object"
         accepted, expected = rule
@@ -1100,6 +1129,8 @@ def check_argument_types(
         if j >= len(tokens):
             continue
         if any(t.value.lower() == "select" for t in tokens[j:]):
+            continue
+        if j < len(tokens) and tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
             continue
         actual = _infer_operand(tokens, j, variables)
         accepted, expected = rule
