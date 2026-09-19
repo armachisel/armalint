@@ -150,7 +150,7 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                 # `isNil {...} exitWith {...}`, etc.).  A missing terminator
                 # is unambiguous only when another identifier/local starts a
                 # new statement.
-                if nxt.type in ("ident", "local"):
+                if nxt.type in ("ident", "local") and nxt.value.lower() not in ("isequalto", "isnotequalto"):
                     diags.append(Diagnostic(
                         Severity.ERROR, _MISSING_SEMICOLON,
                         "missing semicolon after command with code block",

@@ -60,7 +60,7 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "istouchingground": (frozenset(("Object",)), "Object"),
     "name": (frozenset(("Object",)), "Object"),
     "speed": (frozenset(("Object",)), "Object"),
-    "typeof": (frozenset(("Object",)), "Object"),
+    "typeof": (frozenset(("Object", "String")), "Object or String"),
     "vehicle": (frozenset(("Object",)), "Object"),
     "weapons": (frozenset(("Object",)), "Object"),
     "magazines": (frozenset(("Object",)), "Object"),
@@ -97,6 +97,7 @@ _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
 _BINARY_SIGNATURES.update({
     "callextension": (frozenset(("String", "Array")), "String or Array"),
     "distance": (frozenset(("Object", "Location", "Array")), "Object, Location or Array"),
+    "iskindof": (frozenset(("String", "Array")), "String or Array"),
 })
 
 _RETURN_TYPES = {
@@ -417,6 +418,8 @@ def _infer_expression(
         return "Array"
     if any(t.value.lower() in ("createvehicle", "createvehiclelocal") for t in tokens[start:rhs_end]):
         return "Object"
+    if any(t.value.lower() in ("weaponcargo", "magazinecargo", "itemcargo") for t in tokens[start:rhs_end]):
+        return "Array"
     # A few common command chains have an unambiguous grammar.  Keep this
     # deliberately narrow: scanning every command in a statement would make
     # an earlier producer appear to have the type of a later, unrelated call.
@@ -444,7 +447,10 @@ def _infer_expression(
                         j += 1
                     if (inner == "Array" and j < len(tokens)
                             and tokens[j].value.lower() == "select"):
-                        return "Number" if j + 1 < len(tokens) and tokens[j + 1].type == "number" else None
+                        inner_tokens = [t for t in tokens[start + 1:close] if t.type not in _TRIVIA]
+                        if inner_tokens and inner_tokens[0].type == "lbracket":
+                            return "Number" if j + 1 < len(tokens) and tokens[j + 1].type == "number" else None
+                        return None
                     if j < len(tokens) and tokens[j].value.lower() in _COMMAND_RETURN_TYPES:
                         return _COMMAND_RETURN_TYPES[tokens[j].value.lower()]
                     return inner
@@ -870,6 +876,10 @@ def check_argument_types(
         key = tok.value.lower()
         if i + 2 < len(tokens) and tokens[i + 2].type == "lbrace":
             code_locals.add(key)
+        if (variables.get(key) == "Array"
+                and any(t.type == "operator" and t.value == "+"
+                        for t in tokens[i + 2: next((k for k in range(i + 2, len(tokens)) if tokens[k].type == "semicolon"), len(tokens))])):
+            inferred = "Array"
         if inferred is None:
             variables.pop(key, None)
         else:
@@ -892,6 +902,9 @@ def check_argument_types(
             elif kind == "semicolon" and depth == 0:
                 break
             rhs_end += 1
+        if (inferred == "Number" and variables.get(key) == "Array"
+                and any(t.type == "operator" and t.value == "+" for t in tokens[i + 2:rhs_end])):
+            inferred = "Array"
         producer_names = {t.value.lower() for t in tokens[i + 2:rhs_end] if t.type in ("ident", "keyword")}
         if i + 4 < len(tokens) and tokens[i + 2].type == "local" and tokens[i + 3].value.lower() == "select" and tokens[i + 4].type == "number":
             if tokens[i + 2].value.lower() in element_types:
@@ -1066,12 +1079,12 @@ def check_argument_types(
         # token before the comparison is their string argument. Do not compare
         # that argument's type; the command expression is the left operand.
         command_result_comparison = (
-            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction")
+            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction", "getvariable")
         )
         if not command_result_comparison:
             scan = left - 1
             while scan >= 0 and tokens[scan].type != "semicolon" and left - scan <= 96:
-                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction"):
+                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction", "getvariable"):
                     command_result_comparison = True
                     break
                 scan -= 1
@@ -1158,6 +1171,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('private _fnc_exit = { false; }; call _fnc_exit;') == []
     assert check_argument_types_text('private _itemType = _x call BIS_fnc_itemType; _itemType select 0 == "Mine";') == []
     assert check_argument_types_text('getPos [0, 0, 0];') == []
+    assert check_argument_types_text('objNull isKindOf ["CBA_MiscItem", configFile];') == []
     assert check_argument_types_text('abs -2; toUpper "ok";') == []
     assert check_argument_types_text('parseSimpleArray "[1]"; toString [1, 2];') == []
     assert check_argument_types_text('parseSimpleArray 42;')[0].code == _CODE

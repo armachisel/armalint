@@ -71,6 +71,9 @@ def check_commands(
         if j >= n:
             continue
 
+        if index is not None and index.cba_declared and tok.value.isupper() and tokens[j].type == "lparen":
+            continue  # unresolved project preprocessor macro invocation
+
         if not _is_operand_start(tokens[j]):
             continue
 
@@ -111,5 +114,6 @@ if __name__ == "__main__":
     cba_index = SymbolIndex(cba_declared=True)
     assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);')
     assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);', cba_index) == []
+    assert check_commands_text('EFUNC(Events,triggerEvent);', cba_index) == []
 
     print("commands self-test passed")
