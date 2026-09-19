@@ -21,6 +21,7 @@ _CONFIG_FILENAMES = ("armalint.json", ".armalint.json")
 #: Filename of the mod function cache written by ``python -m armalint.update``.
 MOD_CACHE_FILENAME = "armalint_mods.json"
 MOD_TYPE_CACHE_FILENAME = "armalint_mods_types.json"
+PROJECT_STATE_DIRNAME = ".armalint"
 
 # Matches ``?id=<digits>`` or ``&id=<digits>`` in a Workshop URL; group 1 is
 # the numeric id (kept as a string to preserve any leading zeros).
@@ -122,12 +123,38 @@ def find_mod_cache(start_path: str) -> str | None:
     proceeds toward the filesystem root. The first ``armalint_mods.json`` found
     is returned, or ``None`` if none exists.
     """
-    return _find_upwards(start_path, (MOD_CACHE_FILENAME,))
+    return _find_project_file(start_path, MOD_CACHE_FILENAME)
 
 
 def find_mod_type_cache(start_path: str) -> str | None:
     """Walk upward for the cache of inferred mod function parameter types."""
-    return _find_upwards(start_path, (MOD_TYPE_CACHE_FILENAME,))
+    return _find_project_file(start_path, MOD_TYPE_CACHE_FILENAME)
+
+
+def project_state_dir(project_path: str) -> str:
+    """Return the hidden directory for project-local generated state."""
+    if os.path.isfile(project_path):
+        project_path = os.path.dirname(project_path)
+    return os.path.join(os.path.abspath(project_path), PROJECT_STATE_DIRNAME)
+
+
+def _find_project_file(start_path: str, filename: str) -> str | None:
+    """Find a cache in ``.armalint`` first, with legacy root-cache fallback."""
+    if os.path.isfile(start_path):
+        current = os.path.dirname(os.path.abspath(start_path))
+    else:
+        current = os.path.abspath(start_path)
+    while True:
+        hidden = os.path.join(current, PROJECT_STATE_DIRNAME, filename)
+        legacy = os.path.join(current, filename)
+        if os.path.isfile(hidden):
+            return hidden
+        if os.path.isfile(legacy):
+            return legacy
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
 
 
 def extract_function_tags(config: dict) -> set[str]:

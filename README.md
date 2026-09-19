@@ -283,7 +283,7 @@ file at the project root:
 
 The mod updater also extracts argument types from explicit `params` and `param` validators
 in installed mod function source. Run `python -m armalint.update` to write
-`armalint_mods_types.json` next to the function cache. For contracts that are
+`.armalint/armalint_mods_types.json` next to the function cache. For contracts that are
 not expressed in source, add ordered `_this` argument types under
 `functionTypes`; these project declarations override extracted signatures:
 
@@ -338,12 +338,12 @@ python -m armalint.update --mission <dir> [--workshop <path>] [--arma-dir <path>
 This resolves the mission's required addons (from `mission.sqm`) plus any
 optional mods declared in `armalint.json`, and scans the selected installation
 for base-game/DLC `Addons` folders as well as local `@` mods. It writes exact
-function names to `armalint_mods.json` and source-declared `params` type
-validators to `armalint_mods_types.json`, next to the discovered `armalint.json`
+function names to `.armalint/armalint_mods.json` and source-declared `params` type
+validators to `.armalint/armalint_mods_types.json`, under the discovered `armalint.json`
 (or in the mission directory when no config exists). Pass the Arma install root
 with `--arma-dir` to select it explicitly; otherwise the updater checks common
 Steam locations, `libraryfolders.vdf` entries, and `ARMA3_DIR` / `ARMA_3_DIR`.
-The updater also writes `armalint_scan_cache.json` beside these caches. On later
+The updater also writes `.armalint/armalint_scan_cache.json` beside these caches. On later
 updates it compares addon file sizes and modification times and reuses scan
 results for unchanged roots, avoiding PBO parsing. Roots with changed, added, or
 removed addon files are rescanned. Delete this file to force a complete rescan.
@@ -353,9 +353,9 @@ function-name and type caches and exits, so the next normal update performs a
 full scan.
 
 At lint time, `python -m armalint <dir>` auto-loads that cache and the adjacent
-`armalint_mods_types.json`: for each lint
+`.armalint/armalint_mods_types.json`: for each lint
 path Armalint walks **up** (the same discovery used for `armalint.json`) to find
-`armalint_mods.json`, then registers every cached name on the symbol index for
+`.armalint/armalint_mods.json`, then registers every cached name on the symbol index for
 **exact** (case-insensitive) matching. With both the cache and the tag mechanism
 available, `ace_medical_fnc_setUnconscious` is recognized by exact name (so a
 typo like `ace_medical_fnc_setUnconsious` is *not* suppressed), while any other

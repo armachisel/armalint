@@ -57,10 +57,10 @@ The updater writes four files:
 
 | File | Purpose |
 | --- | --- |
-| `armalint_mods.json` | Exact function names found in the selected base-game, DLC, and mod data. |
-| `armalint_mods_types.json` | Argument types extracted from function source. |
-| `armalint_scan_cache.json` | Hashes and scan results used to skip unchanged PBOs and files. |
-| `armalint_mods_metadata.json` | Versioned descriptions, lifecycle flags, source PBOs, confidence, and scan errors. |
+| `.armalint/armalint_mods.json` | Exact function names found in the selected base-game, DLC, and mod data. |
+| `.armalint/armalint_mods_types.json` | Argument types extracted from function source. |
+| `.armalint/armalint_scan_cache.json` | Hashes and scan results used to skip unchanged PBOs and files. |
+| `.armalint/armalint_mods_metadata.json` | Versioned descriptions, lifecycle flags, source PBOs, confidence, and scan errors. |
 
 The first scan may take a while. That is the price of looking inside the game
 and mod data. Later scans reuse unchanged results. Use `--clear-cache` when
@@ -72,7 +72,7 @@ armalint-update --mission C:\path\to\MyMission.Altis --clear-cache
 
 ## Why the index is project-specific
 
-The output is deliberately stored beside the mission configuration, rather
+The output is deliberately stored under `.armalint` beside the mission configuration, rather
 than in one global user cache. Two missions can require different mods, use
 different versions of the same mod, or define functions with the same name.
 A global list would either miss valid functions or make invalid functions look
@@ -82,12 +82,12 @@ For example:
 
 ```text
 Mission A\armalint.json
-Mission A\armalint_mods.json
-Mission A\armalint_mods_types.json
+Mission A\.armalint\armalint_mods.json
+Mission A\.armalint\armalint_mods_types.json
 
 Mission B\armalint.json
-Mission B\armalint_mods.json
-Mission B\armalint_mods_types.json
+Mission B\.armalint\armalint_mods.json
+Mission B\.armalint\armalint_mods_types.json
 ```
 
 Linting Mission A discovers and uses Mission A's files. Linting Mission B

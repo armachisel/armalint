@@ -55,9 +55,9 @@ armalint-update --mission C:\path\to\MyMission.Altis
 
 The first scan can take a while. The updater hashes and records the files it
 has examined, so later scans can reuse unchanged results. It writes
-`armalint_mods.json`, `armalint_mods_types.json`, and
-`armalint_scan_cache.json` beside the mission configuration.
-The updater also writes `armalint_mods_metadata.json`, which records the
+`.armalint/armalint_mods.json`, `.armalint/armalint_mods_types.json`, and
+`.armalint/armalint_scan_cache.json` under the mission directory.
+The updater also writes `.armalint/armalint_mods_metadata.json`, which records the
 metadata schema, optional Arma version, source addon/PBO for extracted
 functions, and unreadable or unsupported PBOs.
 

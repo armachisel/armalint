@@ -39,7 +39,8 @@ armalint-update --mission C:\path\to\mission
 This reads the mission's required addons and scans the matching installed
 Arma data, DLC data, and mod data. That includes the built-in functions defined
 by the game's `CfgFunctions`, not just functions supplied by Workshop mods.
-It writes the exact function names and any signatures it can extract beside
+It writes the exact function names and any signatures it can extract under the
+mission's hidden `.armalint` directory, beside
 the mission configuration. That lets Armalint distinguish a real function
 from a misspelling and perform more argument checks.
 
