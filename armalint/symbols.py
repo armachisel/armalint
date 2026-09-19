@@ -23,6 +23,7 @@ class SymbolIndex:
 
     tags: set[str] = field(default_factory=set)
     functions: set[str] = field(default_factory=set)
+    macros: set[str] = field(default_factory=set)
     cba_declared: bool = False
 
     def add_tag(self, tag: str) -> None:
@@ -32,6 +33,9 @@ class SymbolIndex:
     def add_function(self, name: str) -> None:
         """Register a full function name (e.g. ``ALT_fnc_foo`` -> ``alt_fnc_foo``)."""
         self.functions.add(_normalize(name))
+
+    def add_macro(self, name: str) -> None:
+        self.macros.add(_normalize(name))
 
     def is_known_function(self, name: str) -> bool:
         """True if ``name`` is a known mission function (case-insensitive).
@@ -52,7 +56,7 @@ class SymbolIndex:
     def is_known_macro(self, name: str) -> bool:
         """True when a project-declared dependency provides this macro."""
         from .known import is_known_macro
-        return is_known_macro(name, cba_declared=self.cba_declared)
+        return _normalize(name) in self.macros or is_known_macro(name, cba_declared=self.cba_declared)
 
     def counts(self) -> tuple[int, int]:
         """Return ``(len(tags), len(functions))``."""

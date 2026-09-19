@@ -308,6 +308,9 @@ CBA_MACROS: set[str] = {
 CBA_FUNCTIONS: set[str] = {
     "CBA_fnc_execNextFrame", "CBA_fnc_createUUID", "CBA_fnc_localEvent",
     "CBA_fnc_addEventHandler", "CBA_fnc_removeEventHandler",
+    "CBA_fnc_addEventHandlerArgs", "CBA_fnc_globalEvent", "CBA_fnc_ownerEvent",
+    "CBA_fnc_remoteEvent", "CBA_fnc_serverEvent", "CBA_fnc_targetEvent",
+    "CBA_fnc_currentUnit", "CBA_fnc_waitAndExecute", "CBA_fnc_getConfigEntry",
 }
 
 # Normalize both registries to lowercase for case-insensitive lookup, then

@@ -92,6 +92,22 @@ def _collect_files(path: str, ignores: list[str]) -> list[str]:
     return files
 
 
+def _collect_macro_files(path: str) -> list[str]:
+    """Collect include fragments that define project-wide preprocessor macros."""
+    roots = [path] if os.path.isdir(path) else [os.path.dirname(path)]
+    result: list[str] = []
+    for root_path in roots:
+        if not os.path.isdir(root_path):
+            continue
+        for root, _dirs, names in os.walk(root_path):
+            result.extend(
+                os.path.join(root, name)
+                for name in names
+                if name.lower().endswith((".inc", ".hpp"))
+            )
+    return result
+
+
 _INCLUDE_LINE_RE = re.compile(r'^\s*#\s*include\s+(?:"([^"]*)"|<([^>]*)>)')
 
 
@@ -334,6 +350,8 @@ def _main(argv: list[str] | None = None) -> int:
 
     if args.snippet is not None:
         context_files = _collect_files(args.mission, args.ignore) if args.mission else []
+        if args.mission:
+            context_files.extend(_collect_macro_files(args.mission))
         context_index = build_symbol_index(context_files)
         context_tags: set[str] = set()
         context_signatures: dict[str, list[str]] = {}
@@ -518,6 +536,7 @@ def _main(argv: list[str] | None = None) -> int:
     index_files = list(files)
     if args.mission:
         index_files.extend(_collect_files(args.mission, collection_ignores))
+        index_files.extend(_collect_macro_files(args.mission))
     token_cache = {}
     index = build_symbol_index(
         sorted(set(index_files)), token_cache=token_cache,
