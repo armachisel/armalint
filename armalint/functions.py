@@ -139,6 +139,7 @@ if __name__ == "__main__":
     assert len(check_functions_text("call thisFunctionDoesNotExist;")) == 1
     assert check_functions_text('spawn { hint "x"; };') == []
     assert check_functions_text('call "BIS_fnc_param";') == []
+    assert check_functions_text("call BIS_fnc_setRain;") == []
     assert check_functions_text('call "script.sqf";') == []
     assert check_functions_text("call (someExpression);") == []
     assert check_functions_text("call 42;")[0].code == _NON_CODE

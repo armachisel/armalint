@@ -1450,6 +1450,7 @@ bis_fnc_setobjecttexture
 bis_fnc_setovercast
 bis_fnc_setpitchbank
 bis_fnc_setppeffecttemplate
+bis_fnc_setrain
 bis_fnc_setrank
 bis_fnc_setrespawndelay
 bis_fnc_setrespawninventory
