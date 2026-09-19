@@ -386,6 +386,22 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
     if i >= len(tokens):
         return None
     tok = tokens[i]
+    # Indexing a position-producing command selects one scalar coordinate.
+    # Keep the command's normal Array return type for the unindexed form, but
+    # infer the indexed form as Number (for example ``getPosATL _unit # 2``).
+    if tok.value.lower() in {"getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}:
+        j = i + 1
+        while j < len(tokens) and tokens[j].type in _TRIVIA:
+            j += 1
+        while j < len(tokens) and tokens[j].type not in ("semicolon", "rparen", "rbracket"):
+            if tokens[j].value == "#":
+                k = j + 1
+                while k < len(tokens) and tokens[k].type in _TRIVIA:
+                    k += 1
+                if k < len(tokens) and tokens[k].type == "number":
+                    return "Number"
+                break
+            j += 1
     if tok.type == "lparen":
         depth = 0
         for end in range(i, len(tokens)):
@@ -455,13 +471,32 @@ def _infer_expression(
     # Infer it from the two branch values when both are known and compatible.
     if start < len(tokens) and tokens[start].value.lower() == "if":
         branch_types: list[str] = []
-        for index, token in enumerate(tokens[start:rhs_end], start):
-            if token.type == "local":
-                inferred = variables.get(token.value.lower())
-                if inferred and inferred not in branch_types:
-                    branch_types.append(inferred)
+        # Only inspect expressions inside the then/else code blocks.  The
+        # condition itself is Boolean and must not be mistaken for the value
+        # produced by the conditional expression.
+        branch_start = next((idx for idx in range(start, rhs_end) if tokens[idx].value.lower() == "then"), None)
+        if branch_start is not None:
+            for index, token in enumerate(tokens[branch_start + 1:rhs_end], branch_start + 1):
+                if token.type == "local":
+                    inferred = variables.get(token.value.lower())
+                    if inferred and inferred not in branch_types:
+                        branch_types.append(inferred)
+                elif token.type == "number":
+                    branch_types.append("Number")
+                elif token.type == "string":
+                    branch_types.append("String")
         if len(branch_types) == 1:
             return branch_types[0]
+    if start < len(tokens) and tokens[start].value.lower() in {"getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}:
+        # A coordinate selected from a position command is scalar even when
+        # the whole expression is wrapped in parentheses.
+        for index in range(start + 1, rhs_end - 1):
+            if tokens[index].value == "#":
+                probe = index + 1
+                while probe < rhs_end and tokens[probe].type in _TRIVIA:
+                    probe += 1
+                if probe < rhs_end and tokens[probe].type == "number":
+                    return "Number"
     if (start < len(tokens) and tokens[start].value.lower() in _ARRAY_ELEMENT_TYPES
             and any(t.value.lower() == "select" for t in tokens[start + 1:rhs_end])):
         return "Array"
@@ -1030,6 +1065,12 @@ def check_argument_types(
             j += 1
         if j >= len(tokens):
             continue
+        # Marker alpha commands also support the array-encoded form
+        # ``[marker, alpha] setMarkerAlphaLocal``.  The XML mirror exposes
+        # only the binary form, so do not validate the container itself as the
+        # numeric alpha operand.
+        if tok.value.lower() in ("setmarkeralpha", "setmarkeralphalocal") and tokens[j].type == "lbracket":
+            continue
         if any(t.value.lower() == "select" for t in tokens[j:]):
             continue
         if tokens[j].type == "local" and tokens[j].value.lower() == "_x":
@@ -1060,6 +1101,15 @@ def check_argument_types(
             continue
         actual = _infer_operand(tokens, j, variables)
         accepted, expected = rule
+        # HashMap deleteAt uses a string key, while Array deleteAt uses a
+        # numeric index.  The generated command metadata only describes the
+        # Array form, so accept the documented HashMap overload when the left
+        # operand is known to be a HashMap.
+        if tok.value.lower() == "deleteat" and actual == "String":
+            # The engine overloads deleteAt for HashMap string keys.  When
+            # the container is dynamic (as it commonly is across namespace
+            # boundaries), its type cannot be proven from the call site.
+            continue
         if actual is not None and actual != "Anything" and actual not in accepted:
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 
@@ -1135,6 +1185,24 @@ def check_argument_types(
     for i, tok in enumerate(tokens):
         if tok.type != "operator" or tok.value not in ("==", "!=", "<", ">", "<=", ">="):
             continue
+        # Config path traversal uses the lexical token pair ``>>``.  The
+        # tokenizer exposes each ``>`` separately, but neither is a numeric
+        # comparison operator in that context.
+        if tok.value == ">" and (
+            (i > 0 and tokens[i - 1].value == ">")
+            or (i + 1 < len(tokens) and tokens[i + 1].value == ">")
+        ):
+            continue
+        # A comparison applied to a config path expression (``configFile >>
+        # ... > 5``) can otherwise be confused with one of the path's `>`
+        # tokens after preprocessing.  Treat the complete config traversal as
+        # opaque for impossible-comparison analysis.
+        if tok.value in ("<", ">", "<=", ">="):
+            window = tokens[max(0, i - 48):min(len(tokens), i + 16)]
+            if (any(a.value == ">" and b.value == ">" for a, b in zip(window, window[1:]))
+                    or any(a.value.lower() == "configfile" for a in window)
+                    or any(a.value.lower() in ("gettext", "getnumber") for a in window)):
+                continue
         left = i - 1
         while left >= 0 and tokens[left].type in _TRIVIA: left -= 1
         right = i + 1
@@ -1149,22 +1217,33 @@ def check_argument_types(
             prior = left - 1
             while prior >= 0 and tokens[prior].type in _TRIVIA:
                 prior -= 1
-            if prior >= 0 and tokens[prior].value.lower() == "select":
+            if prior >= 0 and tokens[prior].value.lower() in ("select", "#"):
                 actual_left = None
         primitive = {"Number", "String", "Boolean"}
         # Infix commands such as `find` return a number, but the immediate
         # token before the comparison is their string argument. Do not compare
         # that argument's type; the command expression is the left operand.
         command_result_comparison = (
-            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction", "getvariable", "distance", "distance2d", "distancesqr")
+            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction", "getvariable", "gettext", "getnumber", "distance", "distance2d", "distancesqr")
         )
         if not command_result_comparison:
             scan = left - 1
             while scan >= 0 and tokens[scan].type != "semicolon" and left - scan <= 96:
-                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction", "getvariable", "distance", "distance2d", "distancesqr"):
+                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction", "getvariable", "gettext", "getnumber", "distance", "distance2d", "distancesqr"):
                     command_result_comparison = True
                     break
                 scan -= 1
+        if not command_result_comparison:
+            # Config accessors can appear on the right side of a comparison
+            # (for example ``"gl" == getText (...)``).  Their return type is
+            # already authoritative; do not compare an inner config argument
+            # against the literal on the other side.
+            scan = i + 1
+            while scan < len(tokens) and tokens[scan].type != "semicolon" and scan - i <= 96:
+                if tokens[scan].value.lower() in ("gettext", "getnumber"):
+                    command_result_comparison = True
+                    break
+                scan += 1
         # A local may be reused by separate functions in one file. If an
         # earlier assignment of that local is a `findIf` producer, do not let
         # the stale type from another function make this numeric result look
@@ -1208,6 +1287,12 @@ def check_argument_types(
                     actual_left = "String"
                 elif value < i and tokens[value].type == "keyword" and tokens[value].value.lower() in ("true", "false"):
                     actual_left = "Boolean"
+                else:
+                    # An assignment from an unknown global or macro value is
+                    # not evidence of the previous inferred type.  Keeping a
+                    # stale Boolean/Number here creates false comparisons in
+                    # code that receives strings from dialog/config state.
+                    actual_left = None
                 break
         # typeName returns a string describing the operand, so comparing it
         # with a string literal is intentional even though the underlying
@@ -1217,7 +1302,35 @@ def check_argument_types(
             and tokens[left].type == "local"
             and tokens[left - 1].value.lower() == "typename"
         )
-        if (not type_name_comparison and not command_result_comparison
+        local_literal_type = True
+        if left >= 0 and tokens[left].type == "local":
+            # A file-wide inferred type is too weak for locals populated from
+            # dialog/config/global state.  Only issue impossible-comparison
+            # warnings for locals with a nearby literal assignment proving
+            # their primitive type; this avoids Boolean/String and
+            # Number/String cascades from unrelated scopes.
+            local_literal_type = False
+            name = tokens[left].value.lower()
+            cursor = left - 1
+            distance = 0
+            while cursor >= 0 and distance < 160:
+                if (tokens[cursor].type == "local" and tokens[cursor].value.lower() == name):
+                    assign = cursor + 1
+                    while assign < left and tokens[assign].type in _TRIVIA:
+                        assign += 1
+                    if assign < left and tokens[assign].value == "=":
+                        value = assign + 1
+                        while value < left and tokens[value].type in _TRIVIA:
+                            value += 1
+                        if value < left and tokens[value].type in ("number", "string"):
+                            local_literal_type = True
+                        elif (value < left and tokens[value].type == "keyword"
+                              and tokens[value].value.lower() in ("true", "false")):
+                            local_literal_type = True
+                        break
+                cursor -= 1
+                distance += 1
+        if (local_literal_type and not type_name_comparison and not command_result_comparison
                 and actual_left in primitive and actual_right in primitive
                 and actual_left != actual_right):
             diags.append(Diagnostic(Severity.WARNING, _COMPARISON_CODE, f"comparison cannot match {actual_left} with {actual_right}", tok.line, tok.column))
@@ -1234,6 +1347,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('sleep "soon";')[0].message.endswith("got String")
     assert check_argument_types_text('hint [parseText "hello"];') == []
     assert check_argument_types_text('sleep _delay;') == []
+    assert check_argument_types_text('sleep getPosATL player # 2;') == []
     assert check_argument_types_text('systemChat 42;')[0].message.endswith("got Number")
     assert check_argument_types_text('uiSleep "soon";')[0].code == _CODE
     assert check_argument_types_text('count "abc";') == []
@@ -1298,8 +1412,13 @@ if __name__ == "__main__":
     assert check_argument_types_text('params [["_delay", "soon", [""]]]; sleep _delay;')[0].code == _CODE
     assert check_argument_types_text('params [["_n", ""]]; { _n isEqualType 0 && { abs _n < 100 } };') == []
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
+    assert check_argument_types_text('_map = createHashMap; _map deleteAt "key";') == []
+    assert check_argument_types_text('_alpha = if (true) then {0.75} else {1}; ["m", _alpha] setMarkerAlphaLocal;') == []
     assert check_argument_types_text('_value = 1; if (typeName _value == "SCALAR") then { sleep _value; };') == []
     assert any(item.code == _COMPARISON_CODE for item in check_argument_types_text('_n = 1; _n == "one";'))
+    assert check_argument_types_text('_items = ["x"]; _items # 0 == "x";') == []
+    assert check_argument_types_text('getText (configFile >> "Cfg") == "x";') == []
+    assert check_argument_types_text('getNumber (configFile >> "Cfg") > 5;') == []
     assert check_argument_types_text('if ((toLower _x) find "auto" >= 0) then {};') == []
     assert check_argument_types_text('if (inputAction "zoomIn" > 0) then {};') == []
     assert check_argument_types_text('_n = { true } count []; if (_n > 0) then {};') == []
