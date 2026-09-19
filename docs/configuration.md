@@ -6,6 +6,11 @@ discovery. Configuration is project-specific: two missions can use different
 mods, signatures, suppressions, and generated-file patterns without affecting
 each other.
 
+Discovery is performed per linted file, so a monorepo can contain multiple
+nested missions with different `armalint.json` files. The nearest config
+controls that file's suppressions, severities, presets, ignore patterns, and
+plugins; indexed function metadata is combined across the files being linted.
+
 ## Common configuration
 
 ```json

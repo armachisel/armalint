@@ -9,8 +9,8 @@ from anywhere, or keep a checkout around while working on the linter itself.
 uv tool install .
 ```
 
-That gives you `armalint`, `armalint-update`, `armalint-update-commands`, and
-`armalint-mcp`. `pipx install .` does the same job if that is what
+That gives you `armalint`, `armalint-update`, `armalint-update-commands`,
+`armalint-mcp`, `armalint-watch`, and `armalint-lsp`. `pipx install .` does the same job if that is what
 you already use.
 
 For a reproducible development environment, install `uv`, then run:
@@ -25,8 +25,8 @@ The project uses Hatchling as its PEP 621 build backend. Both the wheel and
 source archive include the bundled command and function data needed for normal
 linting; extracted mission and mod caches remain outside the package.
 
-On Windows, `uv tool install .` places the three CLI tools and `armalint-mcp`
-on the uv tool bin directory. `uv tool upgrade armalint` upgrades a published
+On Windows, `uv tool install .` places the CLI tools, including `armalint-watch`
+and `armalint-lsp`, on the uv tool bin directory. `uv tool upgrade armalint` upgrades a published
 release, while `uv tool install --force .` refreshes a local checkout.
 
 ## Lint a mission
@@ -80,3 +80,7 @@ Severity values are `error`, `warning`, `info`, and `off`. For one run, use
 `armalint --ignore-rule W206 <path>`; source comments can suppress a single
 line or section. Use `--sarif` for CI/code-scanning integrations and `--style`
 to enable optional whitespace diagnostics (`W301` and `W302`).
+
+For CI, use `--fail-on warning`, `--github-actions`, `--checkstyle`, or
+`--diff-staged` as appropriate. Use `--fix-preview` to inspect safe edits
+before applying them with `--fix`.

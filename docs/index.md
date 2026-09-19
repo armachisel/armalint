@@ -52,6 +52,8 @@ including explicit Arma and Workshop paths when automatic discovery cannot
 find them. The [function index guide](indexes.md) explains what is stored and
 why each mission has its own index. The [CLI reference](cli.md) has the
 options, and [rules and analysis](rules.md) explains the diagnostics.
+The [configuration guide](configuration.md) covers nested projects and
+presets, while the [plugin guide](plugins.md) documents project-defined checks.
 
 ## Credits
 
