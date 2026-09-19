@@ -348,6 +348,7 @@ def run_update(args) -> int:
     # 3. Search roots: workshop content roots + Arma install directories.
     workshop_roots = list(getattr(args, "workshop", None) or discover_workshop_roots())
     source_macros: set[str] = set()
+    source_dependency_roots: list[tuple[str, dict]] = []
     source_cache_root = os.path.join(os.path.dirname(out_path), "dependencies", "source")
     for spec in dependency_specs:
         source = spec.get("source")
@@ -361,6 +362,7 @@ def run_update(args) -> int:
             if os.path.isdir(candidate):
                 source_path = candidate
         if source_path:
+            source_dependency_roots.append((source_path, spec))
             source_info = source if isinstance(source, dict) else spec
             roots = source_info.get("includeRoots", source_info.get("include_roots", [])) if isinstance(source_info, dict) else []
             if isinstance(roots, str):
@@ -449,6 +451,23 @@ def run_update(args) -> int:
         else:
             label = f" ({mod['name']})" if mod["name"] else ""
             _warn(f"could not resolve workshop mod {wid}{label}")
+
+    # Dependency declarations are also scan inputs.  Downloading a Workshop
+    # item or cloning its source without registering the resulting root leaves
+    # its functions invisible to the linter (and produces misleading W201
+    # diagnostics in the consuming project).
+    for spec in dependency_specs:
+        name = spec.get("name")
+        wid = spec.get("workshopId") or spec.get("workshop_id")
+        if wid:
+            path = resolve_workshop_mod(wid, workshop_roots)
+            if path:
+                register(path, name, wid, f"dependency {name or wid}")
+        # Source roots are handled independently so a source-only dependency
+        # remains useful even when no Workshop download is available.
+    for path, spec in source_dependency_roots:
+        if list_addons(path):
+            register(path, spec.get("name"), spec.get("workshopId") or spec.get("workshop_id"), f"dependency source {spec.get('name') or path}")
 
     unresolved_required: list[str] = []
     resolved_required: set[str] = set()
