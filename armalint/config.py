@@ -219,6 +219,16 @@ def extract_presets(config: dict) -> list[str]:
     return [item.strip().lower() for item in raw if isinstance(item, str) and item.strip()]
 
 
+def extract_plugins(config: dict) -> list[str]:
+    """Return project plugin paths from ``plugins``."""
+    raw = config.get("plugins", [])
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [item.strip() for item in raw if isinstance(item, str) and item.strip()]
+
+
 def validate_config(config: object) -> list[str]:
     """Validate the supported project configuration shape.
 
@@ -229,10 +239,10 @@ def validate_config(config: object) -> list[str]:
         return ["configuration root must be a JSON object"]
     allowed = {
         "mods", "functionTags", "functionTypes", "functionReturns", "ignoreRules",
-        "ignore", "ignorePatterns", "severity", "ruleSeverity", "presets", "preset",
+        "ignore", "ignorePatterns", "severity", "ruleSeverity", "presets", "preset", "plugins",
     }
     errors = [f"unknown configuration key: {key}" for key in config if key not in allowed]
-    list_keys = ("functionTags", "ignoreRules", "ignore", "ignorePatterns", "presets")
+    list_keys = ("functionTags", "ignoreRules", "ignore", "ignorePatterns", "presets", "plugins")
     for key in list_keys:
         if key in config and not isinstance(config[key], (list, tuple, str)):
             errors.append(f"{key} must be a string or array")
@@ -336,6 +346,7 @@ if __name__ == "__main__":
         assert extract_rule_severities({"severity": {"w206": "error", "W209": "off", "bad": "warning", 3: "info"}}) == {"W206": "error", "W209": "off"}
         assert extract_ignore_patterns({"ignore": ["generated/**", "", 3]}) == ["generated/**"]
         assert extract_presets({"presets": ["style", "strict"]}) == ["style", "strict"]
+        assert extract_plugins({"plugins": ["rules.py", ""]}) == ["rules.py"]
         assert validate_config({"presets": ["style"], "severity": {"W206": "error"}}) == []
         assert any("unknown configuration key" in item for item in validate_config({"typo": True}))
 

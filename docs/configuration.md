@@ -17,7 +17,8 @@ each other.
   "ignoreRules": ["W206"],
   "ignore": ["vendor/**", "generated/**"],
   "severity": {"W101": "error", "W206": "off"},
-  "presets": ["recommended"]
+  "presets": ["recommended"],
+  "plugins": ["tools/armalint_rules.py"]
 }
 ```
 
@@ -33,6 +34,8 @@ The `--rules` option can select individual codes or categories (`syntax`,
 `correctness`, `flow`, `suppression`, and `style`) for focused checks.
 Configuration files are schema-checked; unknown keys, rule codes, presets, and
 invalid severity values produce `E012` instead of being silently ignored.
+Project plugins are Python files resolved relative to the configuration file;
+see [`plugins.md`](plugins.md) for the registration API.
 
 ## Cache files
 

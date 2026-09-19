@@ -710,6 +710,34 @@ def main() -> int:
                 f"config_code: {len(cc_w202)} unexpected W202 (config structure must not be linted)"
             )
 
+    print("--- CLI: project plugin rule ---")
+    total += 1
+    plugin_ok = False
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        (root / "armalint.json").write_text('{"plugins": ["rules.py"]}', encoding="utf-8")
+        (root / "rules.py").write_text(
+            "from armalint.diagnostic import Diagnostic, Severity\n"
+            "def check(source, filename):\n"
+            "    return [Diagnostic(Severity.WARNING, 'W901', 'plugin marker', 1, 1, filename)] if 'MARK' in source else []\n"
+            "def register(api):\n"
+            "    api.register('W901', 'warning', 'plugin marker', check)\n",
+            encoding="utf-8",
+        )
+        source_file = root / "main.sqf"
+        source_file.write_text('hint "MARK";\n', encoding="utf-8")
+        plugin_proc = run_cli(str(source_file), "--json")
+        try:
+            plugin_payload = json.loads(plugin_proc.stdout or "[]")
+            plugin_ok = any(item.get("code") == "W901" for item in plugin_payload)
+        except json.JSONDecodeError:
+            plugin_ok = False
+    print(f"[{'PASS' if plugin_ok else 'FAIL'}] project plugin diagnostic")
+    if plugin_ok:
+        passed += 1
+    else:
+        failures.append("project plugin diagnostic was not emitted")
+
     print("--- summary ---")
     print(f"{passed}/{total} checks passed")
     if failures:

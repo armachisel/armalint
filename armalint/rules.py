@@ -66,10 +66,13 @@ PRESETS = {
 }
 
 
-def metadata() -> list[dict[str, str]]:
-    return [
+def metadata(plugin_rules=None) -> list[dict[str, str]]:
+    result = [
         {"id": code, "name": message, "defaultSeverity": severity,
          "categories": [category for category, codes in RULE_CATEGORIES.items() if code in codes],
          "helpUri": f"docs/rules.md#rule-{code.lower()}"}
         for code, (severity, message) in sorted(RULES.items())
     ]
+    for rule in plugin_rules or []:
+        result.append({"id": rule.code, "name": rule.description, "defaultSeverity": rule.severity, "categories": ["plugin"], "helpUri": "docs/plugins.md"})
+    return result
