@@ -112,6 +112,7 @@ def lint_file(
     check_suppressions: bool = False,
     plugin_rules: list[PluginRule] | None = None,
     source_text: str | None = None,
+    source_cache: dict[str, str] | None = None,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -127,7 +128,7 @@ def lint_file(
         source = source_text
 
     combined, line_map = preprocess(
-        source, path, os.path.dirname(os.path.abspath(path))
+        source, path, os.path.dirname(os.path.abspath(path)), source_cache=source_cache,
     )
     include_origins = find_include_origins(path)
     tokens = pretokenized if combined == source and pretokenized is not None else tokenize(combined)
