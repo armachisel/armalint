@@ -306,6 +306,27 @@ def main() -> int:
     else:
         failures.append("include provenance, watcher, or LSP smoke test failed")
 
+    print("--- CLI: safe fixes, severity threshold, and GitHub annotations ---")
+    total += 1
+    with tempfile.TemporaryDirectory() as temp_dir:
+        style_file = Path(temp_dir) / "style.sqf"
+        style_file.write_text('hint "x";  \n\thint "y";\n', encoding="utf-8")
+        fixed = run_cli(str(style_file), "--fix", "--style", "--json")
+        fixed_payload = json.loads(fixed.stdout or "[]")
+        fix_ok = fixed.returncode == 0 and not fixed_payload and "  \n" not in style_file.read_text(encoding="utf-8") and "\t" not in style_file.read_text(encoding="utf-8")
+    warning_fail = run_cli(str(BUGGY_FIXTURE), "--fail-on", "warning").returncode == 1
+    no_fail = run_cli(str(BUGGY_FIXTURE), "--fail-on", "none").returncode == 0
+    diff_clean = run_cli(str(BUGGY_FIXTURE), "--diff", "HEAD", "--json")
+    diff_ok = diff_clean.returncode == 0 and json.loads(diff_clean.stdout or "[]") == []
+    annotation = run_cli(str(BUGGY_FIXTURE), "--github-actions")
+    annotation_ok = "::error" in annotation.stdout and "::warning" in annotation.stdout
+    policy_ok = fix_ok and warning_fail and no_fail and diff_ok and annotation_ok
+    print(f"[{'PASS' if policy_ok else 'FAIL'}] fix={fix_ok} warning={warning_fail} none={no_fail} diff={diff_ok} annotations={annotation_ok}")
+    if policy_ok:
+        passed += 1
+    else:
+        failures.append("safe fixes, severity threshold, or GitHub annotation test failed")
+
     print("--- CLI: mission fixture (expect symbol index suppresses ALT_fnc_*) ---")
     total += 1
     mission = run_cli(str(MISSION_FIXTURE), "--json")

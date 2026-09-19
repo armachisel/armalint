@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 
 from . import __version__
@@ -30,6 +31,7 @@ from .mods import load_mod_cache
 from .mods import load_mod_type_cache
 from .sqm import check_mission_sqm
 from .rules import metadata as rule_metadata
+from .style import fix_style
 
 _SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext", ".sqm")
 _CONFIG_EXTENSIONS = (".hpp", ".ext")
@@ -141,6 +143,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--sarif", action="store_true", help="emit SARIF 2.1.0 diagnostics")
     parser.add_argument("--style", action="store_true", help="enable optional source style checks")
+    parser.add_argument("--fix", action="store_true", help="apply safe formatting fixes and write changed files")
+    parser.add_argument("--diff", nargs="?", const="HEAD", metavar="REF", help="report only diagnostics on lines changed from REF (default: HEAD)")
+    parser.add_argument("--fail-on", choices=("error", "warning", "info", "none"), default="error", help="minimum severity that makes the command fail (default: error)")
+    parser.add_argument("--github-actions", action="store_true", help="emit GitHub Actions workflow-command annotations")
     parser.add_argument("--check-suppressions", action="store_true", help="report unjustified and unused inline suppressions")
     parser.add_argument("--baseline", metavar="PATH", help="suppress diagnostics recorded in a JSON baseline file")
     parser.add_argument(
@@ -172,6 +178,51 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _git_changed_lines(reference: str, paths: list[str]) -> dict[str, set[int]]:
+    """Return changed line numbers for tracked and untracked files."""
+    changed: dict[str, set[int]] = {}
+    command = ["git", "diff", "--unified=0", reference, "--", *paths]
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, check=False)
+    except OSError:
+        return changed
+    current: str | None = None
+    for line in proc.stdout.splitlines():
+        if line.startswith("+++ b/"):
+            current = os.path.abspath(line[6:])
+            changed.setdefault(os.path.normcase(current), set())
+            continue
+        if current is None or not line.startswith("@@"):
+            continue
+        match = re.search(r"\+(\d+)(?:,(\d+))?", line)
+        if not match:
+            continue
+        start = int(match.group(1))
+        count = int(match.group(2) or "1")
+        changed[os.path.normcase(current)].update(range(start, start + max(count, 1)))
+    # New files are not present in ``git diff HEAD`` until staged. Include all
+    # their lines so a first CI run cannot silently miss diagnostics.
+    try:
+        untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "--", *paths], capture_output=True, text=True, check=False)
+        for item in untracked.stdout.splitlines():
+            full = os.path.normcase(os.path.abspath(item))
+            try:
+                with open(full, "r", encoding="utf-8", errors="replace") as fh:
+                    changed[full] = set(range(1, len(fh.read().splitlines()) + 1))
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return changed
+
+
+def _github_annotation(diagnostic) -> str:
+    file_name = str(diagnostic.file or "").replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(":", "%3A").replace(",", "%2C")
+    message = diagnostic.message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    command = "error" if diagnostic.severity is Severity.ERROR else "warning" if diagnostic.severity is Severity.WARNING else "notice"
+    return f"::{command} file={file_name},line={diagnostic.line},col={diagnostic.column},title={diagnostic.code}::{message}"
+
+
 def _main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
@@ -190,6 +241,8 @@ def _main(argv: list[str] | None = None) -> int:
 
     if args.snippet is not None and (args.paths or args.files):
         _build_arg_parser().error("--snippet cannot be combined with files or directories; use --mission for context")
+    if args.snippet is not None and args.diff:
+        _build_arg_parser().error("--diff requires files or a directory, not --snippet")
     if args.snippet is None and not (args.paths or args.files):
         if not args.mission:
             _build_arg_parser().error("provide a file/directory, --file PATH, or --snippet SOURCE")
@@ -317,8 +370,18 @@ def _main(argv: list[str] | None = None) -> int:
     all_diags = []
     for f in files:
         if _is_sqf_file(f):
+            if args.fix:
+                try:
+                    with open(f, "r", encoding="utf-8", errors="replace") as fh:
+                        original = fh.read()
+                    fixed = fix_style(original)
+                    if fixed != original:
+                        with open(f, "w", encoding="utf-8", newline="") as fh:
+                            fh.write(fixed)
+                except OSError:
+                    pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=args.style, check_suppressions=args.check_suppressions, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=(args.style or args.fix), check_suppressions=args.check_suppressions, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -338,6 +401,14 @@ def _main(argv: list[str] | None = None) -> int:
 
     if baseline_keys:
         all_diags = [d for d in all_diags if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys]
+
+    if args.diff:
+        changed_lines = _git_changed_lines(args.diff, input_paths)
+        all_diags = [
+            d for d in all_diags
+            if os.path.normcase(os.path.abspath(d.file)) in changed_lines
+            and d.line in changed_lines[os.path.normcase(os.path.abspath(d.file))]
+        ]
 
     if args.sarif:
         payload = {
@@ -371,12 +442,17 @@ def _main(argv: list[str] | None = None) -> int:
         ]
         print(json.dumps(payload))
     else:
-        for d in all_diags:
-            print(format_diagnostic(d))
+        if args.github_actions:
+            for d in all_diags:
+                print(_github_annotation(d))
+        else:
+            for d in all_diags:
+                print(format_diagnostic(d))
         print(f"{len(linted_files)} file(s) linted, {len(all_diags)} diagnostic(s)")
 
-    has_error = any(d.severity is Severity.ERROR for d in all_diags)
-    return 1 if has_error else 0
+    threshold = {"error": 3, "warning": 2, "info": 1, "none": 99}[args.fail_on]
+    severity_rank = {Severity.INFO: 1, Severity.WARNING: 2, Severity.ERROR: 3}
+    return 1 if any(severity_rank[d.severity] >= threshold for d in all_diags) else 0
 
 
 def _diagnostic_fingerprint(code: object, file: object, line: object, column: object, message: object) -> str:
