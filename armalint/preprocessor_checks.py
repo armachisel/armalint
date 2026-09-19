@@ -9,6 +9,14 @@ from .diagnostic import Diagnostic, Severity
 _DIRECTIVE = re.compile(r"^\s*#\s*([A-Za-z_][A-Za-z0-9_]*)\b(.*)$")
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _KNOWN = {"include", "define", "undef", "ifdef", "ifndef", "if", "elif", "else", "endif", "pragma"}
+# Arma's compiler supplies these runtime macros even though they do not occur
+# in the source tree.  Project build tooling commonly supplies the matching
+# A3_DEBUG names as well.
+_PREDEFINED = {
+    "__a3_debug__", "__a3a_debug__", "__a3_diag__", "__a3_experimental__", "__arma__", "__arma3__",
+    "__game_ver__", "__game_ver_maj__", "__game_ver_min__", "__game_build__",
+    "a3_debug", "a3a_debug",
+}
 
 
 def check_preprocessor(source: str) -> list[Diagnostic]:
@@ -54,7 +62,8 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
         elif directive == "if":
             expression = rest.replace(" ", "")
             simple_name = re.fullmatch(r"!?([A-Za-z_][A-Za-z0-9_]*)", expression)
-            known_name = bool(simple_name and simple_name.group(1).lower() in defines)
+            known_name = bool(simple_name and (simple_name.group(1).lower() in defines
+                                               or simple_name.group(1).lower() in _PREDEFINED))
             if expression and not (expression in ("0", "1", "true", "false") or known_name or expression.startswith("defined(") or expression.startswith("!defined(")):
                 diagnostics.append(Diagnostic(Severity.WARNING, "W226", f"macro or expression cannot be resolved in #if: {rest}", line_number, token_column))
             conditionals.append(line_number)
