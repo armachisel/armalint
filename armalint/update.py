@@ -82,6 +82,34 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str) -
     return True
 
 
+def _download_steamcmd_archive(destination: str) -> None:
+    """Download the SteamCMD archive with a single-line terminal progress display."""
+    stream = sys.stderr if sys.stderr.isatty() else None
+    response = urllib.request.urlopen(
+        "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip"
+    )
+    total = int(response.headers.get("Content-Length") or 0)
+    downloaded = 0
+    width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
+    with response, open(destination, "wb") as output:
+        while True:
+            chunk = response.read(1024 * 64)
+            if not chunk:
+                break
+            output.write(chunk)
+            downloaded += len(chunk)
+            if stream:
+                if total:
+                    message = f"Downloading SteamCMD {downloaded * 100 // total:3d}%"
+                else:
+                    message = f"Downloading SteamCMD ({downloaded // 1024} KiB)"
+                stream.write("\r" + message[:width].ljust(width))
+                stream.flush()
+    if stream:
+        stream.write("\r" + (" " * width) + "\r")
+        stream.flush()
+
+
 def _ensure_steamcmd(project_state: str, detected: str | None) -> str | None:
     # A user-supplied --steamcmd path may be stale or mistyped.  Treat it the
     # same as an undiscovered executable so the interactive installer can
@@ -99,7 +127,7 @@ def _ensure_steamcmd(project_state: str, detected: str | None) -> str | None:
     os.makedirs(bin_dir, exist_ok=True)
     archive = os.path.join(bin_dir, "steamcmd.zip")
     try:
-        urllib.request.urlretrieve("https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip", archive)
+        _download_steamcmd_archive(archive)
         with zipfile.ZipFile(archive) as package:
             package.extractall(bin_dir)
     except (OSError, urllib.error.URLError, zipfile.BadZipFile) as exc:
