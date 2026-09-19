@@ -117,7 +117,7 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                 # Literal numbers and booleans are the unambiguous misuse cases.
                 # Parenthesized expressions such as ``(_this select 0)`` are
                 # valid dynamic variable names when supplied by a caller.
-                valid = argument < len(tokens) and tokens[argument].type in ("string", "lbracket", "local", "ident", "lparen")
+                valid = argument < len(tokens) and tokens[argument].type in ("string", "lbracket", "local", "ident", "keyword", "lparen")
                 if not valid:
                     diagnostics.append(_diag(_NAMESPACE, f"{tokens[previous].value} {name} expects a name or [name, value] array", token))
 

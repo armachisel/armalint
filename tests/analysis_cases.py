@@ -486,6 +486,18 @@ def _types_antistasi_producer_boundaries() -> bool:
     return all(not any(item.code == "W203" for item in check_argument_types_text(source)) for source in snippets)
 
 
+def _types_support_namespace_overloads() -> bool:
+    snippets = (
+        'private _next = (_target vectorAdd (_dir vectorMultiply (_speed * diag_deltaTime))); setPosASL _next;',
+        'private _offset = [100, 200] select _heavy; _dir vectorMultiply -0.5 * _offset;',
+        '{ private _pos = _x getPos [0, 0]; _x doMove _pos; } forEach allUnits;',
+        'private _fn = missionNamespace getVariable format ["A3A_fnc_%1", _name]; [_arg] call _fn;',
+        'private _namespace = locationNull; if (_namespace isEqualType locationNull) then { deleteLocation _namespace; } else { deleteVehicle _namespace; };',
+        'private _p = [0,0,0]; _p inArea [_p, 50, 50];',
+    )
+    return all(not any(item.code in {"W203", "W205", "W218", "W228"} for item in check_argument_types_text(source)) for source in snippets)
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -586,6 +598,7 @@ CASES = (
     ("selected fields stay unknown", _types_selected_fields_stay_unknown),
     ("nested type scope isolated", _types_nested_scope_isolated),
     ("Antistasi producer boundary inference", _types_antistasi_producer_boundaries),
+    ("support and namespace overload inference", _types_support_namespace_overloads),
     ("multi-code suppression", _suppression_multi_code),
     ("suppression quality", _suppression_quality),
     ("malformed suppression", _malformed_suppression),
