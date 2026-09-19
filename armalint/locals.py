@@ -118,7 +118,18 @@ def check_unused_locals(tokens: list[Token]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for name, declaration_index, declaration_scope, declaration_token in declarations:
         used = False
+        # SQF ``for "_i" from ...`` stores the loop variable as a string
+        # token, rather than a local-variable token.  Treat that header as a
+        # real use of a prior private declaration.
+        for i in range(declaration_index + 1, len(tokens) - 1):
+            if (tokens[i].type == "keyword" and tokens[i].value.lower() == "for"
+                    and tokens[i + 1].type == "string"
+                    and tokens[i + 1].value.lower() == name):
+                used = True
+                break
         for index in range(declaration_index + 1, len(tokens)):
+            if used:
+                break
             token = tokens[index]
             if token.type != "local" or token.value.lower() != name:
                 continue
@@ -148,4 +159,5 @@ if __name__ == "__main__":
     assert [d.code for d in check_unused_locals_text("#include \"shared.sqf\"\nprivate _maybeUsed;")] == []
     assert [d.code for d in check_unused_locals_text("{ private _inner; hint str _outer; }; private _outer;")] == [_CODE, _CODE]
     assert check_unused_locals_text('displayAddEventHandler ["KeyDown", { params ["_displayorcontrol", "_key", "_xPos"]; }];') == []
+    assert check_unused_locals_text('private ["_n"]; for "_n" from 0 to 2 do { hint str _n; };') == []
     print("locals self-test passed")
