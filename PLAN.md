@@ -123,9 +123,9 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [ ] Extend diff-aware linting for staged changes, pull requests, and untracked
   files with explicit handling for deleted lines.
 - [x] Add severity-based exit policies and GitHub Actions annotations.
-- [ ] Validate configuration against a documented schema and diagnose unknown
+- [x] Validate configuration against a documented schema and diagnose unknown
   or malformed options with suggestions.
-- [ ] Add rule categories and named presets such as `recommended`, `strict`,
+- [x] Add rule categories and named presets such as `recommended`, `strict`,
   `style`, and `performance`.
 - [ ] Diagnose malformed, misspelled, or ineffective inline suppression
   directives.
