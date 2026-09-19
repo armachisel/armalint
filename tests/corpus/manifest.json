@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "cases": [
+    {"name": "count object regression", "file": "count_object.sqf", "source": "mission report: count called with a producer whose inferred value was an object", "expect": ["W203"]},
+    {"name": "trigonometric object regression", "file": "sin_object.sqf", "source": "mission report: sin received an object through a command chain", "expect": ["W203"]},
+    {"name": "postfix reverse regression", "file": "postfix_reverse.sqf", "source": "mission report: reverse used as a postfix statement", "expect": ["E009"]},
+    {"name": "suppression typo regression", "file": "suppression_typo.sqf", "source": "suppression diagnostics report: misspelled directive", "expect": ["W231"]},
+    {"name": "trailing comma regression", "file": "trailing_comma.sqf", "source": "parser report: trailing comma in an array", "expect": ["E003"]}
+  ]
+}

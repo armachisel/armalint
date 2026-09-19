@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from armalint.linter import lint_text
 from analysis_cases import CASES as ANALYSIS_CASES
+from corpus_runner import run_corpus
 
 TESTS_DIR = PROJECT_ROOT / "tests"
 FIXTURES_DIR = TESTS_DIR / "fixtures"
@@ -162,6 +163,15 @@ def main() -> int:
         passed += 1
     else:
         failures.append("generated rule catalog is stale")
+
+    total += 1
+    corpus_passed, corpus_total, corpus_failures = run_corpus()
+    corpus_ok = corpus_passed == corpus_total
+    print(f"[{'PASS' if corpus_ok else 'FAIL'}] regression corpus {corpus_passed}/{corpus_total}")
+    if corpus_ok:
+        passed += 1
+    else:
+        failures.extend(f"corpus: {failure}" for failure in corpus_failures)
 
     print("--- module self-tests (with flags) ---")
     for name, extra in (("update", ("--self-test",)),):
