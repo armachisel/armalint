@@ -141,7 +141,7 @@ def _decode_name(raw: bytes) -> str:
         return raw.decode("latin-1")
 
 
-def read_pbo(path: str) -> dict[str, bytes]:
+def read_pbo(path: str, progress=None) -> dict[str, bytes]:
     """Read ``path`` and return ``{filename: content_bytes}``.
 
     Stored (``packingMethod == 0``) entries are returned verbatim; ``Cprs``
@@ -181,6 +181,12 @@ def read_pbo(path: str) -> dict[str, bytes]:
 
     files: dict[str, bytes] = {}
     for name, method, orig_size, data_size in entries:
+        # Large game PBOs can spend noticeable time decompressing and copying
+        # entries after the addon-level progress callback has fired.  Expose
+        # entry progress so callers can keep a live status line during that
+        # work without changing the returned data or the default API.
+        if progress is not None:
+            progress(name)
         if pos + data_size > n:
             raise ValueError(f"truncated data block for {name!r}")
         block = buf[pos:pos + data_size]

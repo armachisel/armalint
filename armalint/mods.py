@@ -828,7 +828,10 @@ def extract_mod_data(
             progress(path, False)
         if kind == "pbo":
             try:
-                files = read_pbo(path)
+                files = read_pbo(
+                    path,
+                    (lambda entry: progress(f"{path} [{entry}]", False)) if progress else None,
+                )
             except Exception as exc:
                 if metadata is not None:
                     metadata["errors"].append({"path": path, "kind": "unreadable-or-unsupported-pbo", "error": str(exc)})
@@ -897,7 +900,9 @@ def extract_mod_data(
         for name in cfg_names:
             suffix = "_fnc_" + name.rsplit("_fnc_", 1)[-1]
             cfg_by_suffix.setdefault(suffix, set()).add(name)
-        for path, raw in sources.items():
+        for source_index, (path, raw) in enumerate(sources.items(), 1):
+            if progress and source_index % 32 == 0:
+                progress(f"{addon_path} [{path}]", False)
             if _is_prep_function_path(path):
                 function_names = {_prep_function_name(tag, path)}
             elif _is_hatg_function_path(path):
