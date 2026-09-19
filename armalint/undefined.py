@@ -364,7 +364,14 @@ def check_undefined(
     """Return W101 warnings with conservative branch-aware definition merging."""
     tree = tree if tree is not None else parse(tokens)
     diags: list[Diagnostic] = []
-    defined: set[str] = {name.lower() for name in (external_locals or ())}
+    # Token values preserve source casing while SQF local names are
+    # case-insensitive. Seed contracts with the spelling used by this file so
+    # the existing flow walker can continue using its fast exact-set checks.
+    external_names = {name.lower() for name in (external_locals or ())}
+    defined: set[str] = {
+        token.value for token in tokens
+        if token.type == "local" and token.value.lower() in external_names
+    }
     for node in tree.statements:
         node_diags, defined = _walk_node(node, defined)
         diags.extend(node_diags)
