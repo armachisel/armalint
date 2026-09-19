@@ -12,6 +12,7 @@ RULES = {
     "E009": ("error", "Invalid postfix command expression"),
     "E010": ("error", "Malformed config structure"),
     "E011": ("error", "Malformed mission.sqm structure"),
+    "E012": ("error", "Invalid Armalint configuration"),
     "W101": ("warning", "Possible undefined local variable"),
     "W104": ("warning", "Unreachable code"),
     "W201": ("warning", "Unknown function or command name"),
@@ -48,10 +49,26 @@ RULES = {
     "W302": ("warning", "Tab character in source indentation"),
 }
 
+RULE_CATEGORIES = {
+    "syntax": {code for code in RULES if code.startswith("E")},
+    "correctness": {code for code in RULES if code.startswith("W") and code not in {"W104", "W206", "W209", "W215", "W216", "W222", "W223", "W224", "W229", "W230", "W301", "W302"}},
+    "flow": {"W104", "W206", "W209", "W215", "W216", "W222", "W223", "W224"},
+    "suppression": {"W229", "W230"},
+    "style": {"W301", "W302"},
+}
+
+PRESETS = {
+    "recommended": {"syntax", "correctness", "flow", "suppression"},
+    "strict": set(RULES),
+    "style": {"style"},
+    "performance": {"flow"},
+}
+
 
 def metadata() -> list[dict[str, str]]:
     return [
         {"id": code, "name": message, "defaultSeverity": severity,
+         "categories": [category for category, codes in RULE_CATEGORIES.items() if code in codes],
          "helpUri": f"docs/rules.md#rule-{code.lower()}"}
         for code, (severity, message) in sorted(RULES.items())
     ]

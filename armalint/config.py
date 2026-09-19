@@ -13,6 +13,8 @@ import os
 import re
 import sys
 
+from .rules import PRESETS, RULES
+
 # Candidate config filenames, checked in order at each directory level.
 _CONFIG_FILENAMES = ("armalint.json", ".armalint.json")
 
@@ -186,6 +188,58 @@ def extract_ignore_patterns(config: dict) -> list[str]:
     return [item.strip() for item in raw if isinstance(item, str) and item.strip()]
 
 
+def extract_presets(config: dict) -> list[str]:
+    """Return normalized named rule presets from project configuration."""
+    raw = config.get("presets", config.get("preset", []))
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [item.strip().lower() for item in raw if isinstance(item, str) and item.strip()]
+
+
+def validate_config(config: object) -> list[str]:
+    """Validate the supported project configuration shape.
+
+    The linter remains usable with a partially invalid file, but returns clear
+    messages so CI can fail instead of silently ignoring misspelled settings.
+    """
+    if not isinstance(config, dict):
+        return ["configuration root must be a JSON object"]
+    allowed = {
+        "mods", "functionTags", "functionTypes", "functionReturns", "ignoreRules",
+        "ignore", "ignorePatterns", "severity", "ruleSeverity", "presets", "preset",
+    }
+    errors = [f"unknown configuration key: {key}" for key in config if key not in allowed]
+    list_keys = ("functionTags", "ignoreRules", "ignore", "ignorePatterns", "presets")
+    for key in list_keys:
+        if key in config and not isinstance(config[key], (list, tuple, str)):
+            errors.append(f"{key} must be a string or array")
+    for key in ("functionTypes", "functionReturns", "severity", "ruleSeverity"):
+        if key in config and not isinstance(config[key], dict):
+            errors.append(f"{key} must be an object")
+    for key in extract_presets(config):
+        if key not in PRESETS:
+            errors.append(f"unknown rule preset: {key}")
+    raw_ignored = config.get("ignoreRules", [])
+    if isinstance(raw_ignored, str):
+        raw_ignored = [raw_ignored]
+    if isinstance(raw_ignored, (list, tuple)):
+        for value in raw_ignored:
+            normalized = value.strip().upper() if isinstance(value, str) else ""
+            if normalized not in RULES:
+                errors.append(f"unknown rule code in ignoreRules: {value}")
+    raw_severity = config.get("severity", config.get("ruleSeverity", {}))
+    if isinstance(raw_severity, dict):
+        for code, value in raw_severity.items():
+            normalized = str(code).upper() if isinstance(code, str) else ""
+            if normalized not in RULES:
+                errors.append(f"unknown rule code in severity: {code}")
+            if value not in {"error", "warning", "info", "off"}:
+                errors.append(f"invalid severity for {code}: {value}")
+    return errors
+
+
 def extract_mods(config: dict) -> list[dict]:
     """Normalize ``config["mods"]`` into a list of ``{"name", "url", "workshop_id"}`` dicts.
 
@@ -254,6 +308,9 @@ if __name__ == "__main__":
         assert extract_ignored_rules({"ignoreRules": ["w206", " W101 ", "bad", 3]}) == {"W206", "W101"}
         assert extract_rule_severities({"severity": {"w206": "error", "W209": "off", "bad": "warning", 3: "info"}}) == {"W206": "error", "W209": "off"}
         assert extract_ignore_patterns({"ignore": ["generated/**", "", 3]}) == ["generated/**"]
+        assert extract_presets({"presets": ["style", "strict"]}) == ["style", "strict"]
+        assert validate_config({"presets": ["style"], "severity": {"W206": "error"}}) == []
+        assert any("unknown configuration key" in item for item in validate_config({"typo": True}))
 
         # find_mod_cache walks up looking for armalint_mods.json.
         assert find_mod_cache(nested) is None
