@@ -27,10 +27,11 @@ import argparse
 import os
 import shutil
 import sys
+import subprocess
 import threading
 import time
 
-from .config import extract_mods, find_config, load_config_file, project_state_dir
+from .config import extract_mods, extract_dependency_specs, find_config, load_config_file, project_state_dir
 from .mods import (
     discover_workshop_roots,
     discover_game_addon_roots,
@@ -59,6 +60,22 @@ _DEFAULT_CACHE_NAME = "armalint_mods.json"
 def _warn(message: str) -> None:
     """Print a one-line warning to stderr."""
     print(f"warning: {message}", file=sys.stderr)
+
+
+def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str) -> bool:
+    os.makedirs(install_dir, exist_ok=True)
+    try:
+        result = subprocess.run([steamcmd, "+login", "anonymous", "+force_install_dir", install_dir,
+                                 "+workshop_download_item", "107410", workshop_id, "+quit"],
+                                check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace")
+    except OSError as exc:
+        _warn(f"could not run SteamCMD for Workshop item {workshop_id}: {exc}")
+        return False
+    if result.returncode != 0:
+        _warn(f"SteamCMD failed to download Workshop item {workshop_id}")
+        return False
+    return True
 
 
 def _extract_with_progress(path: str, label: str, root_number: int, root_total: int,
@@ -161,8 +178,11 @@ def run_update(args) -> int:
     # 2. Optional mods from armalint.json (explicit --config or discovery).
     config_path = getattr(args, "config", None) or find_config(mission_dir)
     optional_mods: list[dict] = []
+    dependency_specs: list[dict[str, str]] = []
     if config_path:
-        optional_mods = extract_mods(load_config_file(config_path))
+        loaded_config = load_config_file(config_path)
+        optional_mods = extract_mods(loaded_config)
+        dependency_specs = extract_dependency_specs(loaded_config)
 
     if getattr(args, "out", None):
         out_path = os.path.abspath(args.out)
@@ -177,6 +197,18 @@ def run_update(args) -> int:
 
     # 3. Search roots: workshop content roots + Arma install directories.
     workshop_roots = list(getattr(args, "workshop", None) or discover_workshop_roots())
+    if getattr(args, "download_dependencies", False):
+        steamcmd = getattr(args, "steamcmd", None) or shutil.which("steamcmd") or shutil.which("steamcmd.exe")
+        dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
+        for spec in dependency_specs:
+            workshop_id = spec.get("workshopId") or spec.get("workshop_id")
+            if not workshop_id and spec.get("name") == "cba_main": workshop_id = "450814997"
+            if not workshop_id:
+                _warn(f"dependency {spec['name']} has no Workshop ID; skipping download")
+            elif steamcmd and _download_workshop_item(steamcmd, workshop_id, dependency_cache):
+                workshop_roots.append(os.path.join(dependency_cache, "steamapps", "workshop", "content", "107410"))
+            elif not steamcmd:
+                _warn("--download-dependencies requested but SteamCMD was not found")
     configured_arma_dirs = list(getattr(args, "arma_dir", None) or [])
     arma_dirs = configured_arma_dirs or discover_arma_install_dirs()
     all_search_roots = workshop_roots + arma_dirs
@@ -363,6 +395,10 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="compute and report but do not write the cache",
     )
+    parser.add_argument("--download-dependencies", action="store_true",
+                        help="download declared Workshop dependencies with SteamCMD")
+    parser.add_argument("--steamcmd", metavar="PATH", default=None,
+                        help="SteamCMD executable for --download-dependencies")
     parser.add_argument(
         "--clear-cache",
         action="store_true",
