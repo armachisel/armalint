@@ -69,7 +69,7 @@ def _warn(message: str) -> None:
     print(f"warning: {message}", file=sys.stderr)
 
 
-def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str) -> bool:
+def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, name: str | None = None) -> bool:
     os.makedirs(install_dir, exist_ok=True)
     stream = sys.stderr if sys.stderr.isatty() else None
     process = None
@@ -88,7 +88,8 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str) -
             def show_progress() -> None:
                 index = 0
                 while not stop.wait(0.15):
-                    message = f"SteamCMD preparing dependency {workshop_id} {frames[index % len(frames)]}"
+                    label = name or workshop_id
+                    message = f"SteamCMD preparing dependency {label} {frames[index % len(frames)]}"
                     stream.write("\r" + message[:width].ljust(width))
                     stream.flush()
                     index += 1
@@ -314,7 +315,7 @@ def run_update(args) -> int:
             workshop_id = spec.get("workshopId") or spec.get("workshop_id")
             if not workshop_id:
                 _warn(f"dependency {spec['name']} has no Workshop ID; skipping download")
-            elif steamcmd and _download_workshop_item(steamcmd, workshop_id, dependency_cache):
+            elif steamcmd and _download_workshop_item(steamcmd, workshop_id, dependency_cache, spec.get("name")):
                 workshop_roots.append(os.path.join(dependency_cache, "steamapps", "workshop", "content", "107410"))
             elif not steamcmd:
                 _warn("--download-dependencies requested but SteamCMD was not found")
