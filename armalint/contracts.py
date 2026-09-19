@@ -12,6 +12,7 @@ _COMPILE_RE = re.compile(
 _PRIVATE_RE = re.compile(r"\bprivate\s+(_[A-Za-z0-9_]+)", re.IGNORECASE)
 _PARAMS_RE = re.compile(r"\bparams\s*\[([^\]]*)\]", re.IGNORECASE | re.DOTALL)
 _LOCAL_RE = re.compile(r"\b(_[A-Za-z][A-Za-z0-9_]*)\b")
+_CODE_CALL_RE = re.compile(r"\bcall\s+(_[A-Za-z][A-Za-z0-9_]*)\s*;", re.IGNORECASE)
 
 
 def _declared_before(source: str, end: int) -> set[str]:
@@ -43,6 +44,20 @@ def discover_external_locals(sources: dict[str, str]) -> set[str]:
     for source in sources.values():
         for match in _COMPILE_RE.finditer(source):
             discovered.update(_declared_before(source, match.start()))
+        # A common loader passes a code value through params and invokes it as
+        # ``call _template``.  Export only explicitly declared callback names
+        # (the conventional ``_fnc_*`` locals) from that caller boundary.
+        params = {
+            name.lower()
+            for block in _PARAMS_RE.findall(source)
+            for name in _LOCAL_RE.findall(block)
+        }
+        for match in _CODE_CALL_RE.finditer(source):
+            if match.group(1).lower() not in params:
+                continue
+            for name in _declared_before(source, match.start()):
+                if name.startswith("_fnc_"):
+                    discovered.add(name)
     return discovered
 
 
@@ -51,4 +66,10 @@ if __name__ == "__main__":
     assert discover_external_locals({"loader.sqf": sample}) == {"_addon"}
     assert discover_external_locals({"plain.sqf": 'private _addon; compile _path;'}) == set()
     assert discover_external_locals({"params.sqf": 'params ["_addon"]; call compile preprocessFileLineNumbers _path;'}) == {"_addon"}
+    assert "_fnc_sethelmet" in discover_external_locals({
+        "builder.sqf": 'params ["_template"]; private _fnc_setHelmet = {}; call _template;'
+    })
+    assert discover_external_locals({
+        "ordinary.sqf": 'private _fnc_hidden = {}; call _other;'
+    }) == set()
     print("contracts self-test passed")
