@@ -26,6 +26,19 @@ _ELSE_RE = re.compile(r'^\s*#\s*else\s*$')
 _ENDIF_RE = re.compile(r'^\s*#\s*endif\s*$')
 
 
+def _strip_macro_comment(text: str) -> str:
+    """Remove an inline C/C++ comment from a macro body, preserving strings."""
+    quote = False
+    escaped = False
+    for index, char in enumerate(text):
+        if char == '"' and not escaped:
+            quote = not quote
+        if char == "/" and not quote and index + 1 < len(text) and text[index + 1] == "/":
+            return text[:index].rstrip()
+        escaped = char == "\\" and not escaped
+    return text.rstrip()
+
+
 def find_include_cycles(path: str) -> list[tuple[str, int, str]]:
     """Return proven include-cycle edges as ``(file, line, target)`` tuples."""
     cycles: list[tuple[str, int, str]] = []
@@ -240,7 +253,7 @@ def _preprocess_lines(
             # The continuation belongs to a ``#define`` body, not to the SQF
             # program. Keep its physical line in the map while removing the
             # macro text from downstream syntax and semantic analysis.
-            fragment = line.rstrip()
+            fragment = _strip_macro_comment(line.rstrip())
             macro_continuation = fragment.endswith("\\")
             continuation_body.append(fragment[:-1].rstrip() if macro_continuation else fragment)
             if not macro_continuation and continuation_name:
@@ -311,12 +324,13 @@ def _preprocess_lines(
             continue
         match = _DEFINE_RE.match(line)
         if match and all(_conditions):
-            _defines[match.group(1).lower()] = match.group(2) or "1"
+            body = _strip_macro_comment(match.group(2) or "1")
+            _defines[match.group(1).lower()] = body or "1"
             macro_continuation = line.rstrip().endswith("\\")
             if macro_continuation:
                 continuation_name = match.group(1).lower()
                 continuation_params = None
-                continuation_body = [(match.group(2) or "").rstrip()[:-1].rstrip()]
+                continuation_body = [body.rstrip()[:-1].rstrip()]
             lines.append("")
             line_map.append((filename, orig_line))
             continue
@@ -324,7 +338,7 @@ def _preprocess_lines(
         if function_match and all(_conditions):
             name = function_match.group(1).lower()
             params = [item.strip().lower() for item in function_match.group(2).split(",") if item.strip()]
-            body = function_match.group(3)
+            body = _strip_macro_comment(function_match.group(3))
             if _function_defines is not None:
                 _function_defines[name] = (params, body.rstrip("\\").rstrip())
             macro_continuation = line.rstrip().endswith("\\")
@@ -516,6 +530,10 @@ if __name__ == "__main__":
         multiline_macro = '#define WRAP(value) { \\\n+    hint value; \\\n+}\nWRAP("ok");\n'
         multiline_expanded, _ = preprocess(multiline_macro, main_path, tmpdir)
         assert 'hint "ok";' in multiline_expanded
+
+        inline_macro_comment = '#define STEP QUOTE(STEP) // explanatory comment\nprivate _x = [1] call (obj get STEP);\n'
+        inline_expanded, _ = preprocess(inline_macro_comment, main_path, tmpdir)
+        assert 'private _x = [1] call (obj get QUOTE(STEP));' in inline_expanded
 
         literals, _ = preprocess('#if 0\nhint "no";\n#elif 1\nhint "yes";\n#endif\n', main_path, tmpdir)
         assert 'hint "yes";' in literals and 'hint "no";' not in literals
