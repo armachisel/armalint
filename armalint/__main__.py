@@ -305,6 +305,20 @@ def _main(argv: list[str] | None = None) -> int:
         _build_arg_parser().error("--max-issues must be at least 1")
     started_at = time.perf_counter()
     timings: dict[str, float | int] = {}
+    phase_stream = sys.stderr if sys.stderr.isatty() else None
+    phase_width = max(32, shutil.get_terminal_size((100, 24)).columns - 1) if phase_stream else 0
+
+    def show_phase(message: str) -> None:
+        if phase_stream is not None:
+            phase_stream.write("\r" + message[:phase_width].ljust(phase_width))
+            phase_stream.flush()
+
+    def clear_phase() -> None:
+        if phase_stream is not None:
+            phase_stream.write("\r" + (" " * phase_width) + "\r")
+            phase_stream.flush()
+
+    show_phase("Preparing lint...")
     config_issues: dict[str, list[str]] = {}
     checked_configs: dict[str, dict] = {}
     plugin_rules = []
@@ -387,6 +401,7 @@ def _main(argv: list[str] | None = None) -> int:
             context_ignored_rules |= set(RULES) - context_selected
         for tag in context_tags:
             context_index.add_tag(tag)
+        clear_phase()
         all_diags = lint_text(
             args.snippet, filename="<snippet>", index=context_index,
             function_signatures=context_signatures, function_return_types=context_returns,
@@ -421,6 +436,7 @@ def _main(argv: list[str] | None = None) -> int:
         return 1 if any(severity_rank[d.severity] >= threshold for d in all_diags) else 0
 
     collection_ignores = list(args.ignore)
+    show_phase("Collecting files...")
     for path in input_paths:
         cfg_path = args.config or find_config(path)
         if cfg_path:
@@ -466,6 +482,7 @@ def _main(argv: list[str] | None = None) -> int:
         print(json.dumps(preview, indent=2))
         return 0
     source_cache: dict[str, str] = {}
+    show_phase(f"Preparing {len(files)} file(s)...")
 
     # Resolve mod function tags from project config, then register them on the
     # symbol index so mod-provided functions are not reported as unknown.
@@ -535,6 +552,7 @@ def _main(argv: list[str] | None = None) -> int:
 
     # Build a mission-wide symbol index so mission-defined functions are not
     # reported as unknown (W201) before linting each file.
+    show_phase("Building symbol index...")
     index_files = list(files)
     if args.mission:
         index_files.extend(_collect_files(args.mission, collection_ignores))
@@ -561,6 +579,7 @@ def _main(argv: list[str] | None = None) -> int:
     # so mod-provided functions are recognized by exact name. Caches are
     # discovered by walking up from each lint path; multiple caches are unioned.
     mod_cache_paths: set[str] = set()
+    show_phase("Loading dependency and function caches...")
     for path in context_paths:
         cache_path = find_mod_cache(path)
         if cache_path:
@@ -606,6 +625,8 @@ def _main(argv: list[str] | None = None) -> int:
         if progress_stream is not None:
             progress_stream.write("\r" + (" " * progress_width) + "\r")
             progress_stream.flush()
+
+    clear_phase()
 
     for file_number, f in enumerate(files, 1):
         show_progress(file_number, f)
