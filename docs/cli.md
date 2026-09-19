@@ -24,6 +24,7 @@ The most useful options are:
 | `--sarif` | Print SARIF 2.1.0 results with stable fingerprints, rule metadata, and help links. |
 | `--checkstyle` | Print Checkstyle XML for CI systems that consume XML reports. |
 | `--timings` | Report collection, indexing, lint, and total timings as JSON on stderr. |
+| `--max-issues N` | Stop after reporting at most `N` diagnostics. |
 | `--check-suppressions` | Report inline suppressions without reasons or matching diagnostics. |
 | `--baseline PATH` | Suppress findings whose fingerprints are recorded in a JSON baseline. |
 | `--style` | Enable optional style diagnostics (`W301`/`W302`). |
@@ -68,6 +69,10 @@ For a quick check without creating a file, pass SQF directly:
 ```powershell
 armalint --snippet 'params [["_delay", 0]]; sleep _delay;' --json
 ```
+
+Use `--max-issues N` when a first pass is too noisy. Armalint stops after
+the file that reaches the limit and reports only the first `N` diagnostics;
+the normal `--fail-on` exit policy still applies.
 
 Use `--file` when an explicit single-file option is more convenient than a
 positional path. Add `--mission` to resolve mission functions and signatures
