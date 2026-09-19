@@ -284,6 +284,42 @@ def preprocess_file(path: str) -> tuple[str, list]:
     return preprocess(source, path, os.path.dirname(os.path.abspath(path)))
 
 
+def find_include_origins(path: str) -> dict[str, list[tuple[str, int]]]:
+    """Return direct include sites reachable from *path*.
+
+    Keys are normalized included-file paths. Values contain ``(including_file,
+    line)`` pairs, which let consumers explain why a diagnostic in an included
+    fragment is related to the parent source file.
+    """
+    origins: dict[str, list[tuple[str, int]]] = {}
+    visited: set[str] = set()
+
+    def visit(current: str) -> None:
+        normalized = _normalized(current)
+        if normalized in visited:
+            return
+        visited.add(normalized)
+        try:
+            with open(current, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            return
+        for line_no, line in enumerate(lines, 1):
+            match = _INCLUDE_RE.match(line)
+            if not match:
+                continue
+            include_path = match.group(1) if match.group(1) is not None else match.group(2)
+            target = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(current)), include_path))
+            if not os.path.isfile(target):
+                continue
+            target_key = _normalized(target)
+            origins.setdefault(target_key, []).append((current, line_no))
+            visit(target)
+
+    visit(path)
+    return origins
+
+
 if __name__ == "__main__":
     import tempfile
 

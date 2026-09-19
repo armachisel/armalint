@@ -113,6 +113,5 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
   likely alternatives, and provide context for type warnings.
 - [x] Mark metadata provenance and confidence; missing descriptions are normal
 - [x] Add SARIF fingerprints, rule help URLs, and stable CI identities.
-- [ ] Add SARIF related locations when a diagnostic has cross-file or include provenance.
-- [ ] Add file watching, incremental editor linting, and an LSP adapter.
-  for compiled engine functions and many mod functions.
+- [x] Add SARIF related locations when a diagnostic has cross-file or include provenance.
+- [x] Add file watching, incremental editor linting, and an LSP adapter.

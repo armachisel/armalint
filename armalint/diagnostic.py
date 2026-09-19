@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class Severity(enum.Enum):
@@ -24,6 +24,7 @@ class Diagnostic:
     line: int
     column: int
     file: str = ""
+    related_locations: list[dict[str, object]] = field(default_factory=list)
 
 
 def format_diagnostic(d: Diagnostic) -> str:

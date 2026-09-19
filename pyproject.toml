@@ -31,6 +31,8 @@ armalint = "armalint.__main__:_main"
 armalint-update = "armalint.update:main"
 armalint-update-commands = "armalint.update_commands:main"
 armalint-mcp = "armalint.mcp_server:main"
+armalint-watch = "armalint.watch:main"
+armalint-lsp = "armalint.lsp:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["armalint"]

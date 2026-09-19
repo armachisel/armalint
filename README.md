@@ -49,6 +49,8 @@ python -m armalint [--json|--sarif] [--style] [--ignore GLOB] [--ignore-rule RUL
 python -m armalint --file PATH [--json|--sarif]
 python -m armalint --snippet SOURCE [--json|--sarif]
 python -m armalint --mission PATH --snippet SOURCE [--json|--sarif]
+armalint-watch PATH [--interval SECONDS] [--once]
+armalint-lsp
 ```
 
 | Option          | Description                                                        |
@@ -64,6 +66,11 @@ python -m armalint --mission PATH --snippet SOURCE [--json|--sarif]
 | `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
+
+`armalint-watch` polls a mission or set of SQF files and emits one JSON event
+per changed file. It rebuilds the mission symbol index only when files change
+and re-lints only affected files. `armalint-lsp` provides stdio LSP support for
+open and changed documents, publishing diagnostics as they are edited.
 | `--version`     | Print the version and exit.                                        |
 
 When given a directory, Armalint walks it recursively and lints files ending
