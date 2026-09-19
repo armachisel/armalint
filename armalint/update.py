@@ -199,7 +199,9 @@ def run_update(args) -> int:
     # 3. Search roots: workshop content roots + Arma install directories.
     workshop_roots = list(getattr(args, "workshop", None) or discover_workshop_roots())
     if getattr(args, "download_dependencies", False):
-        steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd()
+        steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd(
+            [mission_dir, os.getcwd()]
+        )
         dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
         specs_to_download = list(dependency_specs)
         cba_specs = [spec for spec in specs_to_download if spec.get("name", "").startswith("cba_")]

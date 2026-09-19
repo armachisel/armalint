@@ -107,7 +107,7 @@ def _steam_install_dirs() -> list[str]:
     return result
 
 
-def discover_steamcmd() -> str | None:
+def discover_steamcmd(search_roots: list[str] | None = None) -> str | None:
     """Locate SteamCMD through PATH, environment variables, and common roots."""
     candidates: list[str] = []
     for name in ("STEAMCMD", "STEAMCMD_PATH"):
@@ -125,6 +125,25 @@ def discover_steamcmd() -> str | None:
     ])
     for steam in _steam_install_dirs():
         candidates.append(os.path.join(steam, "steamcmd.exe"))
+    for root in search_roots or []:
+        root = os.path.abspath(os.path.expanduser(root))
+        candidates.extend([
+            os.path.join(root, "steamcmd.exe"),
+            os.path.join(root, "steamcmd", "steamcmd.exe"),
+            os.path.join(root, "tmp", "steamcmd", "steamcmd.exe"),
+            os.path.join(root, "tools", "steamcmd", "steamcmd.exe"),
+        ])
+        parent = os.path.dirname(root)
+        if parent != root:
+            candidates.extend([
+                os.path.join(parent, "steamcmd", "steamcmd.exe"),
+                os.path.join(parent, "tmp", "steamcmd", "steamcmd.exe"),
+            ])
+            try:
+                for sibling in os.listdir(parent):
+                    candidates.append(os.path.join(parent, sibling, "tmp", "steamcmd", "steamcmd.exe"))
+            except OSError:
+                pass
     seen: set[str] = set()
     for candidate in candidates:
         candidate = os.path.abspath(os.path.expanduser(candidate))
