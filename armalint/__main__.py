@@ -166,6 +166,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fail-on", choices=("error", "warning", "info", "none"), default="error", help="minimum severity that makes the command fail (default: error)")
     parser.add_argument("--github-actions", action="store_true", help="emit GitHub Actions workflow-command annotations")
     parser.add_argument("--timings", action="store_true", help="report scan duration and phase timings as JSON on stderr")
+    parser.add_argument("--max-issues", type=int, metavar="N", help="stop after reporting at most N diagnostics")
     parser.add_argument("--check-suppressions", action="store_true", help="report unjustified and unused inline suppressions")
     parser.add_argument("--baseline", metavar="PATH", help="suppress diagnostics recorded in a JSON baseline file")
     parser.add_argument(
@@ -275,6 +276,8 @@ def _checkstyle_output(diagnostics) -> str:
 
 def _main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
+    if args.max_issues is not None and args.max_issues < 1:
+        _build_arg_parser().error("--max-issues must be at least 1")
     started_at = time.perf_counter()
     timings: dict[str, float | int] = {}
     config_issues: dict[str, list[str]] = {}
@@ -367,6 +370,8 @@ def _main(argv: list[str] | None = None) -> int:
                 d for d in all_diags
                 if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys
             ]
+        if args.max_issues is not None:
+            all_diags = all_diags[:args.max_issues]
         linted_files = ["<snippet>"]
         if args.checkstyle:
             print(_checkstyle_output(all_diags))
@@ -571,6 +576,9 @@ def _main(argv: list[str] | None = None) -> int:
                 continue
             linted_files.append(f)
             all_diags.extend(check_mission_sqm(source, f))
+        if args.max_issues is not None and len(all_diags) >= args.max_issues:
+            all_diags = all_diags[:args.max_issues]
+            break
 
     timings["lint_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]) - float(timings["index_ms"]), 2)
     timings["files"] = len(linted_files)
@@ -585,6 +593,9 @@ def _main(argv: list[str] | None = None) -> int:
 
     if baseline_keys:
         all_diags = [d for d in all_diags if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys]
+
+    if args.max_issues is not None:
+        all_diags = all_diags[:args.max_issues]
 
     if args.diff or args.diff_staged:
         changed_lines = _git_changed_lines(args.diff or "HEAD", input_paths, staged=args.diff_staged)

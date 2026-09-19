@@ -354,8 +354,14 @@ def main() -> int:
         timings_ok = timings.returncode == 0 and "total_ms" in timing_payload and "lint_ms" in timing_payload
     except json.JSONDecodeError:
         timings_ok = False
-    policy_ok = preview_ok and fix_ok and warning_fail and no_fail and diff_ok and annotation_ok and checkstyle_ok and timings_ok
-    print(f"[{'PASS' if policy_ok else 'FAIL'}] preview={preview_ok} fix={fix_ok} warning={warning_fail} none={no_fail} diff={diff_ok} annotations={annotation_ok} checkstyle={checkstyle_ok} timings={timings_ok}")
+    limited = run_cli(str(BUGGY_FIXTURE), "--max-issues", "1", "--json")
+    try:
+        limited_payload = json.loads(limited.stdout or "[]")
+        max_issues_ok = limited.returncode == 1 and len(limited_payload) == 1
+    except json.JSONDecodeError:
+        max_issues_ok = False
+    policy_ok = preview_ok and fix_ok and warning_fail and no_fail and diff_ok and annotation_ok and checkstyle_ok and timings_ok and max_issues_ok
+    print(f"[{'PASS' if policy_ok else 'FAIL'}] preview={preview_ok} fix={fix_ok} warning={warning_fail} none={no_fail} diff={diff_ok} annotations={annotation_ok} checkstyle={checkstyle_ok} timings={timings_ok} max_issues={max_issues_ok}")
     if policy_ok:
         passed += 1
     else:

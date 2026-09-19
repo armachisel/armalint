@@ -65,6 +65,7 @@ armalint-lsp
 | `--sarif`       | Emit SARIF 2.1.0 with stable fingerprints and rule help links.       |
 | `--checkstyle`  | Emit Checkstyle XML for CI integrations.                           |
 | `--timings`     | Report phase timings and in-process token-cache reuse on stderr.    |
+| `--max-issues N` | Stop after reporting at most `N` diagnostics.                       |
 | `--check-suppressions` | Report unjustified or unused inline suppressions.              |
 | `--baseline PATH` | Suppress diagnostics recorded in a JSON baseline.                 |
 | `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
