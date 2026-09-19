@@ -34,6 +34,7 @@ import time
 from .config import extract_mods, extract_dependency_specs, find_config, load_config_file, project_state_dir
 from .mods import (
     discover_workshop_roots,
+    discover_steamcmd,
     discover_game_addon_roots,
     discover_arma_install_dirs,
     find_game_addon,
@@ -198,7 +199,7 @@ def run_update(args) -> int:
     # 3. Search roots: workshop content roots + Arma install directories.
     workshop_roots = list(getattr(args, "workshop", None) or discover_workshop_roots())
     if getattr(args, "download_dependencies", False):
-        steamcmd = getattr(args, "steamcmd", None) or shutil.which("steamcmd") or shutil.which("steamcmd.exe")
+        steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd()
         dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
         for spec in dependency_specs:
             workshop_id = spec.get("workshopId") or spec.get("workshop_id")
