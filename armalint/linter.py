@@ -57,6 +57,7 @@ def lint_text(
     style: bool = False,
     check_suppressions: bool = False,
     plugin_rules: list[PluginRule] | None = None,
+    external_locals: set[str] | frozenset[str] | None = None,
 ) -> list[Diagnostic]:
     """Run all analyzers over ``source`` and return their diagnostics.
 
@@ -81,7 +82,7 @@ def lint_text(
     # undefined-variable analysis, but carrying inferred locals across included
     # files creates false positives when common names are reused.
     diags.extend(check_argument_types(tokens, function_signatures, function_return_types, tree.statements))
-    diags.extend(check_undefined(tokens, tree))
+    diags.extend(check_undefined(tokens, tree, external_locals))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
     diags.extend(check_sqf_contracts(tokens))
@@ -113,6 +114,7 @@ def lint_file(
     plugin_rules: list[PluginRule] | None = None,
     source_text: str | None = None,
     source_cache: dict[str, str] | None = None,
+    external_locals: set[str] | frozenset[str] | None = None,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -160,7 +162,7 @@ def lint_file(
     if check_unused_locals_enabled:
         diags.extend(check_unused_locals(source_tokens))
     diags.extend(check_argument_types(source_tokens, function_signatures, function_return_types, source_nodes))
-    diags.extend(check_undefined(tokens, tree))
+    diags.extend(check_undefined(tokens, tree, external_locals))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
     diags.extend(check_sqf_contracts(source_tokens))

@@ -39,6 +39,7 @@ The most useful options are:
 | `--mission PATH` | Use a mission's symbols and configuration with a snippet or file. |
 | `--ignore GLOB` | Skip matching files. Repeatable. |
 | `--ignore-rule RULE` | Suppress a rule for the whole run. Repeatable. |
+| `--external-local NAME` | Declare a local supplied by a dynamic `call compile` boundary. Repeatable. |
 | `--config PATH` | Use an explicit configuration file. |
 | `--version` | Print the installed version. |
 

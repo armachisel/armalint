@@ -194,6 +194,20 @@ def extract_ignored_rules(config: dict) -> set[str]:
     }
 
 
+def extract_external_locals(config: dict) -> set[str]:
+    """Read locals supplied by an external ``call compile`` contract."""
+    raw = config.get("externalLocals", config.get("externalLocal", []))
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return set()
+    return {
+        item.strip().lower()
+        for item in raw
+        if isinstance(item, str) and re.fullmatch(r"_[A-Za-z0-9_]+", item.strip())
+    }
+
+
 def extract_rule_severities(config: dict) -> dict[str, str]:
     """Read optional per-rule severities (``error``, ``warning``, ``info``, ``off``)."""
     raw = config.get("severity", config.get("ruleSeverity"))
@@ -245,11 +259,11 @@ def validate_config(config: object) -> list[str]:
     if not isinstance(config, dict):
         return ["configuration root must be a JSON object"]
     allowed = {
-        "mods", "functionTags", "functionTypes", "functionReturns", "ignoreRules",
+        "mods", "functionTags", "functionTypes", "functionReturns", "ignoreRules", "externalLocals", "externalLocal",
         "ignore", "ignorePatterns", "severity", "ruleSeverity", "presets", "preset", "plugins",
     }
     errors = [f"unknown configuration key: {key}" for key in config if key not in allowed]
-    list_keys = ("functionTags", "ignoreRules", "ignore", "ignorePatterns", "presets", "plugins")
+    list_keys = ("functionTags", "ignoreRules", "externalLocals", "externalLocal", "ignore", "ignorePatterns", "presets", "plugins")
     for key in list_keys:
         if key in config and not isinstance(config[key], (list, tuple, str)):
             errors.append(f"{key} must be a string or array")
@@ -350,6 +364,7 @@ if __name__ == "__main__":
             "functionReturns": {"ALT_fnc_distanceToRoute": "Number", "bad": 3}
         }) == {"alt_fnc_distancetoroute": "Number"}
         assert extract_ignored_rules({"ignoreRules": ["w206", " W101 ", "bad", 3]}) == {"W206", "W101"}
+        assert extract_external_locals({"externalLocals": ["_addon", " _value ", "bad-name", 3]}) == {"_addon", "_value"}
         assert extract_rule_severities({"severity": {"w206": "error", "W209": "off", "bad": "warning", 3: "info"}}) == {"W206": "error", "W209": "off"}
         assert extract_ignore_patterns({"ignore": ["generated/**", "", 3]}) == ["generated/**"]
         assert extract_presets({"presets": ["style", "strict"]}) == ["style", "strict"]
