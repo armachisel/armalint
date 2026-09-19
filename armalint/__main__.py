@@ -561,6 +561,8 @@ def _main(argv: list[str] | None = None) -> int:
     # are skipped.
     linted_files: list[str] = []
     all_diags = []
+    stream_diagnostics = not (args.json or args.sarif or args.checkstyle or args.github_actions or args.diff or args.diff_staged or baseline_keys)
+    streamed_count = 0
     for f in files:
         nearest_config = file_configs.get(os.path.normcase(os.path.abspath(f)))
         file_config = load_checked(nearest_config) if nearest_config else {}
@@ -586,7 +588,12 @@ def _main(argv: list[str] | None = None) -> int:
                 except OSError:
                     pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, plugin_rules=plugin_rules, pretokenized=pretokenized, source_text=source_cache.get(f), source_cache=source_cache, external_locals=file_external_locals, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            file_diags = lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, plugin_rules=plugin_rules, pretokenized=pretokenized, source_text=source_cache.get(f), source_cache=source_cache, external_locals=file_external_locals, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files)
+            all_diags.extend(file_diags)
+            if stream_diagnostics:
+                for diagnostic in file_diags:
+                    print(format_diagnostic(diagnostic), flush=True)
+                streamed_count += len(file_diags)
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -594,7 +601,12 @@ def _main(argv: list[str] | None = None) -> int:
             except OSError:
                 continue
             linted_files.append(f)
-            all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style))
+            file_diags = lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style)
+            all_diags.extend(file_diags)
+            if stream_diagnostics:
+                for diagnostic in file_diags:
+                    print(format_diagnostic(diagnostic), flush=True)
+                streamed_count += len(file_diags)
         elif _is_mission_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -602,7 +614,12 @@ def _main(argv: list[str] | None = None) -> int:
             except OSError:
                 continue
             linted_files.append(f)
-            all_diags.extend(check_mission_sqm(source, f))
+            file_diags = check_mission_sqm(source, f)
+            all_diags.extend(file_diags)
+            if stream_diagnostics:
+                for diagnostic in file_diags:
+                    print(format_diagnostic(diagnostic), flush=True)
+                streamed_count += len(file_diags)
         if args.max_issues is not None and len(all_diags) >= args.max_issues:
             all_diags = all_diags[:args.max_issues]
             break
@@ -617,6 +634,10 @@ def _main(argv: list[str] | None = None) -> int:
             for message in issues
         )
     all_diags.extend(Diagnostic(Severity.ERROR, "E012", f"plugin load failed: {error}", 1, 1, "") for error in plugin_errors)
+    if stream_diagnostics:
+        for diagnostic in all_diags[streamed_count:]:
+            print(format_diagnostic(diagnostic), flush=True)
+        streamed_count = len(all_diags)
 
     if baseline_keys:
         all_diags = [d for d in all_diags if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys]
@@ -670,8 +691,9 @@ def _main(argv: list[str] | None = None) -> int:
             for d in all_diags:
                 print(_github_annotation(d))
         else:
-            for d in all_diags:
-                print(format_diagnostic(d))
+            if not stream_diagnostics:
+                for d in all_diags:
+                    print(format_diagnostic(d))
         print(f"{len(linted_files)} file(s) linted, {len(all_diags)} diagnostic(s)")
 
     threshold = {"error": 3, "warning": 2, "info": 1, "none": 99}[args.fail_on]
