@@ -148,6 +148,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--style", action="store_true", help="enable optional source style checks")
     parser.add_argument("--fix", action="store_true", help="apply safe formatting fixes and write changed files")
     parser.add_argument("--diff", nargs="?", const="HEAD", metavar="REF", help="report only diagnostics on lines changed from REF (default: HEAD)")
+    parser.add_argument("--diff-staged", action="store_true", help="report only diagnostics in the staged Git index")
     parser.add_argument("--fail-on", choices=("error", "warning", "info", "none"), default="error", help="minimum severity that makes the command fail (default: error)")
     parser.add_argument("--github-actions", action="store_true", help="emit GitHub Actions workflow-command annotations")
     parser.add_argument("--check-suppressions", action="store_true", help="report unjustified and unused inline suppressions")
@@ -185,10 +186,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _git_changed_lines(reference: str, paths: list[str]) -> dict[str, set[int]]:
+def _git_changed_lines(reference: str, paths: list[str], staged: bool = False) -> dict[str, set[int]]:
     """Return changed line numbers for tracked and untracked files."""
     changed: dict[str, set[int]] = {}
-    command = ["git", "diff", "--unified=0", reference, "--", *paths]
+    pathspecs = [os.path.relpath(path, os.getcwd()) if os.path.isabs(path) else path for path in paths]
+    command = ["git", "diff", "--cached" if staged else "--unified=0"]
+    if staged:
+        command.extend(["--unified=0"])
+    else:
+        command.append(reference)
+    command.extend(["--", *pathspecs])
     try:
         proc = subprocess.run(command, capture_output=True, text=True, check=False)
     except OSError:
@@ -206,11 +213,12 @@ def _git_changed_lines(reference: str, paths: list[str]) -> dict[str, set[int]]:
             continue
         start = int(match.group(1))
         count = int(match.group(2) or "1")
-        changed[os.path.normcase(current)].update(range(start, start + max(count, 1)))
+        if count:
+            changed[os.path.normcase(current)].update(range(start, start + count))
     # New files are not present in ``git diff HEAD`` until staged. Include all
     # their lines so a first CI run cannot silently miss diagnostics.
     try:
-        untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "--", *paths], capture_output=True, text=True, check=False)
+        untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "--", *pathspecs], capture_output=True, text=True, check=False)
         for item in untracked.stdout.splitlines():
             full = os.path.normcase(os.path.abspath(item))
             try:
@@ -260,6 +268,10 @@ def _main(argv: list[str] | None = None) -> int:
         _build_arg_parser().error("--snippet cannot be combined with files or directories; use --mission for context")
     if args.snippet is not None and args.diff:
         _build_arg_parser().error("--diff requires files or a directory, not --snippet")
+    if args.snippet is not None and args.diff_staged:
+        _build_arg_parser().error("--diff-staged requires files or a directory, not --snippet")
+    if args.diff and args.diff_staged:
+        _build_arg_parser().error("--diff and --diff-staged cannot be combined")
     if args.snippet is None and not (args.paths or args.files):
         if not args.mission:
             _build_arg_parser().error("provide a file/directory, --file PATH, or --snippet SOURCE")
@@ -462,8 +474,8 @@ def _main(argv: list[str] | None = None) -> int:
     if baseline_keys:
         all_diags = [d for d in all_diags if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys]
 
-    if args.diff:
-        changed_lines = _git_changed_lines(args.diff, input_paths)
+    if args.diff or args.diff_staged:
+        changed_lines = _git_changed_lines(args.diff or "HEAD", input_paths, staged=args.diff_staged)
         all_diags = [
             d for d in all_diags
             if os.path.normcase(os.path.abspath(d.file)) in changed_lines

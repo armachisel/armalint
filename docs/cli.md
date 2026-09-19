@@ -26,6 +26,7 @@ The most useful options are:
 | `--style` | Enable optional style diagnostics (`W301`/`W302`). |
 | `--fix` | Apply safe style fixes for trailing whitespace and tabs. |
 | `--diff [REF]` | Report only findings on changed lines relative to `REF` (default `HEAD`). |
+| `--diff-staged` | Report only findings in the staged Git index. |
 | `--fail-on LEVEL` | Set the failure threshold: `error`, `warning`, `info`, or `none`. |
 | `--github-actions` | Emit GitHub Actions annotation commands in text output. |
 | `--file PATH` | Lint one specific file; repeat the option for several files. |
@@ -45,8 +46,11 @@ the command `armalint-lsp`.
 
 `--fix` is intentionally limited to whitespace changes. `--diff` is useful in
 pull-request jobs where existing findings are already tracked separately. For
-GitHub Actions, combine `--github-actions` with `--fail-on warning` to annotate
-findings and fail when warnings or errors are present.
+staged pre-commit checks, use `--diff-staged`; for pull requests, pass the
+merge-base or target branch to `--diff`. Deleted lines are ignored because they
+cannot produce current source diagnostics. For GitHub Actions, combine
+`--github-actions` with `--fail-on warning` to annotate findings and fail when
+warnings or errors are present.
 | `--mission PATH` | Use a mission's symbols and configuration while linting a snippet or file. |
 | `--ignore GLOB` | Skip matching files. Repeat it when needed. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run, such as `W206`. Repeatable. |

@@ -467,6 +467,11 @@ def _suppression_quality() -> bool:
     return any(item.code == "W229" for item in quality) and any(item.code == "W230" for item in quality)
 
 
+def _malformed_suppression() -> bool:
+    quality = check_suppression_quality("// armalint: disble W206\n// armalint: disable-next-line W999 -- temporary\n", [], False)
+    return sum(item.code == "W231" for item in quality) == 2
+
+
 CASES = (
     ("AST waitUntil node", _ast_wait_until),
     ("AST try/catch node", _ast_try_catch),
@@ -544,6 +549,7 @@ CASES = (
     ("nested type scope isolated", _types_nested_scope_isolated),
     ("multi-code suppression", _suppression_multi_code),
     ("suppression quality", _suppression_quality),
+    ("malformed suppression", _malformed_suppression),
 )
 
 

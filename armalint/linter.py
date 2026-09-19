@@ -91,8 +91,7 @@ def lint_text(
         d.file = filename
 
     adjusted = apply_rule_severities(diags, rule_severities)
-    if check_suppressions:
-        adjusted.extend(check_suppression_quality(source, adjusted, True))
+    adjusted.extend(check_suppression_quality(source, adjusted, check_suppressions))
     return _deduplicate(filter_suppressed(adjusted, source, ignored_rules))
 
 
@@ -175,8 +174,7 @@ def lint_file(
             d.file = path
 
     adjusted = apply_rule_severities(diags, rule_severities)
-    if check_suppressions:
-        adjusted.extend(check_suppression_quality(source, adjusted, True))
+    adjusted.extend(check_suppression_quality(source, adjusted, check_suppressions))
     return _deduplicate(filter_suppressed(adjusted, source, ignored_rules))
 
 
