@@ -258,9 +258,6 @@ _INLINE_COMMANDS: set[str] = {
 # (``KNOWN_FUNCTIONS = _INLINE_FUNCTIONS | <data file>``).
 
 _INLINE_FUNCTIONS: set[str] = {
-    "CBA_fnc_execNextFrame",
-    "CBA_fnc_createUUID", "CBA_fnc_localEvent", "CBA_fnc_addEventHandler",
-    "CBA_fnc_removeEventHandler",
     "BIS_fnc_param", "BIS_fnc_paramDaytime", "BIS_fnc_addStackedEventHandler",
     "BIS_fnc_removeStackedEventHandler", "BIS_fnc_MP", "BIS_fnc_remoteExec",
     "BIS_fnc_spawn", "BIS_fnc_call", "BIS_fnc_initMultiplayer",
@@ -308,12 +305,17 @@ CBA_MACROS: set[str] = {
     "ADDON", "COMPONENT", "SUBADDON", "SUBCOMPONENT", "PREFIX", "CSTRING",
     "LSTRING", "LLSTRING", "QQGVAR", "QQFUNC", "QPATHTOFOLDER",
 }
+CBA_FUNCTIONS: set[str] = {
+    "CBA_fnc_execNextFrame", "CBA_fnc_createUUID", "CBA_fnc_localEvent",
+    "CBA_fnc_addEventHandler", "CBA_fnc_removeEventHandler",
+}
 
 # Normalize both registries to lowercase for case-insensitive lookup, then
 # union the inline fallbacks with the comprehensive generated data files.
 _INLINE_COMMANDS = {_normalize(name) for name in _INLINE_COMMANDS}
 _INLINE_FUNCTIONS = {_normalize(name) for name in _INLINE_FUNCTIONS}
 CBA_MACROS = {_normalize(name) for name in CBA_MACROS}
+CBA_FUNCTIONS = {_normalize(name) for name in CBA_FUNCTIONS}
 KNOWN_COMMANDS = _INLINE_COMMANDS | _load_commands_from_data()
 KNOWN_FUNCTIONS = _INLINE_FUNCTIONS | _load_functions_from_data()
 
@@ -335,6 +337,10 @@ def is_known_macro(name: str, *, cba_declared: bool = False) -> bool:
     in its config before they are treated as available.
     """
     return cba_declared and _normalize(name) in CBA_MACROS
+
+
+def is_known_cba_function(name: str, *, cba_declared: bool = False) -> bool:
+    return cba_declared and _normalize(name) in CBA_FUNCTIONS
 
 
 def is_known(name: str) -> bool:
