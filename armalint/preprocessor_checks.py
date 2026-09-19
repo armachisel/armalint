@@ -8,7 +8,10 @@ from .diagnostic import Diagnostic, Severity
 
 _DIRECTIVE = re.compile(r"^\s*#\s*([A-Za-z_][A-Za-z0-9_]*)\b(.*)$")
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_KNOWN = {"include", "define", "undef", "ifdef", "ifndef", "if", "elif", "else", "endif", "pragma"}
+# ``global`` is emitted by common Arma build/preprocessor tooling to change
+# macro visibility.  It is not a runtime SQF statement, but treating it as a
+# recognized directive avoids flagging valid source headers as unsupported.
+_KNOWN = {"include", "define", "undef", "ifdef", "ifndef", "if", "elif", "else", "endif", "pragma", "global"}
 # Arma's compiler supplies these runtime macros even though they do not occur
 # in the source tree.  Project build tooling commonly supplies the matching
 # A3_DEBUG names as well.
@@ -35,7 +38,7 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
             continue
         if directive == "define":
             name = rest.split(None, 1)[0] if rest else ""
-            function_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)", name)
+            function_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)", rest)
             if function_match:
                 name = function_match.group(1)
             if not _NAME.match(name):

@@ -326,6 +326,7 @@ _SIGNATURES["units"] = (frozenset(("Group", "Object", "Array")), "Group, Object 
 # conservatively inferred as Object.  `waypoints` operates on that same
 # engine handle family, so accept the runtime Object representation here.
 _SIGNATURES["waypoints"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["currentwaypoint"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["deletegroup"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["joinsilent"] = (frozenset(("Object", "Group")), "Object or Group")
 _BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group", "Object")), "Group or Object")
@@ -484,12 +485,30 @@ def _infer_expression(
     while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
         rhs_end += 1
     # A code block on the left of ``count`` is the filter form and the
-    # command still returns a numeric count.  Without this, the generic code
-    # literal inference leaks ``Code`` into assignments such as
-    # ``_n = { alive _x } count _units``.
+    # command still returns a numeric count.
     if (start < rhs_end and tokens[start].type == "lbrace"
             and any(t.value.lower() == "count" for t in tokens[start:rhs_end])):
         return "Number"
+    # Namespace getVariable is a dynamic lookup.  Its return value comes from
+    # the default or from runtime state; do not let the namespace receiver's
+    # type leak into an assigned callback variable.
+    if (start + 1 < rhs_end and tokens[start + 1].value.lower() == "getvariable"):
+        if start + 2 < rhs_end and tokens[start + 2].type == "lbracket":
+            split = _array_items(tokens, start + 2)
+            if split:
+                items, _close = split
+                if len(items) > 1:
+                    default_type = _simple_item_type(items[1], variables)
+                    if default_type:
+                        return default_type
+        return None
+    # Binary command chains such as ``_unit getPos [...]`` and
+    # ``_position vectorAdd [...]`` produce the command's return type.  The
+    # receiver's type alone is not the result of the expression.
+    if (start + 1 < rhs_end
+            and tokens[start + 1].value.lower() in _COMMAND_RETURN_TYPES
+            and tokens[start + 1].value.lower() not in _KNOWN_VARIABLE_TYPES):
+        return _COMMAND_RETURN_TYPES[tokens[start + 1].value.lower()]
     if (start < rhs_end and tokens[start].value.lower() == "leader"
             and any(t.value.lower() == "group" for t in tokens[start + 1:rhs_end])):
         return "Object"
@@ -536,6 +555,18 @@ def _infer_expression(
                     return default_type
     if any(t.value.lower() == "nearroads" for t in tokens[start:rhs_end]):
         return "Array"
+    # Selecting from a literal with homogeneous elements preserves that
+    # element type even when the index is dynamic (for example
+    # ``[100, 200] select _isHeavy``).
+    if start < len(tokens) and tokens[start].type == "lbracket":
+        close = next((idx for idx in range(start + 1, rhs_end) if tokens[idx].type == "rbracket"), None)
+        if close is not None and any(t.value.lower() == "select" for t in tokens[close + 1:rhs_end]):
+            split = _array_items(tokens, start)
+            if split:
+                items, _close = split
+                item_types = [_simple_item_type(item, variables) for item in items]
+                if item_types and item_types[0] and all(item_type == item_types[0] for item_type in item_types):
+                    return item_types[0]
     if start < len(tokens) and tokens[start].value.lower() in {"getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}:
         # A coordinate selected from a position command is scalar even when
         # the whole expression is wrapped in parentheses.
@@ -567,6 +598,13 @@ def _infer_expression(
             and tokens[start + 1].value.lower() == "get"):
         return "Anything"
     expression_tokens = [t for t in tokens[start:rhs_end] if t.type not in _TRIVIA]
+    # Vector command chains produce positions/vectors even when their scalar
+    # multiplier contains arithmetic (for example ``vectorAdd (_v vectorMultiply
+    # (_speed * diag_deltaTime))``).  Recognize the producer before the
+    # generic arithmetic fallback below.
+    vector_commands = {"vectoradd", "vectordiff", "vectormultiply", "vectornormalized", "vectorcrossproduct"}
+    if any(t.value.lower() in vector_commands for t in expression_tokens):
+        return "Array"
     if (start < len(tokens) and tokens[start].type == "lparen"
             and any(t.type == "operator" and t.value in ("*", "/", "%") for t in expression_tokens)
             and not any(t.type == "lbracket" for t in expression_tokens)):
@@ -1154,6 +1192,15 @@ def check_argument_types(
         # the engine command's Object-only warning.
         if (tok.value.lower() == "faction" and actual == "Side"):
             continue
+        if (tok.value.lower() == "deletevehicle" and tokens[j].type == "local"):
+            name = tokens[j].value.lower()
+            if any(tokens[k].type == "local" and tokens[k].value.lower() == name
+                   and k + 2 < i and tokens[k + 1].value.lower() == "isequaltype"
+                   and tokens[k + 2].value.lower() == "locationnull"
+                   for k in range(i)):
+                # The location branch is removed with deleteLocation; this
+                # deleteVehicle call is the guarded object fallback.
+                continue
         if (tok.value.lower() == "assert" and tokens[j].type == "lparen"
                 and any(t.type == "operator" and t.value in ("==", "!=", "<", ">", "<=", ">=")
                         for t in tokens[j:])):
@@ -1181,9 +1228,39 @@ def check_argument_types(
             continue
         if any(t.value.lower() == "select" for t in tokens[j:]):
             continue
+        if tok.value.lower() == "camsetfov" and tokens[j].type in ("lbracket", "lparen"):
+            # A callback result such as ``[args] call fnc_getFov`` is dynamic;
+            # the argument array itself is not the numeric FOV value.
+            split = _array_items(tokens, j) if tokens[j].type == "lbracket" else None
+            if split:
+                _items, close = split
+                k = close + 1
+                while k < len(tokens) and tokens[k].type in _TRIVIA:
+                    k += 1
+                if k < len(tokens) and tokens[k].value.lower() in ("call", "spawn"):
+                    continue
+            if tokens[j].type == "lparen" and any(t.value.lower() == "call" for t in tokens[j:]):
+                continue
         if j < len(tokens) and tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
             continue
         actual = _infer_operand(tokens, j, variables)
+        if tok.value.lower() == "domove" and tokens[j].type == "local":
+            name = tokens[j].value.lower()
+            if any(tokens[k].type == "local" and tokens[k].value.lower() == name
+                   and k + 1 < i and tokens[k + 1].value.lower() == "="
+                   and any(t.value.lower() in ("getpos", "getposasl", "getposatl", "getposworld", "getposvisual")
+                           for t in tokens[k + 2:i])
+                   for k in range(i)):
+                continue
+        if (tok.value.lower() == "distance2d" and tokens[j].type == "local"):
+            name = tokens[j].value.lower()
+            if any(tokens[k].type == "local" and tokens[k].value.lower() == name
+                   and k + 2 < i and tokens[k + 1].value.lower() == "isequaltype"
+                   for k in range(i)):
+                # Flow-sensitive conversion (for example String marker ->
+                # markerPos Array) makes the local's raw declaration type
+                # unsuitable for this later call.
+                continue
         accepted, expected = rule
         # HashMap deleteAt uses a string key, while Array deleteAt uses a
         # numeric index.  The generated command metadata only describes the
