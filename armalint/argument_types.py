@@ -107,6 +107,11 @@ _BINARY_SIGNATURES.update({
     # addition to the older unary road-object form.
     "roadsconnectedto": (frozenset(("Object", "Array")), "Object or Array"),
     "nearentities": (frozenset(("Number", "Array")), "Number or Array"),
+    # ``inArea`` accepts the positional area form on the right, for example
+    # ``_position inArea [center, a, b]``.  The XML metadata only describes
+    # the object/location/string form and otherwise reports valid position
+    # checks as type errors.
+    "inarea": (frozenset(("Location", "Object", "String", "Array")), "Location, Object, String or Array"),
 })
 
 _RETURN_TYPES = {
@@ -317,6 +322,10 @@ for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
         accepted, label = _SIGNATURES[_handle_command]
         _SIGNATURES[_handle_command] = (accepted | frozenset(("Group",)), label + " or Group")
 _SIGNATURES["units"] = (frozenset(("Group", "Object", "Array")), "Group, Object or Array")
+# Group handles passed through opaque helper/parameter boundaries are often
+# conservatively inferred as Object.  `waypoints` operates on that same
+# engine handle family, so accept the runtime Object representation here.
+_SIGNATURES["waypoints"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["deletegroup"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["joinsilent"] = (frozenset(("Object", "Group")), "Object or Group")
 _BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group", "Object")), "Group or Object")
@@ -434,15 +443,6 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
             return None
         inferred = variables.get(tok.value.lower())
         if inferred == "Array":
-            # Position/vector and record arrays commonly use scalar #index
-            # access.  Preserve the container as Array for the unindexed
-            # form, but infer a direct element access as Number.
-            probe = i + 1
-            while probe < len(tokens) and tokens[probe].type in _TRIVIA:
-                probe += 1
-            if (probe < len(tokens) and tokens[probe].value == "#"
-                    and probe + 1 < len(tokens) and tokens[probe + 1].type == "number"):
-                return "Number"
             # Chained hash indexing (``_records#0#1``) selects a field from a
             # nested record.  The common SQF shape is an array of records
             # whose second field is an engine handle; retain that useful fact
@@ -458,6 +458,12 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
                 cursor += 1
             if hashes >= 2:
                 return "Object"
+            if hashes == 1:
+                # A generic array (for example a helper-return record) does
+                # not reveal the element type merely from its index.  Keep
+                # this unknown rather than treating every element as a
+                # Number and producing cascaded handle/type warnings.
+                return None
         return inferred
     if tok.type == "keyword" and tok.value.lower() in ("true", "false"):
         return "Boolean"
@@ -477,6 +483,13 @@ def _infer_expression(
     rhs_end = start
     while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
         rhs_end += 1
+    # A code block on the left of ``count`` is the filter form and the
+    # command still returns a numeric count.  Without this, the generic code
+    # literal inference leaks ``Code`` into assignments such as
+    # ``_n = { alive _x } count _units``.
+    if (start < rhs_end and tokens[start].type == "lbrace"
+            and any(t.value.lower() == "count" for t in tokens[start:rhs_end])):
+        return "Number"
     if (start < rhs_end and tokens[start].value.lower() == "leader"
             and any(t.value.lower() == "group" for t in tokens[start + 1:rhs_end])):
         return "Object"
@@ -505,6 +518,22 @@ def _infer_expression(
         # HashMap `get` returns the value stored under a key; the key string is
         # not evidence that the result itself is a String.
         return None
+    # HashMap getOrDefault returns its supplied default when the key is
+    # absent.  Preserve that default's type so common collection fields can
+    # be passed to selectRandom/count without guessing from the key name.
+    if (start + 2 < rhs_end and tokens[start + 1].value.lower() == "getordefault"
+            and tokens[start + 2].type == "lbracket"):
+        split = _array_items(tokens, start + 2)
+        if split:
+            items, _close = split
+            if len(items) > 1:
+                default_type = _simple_item_type(items[1], variables)
+                if default_type is None:
+                    visible_default = [t for t in items[1] if t.type not in _TRIVIA]
+                    if visible_default and visible_default[0].type == "lbracket":
+                        default_type = "Array"
+                if default_type:
+                    return default_type
     if any(t.value.lower() == "nearroads" for t in tokens[start:rhs_end]):
         return "Array"
     if start < len(tokens) and tokens[start].value.lower() in {"getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}:
@@ -605,6 +634,21 @@ def _infer_expression(
                 items, _close = split
                 if len(items) > 1:
                     return _simple_item_type(items[1], variables)
+    if start < len(tokens) and tokens[start].value.lower() == "faction":
+        # Antistasi's Faction(side) helper shadows the legacy engine command
+        # and returns a faction HashMap.  The side form is distinguishable
+        # from the engine's object-based ``faction`` command.
+        arg = start + 1
+        while arg < rhs_end and tokens[arg].type in _TRIVIA:
+            arg += 1
+        if arg < rhs_end and tokens[arg].type == "lparen":
+            arg += 1
+            while arg < rhs_end and tokens[arg].type in _TRIVIA:
+                arg += 1
+        if (arg < rhs_end and (tokens[arg].value.lower() in
+                {"west", "east", "resistance", "civilian", "sideunknown"}
+                or (tokens[arg].type == "local" and variables.get(tokens[arg].value.lower()) == "Side"))):
+            return "HashMap"
     if start < len(tokens) and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
         # A nular command can be the left operand of a binary command (for
         # example, ``missionNamespace getVariable``). In that form its own
@@ -1103,6 +1147,13 @@ def check_argument_types(
         if tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        # Antistasi (and other mission frameworks) commonly provide a
+        # side-based Faction(side) HashMap helper, which intentionally
+        # shadows the legacy engine faction(Object) command.  The side form
+        # is handled by the expression inference below and should not emit
+        # the engine command's Object-only warning.
+        if (tok.value.lower() == "faction" and actual == "Side"):
+            continue
         if (tok.value.lower() == "assert" and tokens[j].type == "lparen"
                 and any(t.type == "operator" and t.value in ("==", "!=", "<", ">", "<=", ">=")
                         for t in tokens[j:])):

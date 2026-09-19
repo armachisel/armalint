@@ -468,6 +468,24 @@ def _types_nested_scope_isolated() -> bool:
     return not any(item.code == "W203" for item in check_argument_types_text(source))
 
 
+def _types_antistasi_producer_boundaries() -> bool:
+    snippets = (
+        # Generic record indexing must remain unknown; the second field is
+        # not necessarily numeric or an object handle.
+        'private _data = []; deleteVehicle (_data # 1);',
+        # HashMap defaults preserve their collection type for selectRandom.
+        'private _faction = createHashMap; selectRandom (_faction getOrDefault ["vehicles", []]);',
+        # Filter-count expressions return a number despite their code block.
+        'private _n = { alive _x } count allPlayers; ceil _n;',
+        # Position-array inArea is a documented binary overload.
+        'private _p = [0,0,0]; _p inArea [_p, 50, 50];',
+        # Antistasi's side-based Faction helper returns a map, unlike the
+        # legacy engine faction(Object) command.
+        'private _faction = Faction(civilian); selectRandom (_faction getOrDefault ["vehicles", []]);',
+    )
+    return all(not any(item.code == "W203" for item in check_argument_types_text(source)) for source in snippets)
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -567,6 +585,7 @@ CASES = (
     ("mission record type patterns", _types_mission_record_patterns),
     ("selected fields stay unknown", _types_selected_fields_stay_unknown),
     ("nested type scope isolated", _types_nested_scope_isolated),
+    ("Antistasi producer boundary inference", _types_antistasi_producer_boundaries),
     ("multi-code suppression", _suppression_multi_code),
     ("suppression quality", _suppression_quality),
     ("malformed suppression", _malformed_suppression),
