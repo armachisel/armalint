@@ -92,6 +92,10 @@ def discover_configs(paths: list[str]) -> dict[str, str]:
     settings for nested missions and sibling projects.
     """
     discovered: dict[str, str] = {}
+    # A mission commonly contains many files in the same directory. Resolve
+    # each starting directory once instead of repeating the upward filesystem
+    # walk for every file in it.
+    directory_configs: dict[str, str | None] = {}
     for raw in paths:
         if os.path.isfile(raw):
             candidates = [raw]
@@ -100,7 +104,10 @@ def discover_configs(paths: list[str]) -> dict[str, str]:
         else:
             continue
         for candidate in candidates:
-            config_path = find_config(candidate)
+            start_dir = os.path.dirname(os.path.abspath(candidate))
+            if start_dir not in directory_configs:
+                directory_configs[start_dir] = find_config(candidate)
+            config_path = directory_configs[start_dir]
             if config_path:
                 discovered[os.path.normcase(os.path.abspath(candidate))] = config_path
     return discovered
