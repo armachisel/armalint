@@ -298,27 +298,10 @@ _INLINE_FUNCTIONS: set[str] = {
 # Preprocessor helpers supplied by CBA (and commonly copied into addon
 # headers).  These are expanded before SQF reaches the engine, so an unresolved
 # include must not turn their names into W202 command diagnostics.
-CBA_MACROS: set[str] = {
-    "QUOTE", "QQUOTE", "PATHTO_SYS", "PATHTOF_SYS", "PATHTO", "PATHTOF",
-    "DOUBLES", "TRIPLES", "ARR_2", "ARR_3", "ARR_4", "ARR_5", "ARR_6",
-    "FUNC", "FUNCMAIN", "GVAR", "GVARMAIN", "QGVAR", "QFUNC", "QFUNCMAIN",
-    "ADDON", "COMPONENT", "SUBADDON", "SUBCOMPONENT", "PREFIX", "CSTRING",
-    "LSTRING", "LLSTRING", "QQGVAR", "QQFUNC", "QPATHTOFOLDER",
-}
-CBA_FUNCTIONS: set[str] = {
-    "CBA_fnc_execNextFrame", "CBA_fnc_createUUID", "CBA_fnc_localEvent",
-    "CBA_fnc_addEventHandler", "CBA_fnc_removeEventHandler",
-    "CBA_fnc_addEventHandlerArgs", "CBA_fnc_globalEvent", "CBA_fnc_ownerEvent",
-    "CBA_fnc_remoteEvent", "CBA_fnc_serverEvent", "CBA_fnc_targetEvent",
-    "CBA_fnc_currentUnit", "CBA_fnc_waitAndExecute", "CBA_fnc_getConfigEntry",
-}
-
 # Normalize both registries to lowercase for case-insensitive lookup, then
 # union the inline fallbacks with the comprehensive generated data files.
 _INLINE_COMMANDS = {_normalize(name) for name in _INLINE_COMMANDS}
 _INLINE_FUNCTIONS = {_normalize(name) for name in _INLINE_FUNCTIONS}
-CBA_MACROS = {_normalize(name) for name in CBA_MACROS}
-CBA_FUNCTIONS = {_normalize(name) for name in CBA_FUNCTIONS}
 KNOWN_COMMANDS = _INLINE_COMMANDS | _load_commands_from_data()
 KNOWN_FUNCTIONS = _INLINE_FUNCTIONS | _load_functions_from_data()
 
@@ -334,16 +317,18 @@ def is_known_function(name: str) -> bool:
 
 
 def is_known_macro(name: str, *, cba_declared: bool = False) -> bool:
-    """True for standard project macros, optionally including CBA helpers.
+    """Return whether a dependency-provided macro is known.
 
-    CBA helpers are deliberately opt-in.  A project must declare a CBA addon
-    in its config before they are treated as available.
+    Dependency macros are learned from indexed include/source data.  No CBA
+    names are hard-coded here, so declaring CBA alone cannot hide a typo or a
+    copied macro from an unrelated version.
     """
-    return cba_declared and _normalize(name) in CBA_MACROS
+    return False
 
 
 def is_known_cba_function(name: str, *, cba_declared: bool = False) -> bool:
-    return cba_declared and _normalize(name) in CBA_FUNCTIONS
+    """Compatibility hook; CBA functions must come from indexed data."""
+    return False
 
 
 def is_known(name: str) -> bool:
@@ -377,7 +362,6 @@ if __name__ == "__main__":
     assert is_known_command("HINT")
     assert is_known_function("BIS_fnc_param")
     assert is_known_function("bis_fnc_param")
-    assert is_known_macro("PATHTOF_SYS", cba_declared=True)
     assert is_known("setPos") and is_known("BIS_fnc_spawn")
     assert not is_known("definitelyNotReal")
     register("myCustomCommand", "command")

@@ -9,7 +9,7 @@ docstring note below.
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .known import SCRIPT_EXTENSIONS, is_known, is_known_cba_function, is_known_macro
+from .known import SCRIPT_EXTENSIONS, is_known, is_known_macro
 from .symbols import SymbolIndex
 from .tokenizer import Token, tokenize
 
@@ -29,7 +29,7 @@ def _is_known(name: str, index: SymbolIndex | None) -> bool:
     """
     if is_known(name):
         return True
-    return index is not None and (index.is_known_function(name) or index.is_known_macro(name) or is_known_cba_function(name, cba_declared=index.cba_declared))
+    return index is not None and (index.is_known_function(name) or index.is_known_macro(name))
 
 
 def _next_significant(tokens: list[Token], index: int) -> int:
