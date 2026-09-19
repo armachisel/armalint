@@ -245,6 +245,25 @@ def extract_dependencies(config: dict) -> set[str]:
     return {item.strip().lower() for item in raw if isinstance(item, str) and item.strip()}
 
 
+def extract_dependency_specs(config: dict) -> list[dict[str, str]]:
+    """Return declared dependency names and optional Workshop identifiers."""
+    raw = config.get("dependencies", config.get("requiredAddons", []))
+    if isinstance(raw, str): raw = [raw]
+    if isinstance(raw, dict):
+        raw = [{"name": name, **(value if isinstance(value, dict) else {})} for name, value in raw.items()]
+    result: list[dict[str, str]] = []
+    if not isinstance(raw, (list, tuple)): return result
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            result.append({"name": item.strip().lower()})
+        elif isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"].strip():
+            spec = {"name": item["name"].strip().lower()}
+            for key in ("workshopId", "workshop_id", "source"):
+                if isinstance(item.get(key), str) and item[key].strip(): spec[key] = item[key].strip()
+            result.append(spec)
+    return result
+
+
 def extract_rule_severities(config: dict) -> dict[str, str]:
     """Read optional per-rule severities (``error``, ``warning``, ``info``, ``off``)."""
     raw = config.get("severity", config.get("ruleSeverity"))
