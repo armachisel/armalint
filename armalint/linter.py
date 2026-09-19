@@ -190,6 +190,15 @@ def lint_file(
         else:
             d.file = path
 
+    # Comparisons in included HPP/INC files are commonly preprocessor macro
+    # bodies (CBA/Antistasi logging and path helpers), not executable SQF
+    # statements. Their operands are placeholders, so flow/type diagnostics
+    # such as W216 are meaningless until the macro is expanded at a call site.
+    diags = [
+        d for d in diags
+        if not (d.code == "W216" and d.file and os.path.splitext(d.file)[1].lower() in {".hpp", ".inc"})
+    ]
+
     adjusted = apply_rule_severities(diags, rule_severities)
     adjusted.extend(check_suppression_quality(source, adjusted, check_suppressions))
     return _deduplicate(filter_suppressed(adjusted, source, ignored_rules))
