@@ -79,11 +79,23 @@ def _is_ignored(rel_path: str, patterns: list[str]) -> bool:
     return False
 
 
+def _is_armalint_state_path(path: str) -> bool:
+    """Return whether *path* is inside Armalint's private project state."""
+    parts = os.path.normpath(os.path.abspath(path)).split(os.sep)
+    return any(part.lower() == ".armalint" for part in parts)
+
+
 def _collect_files(path: str, ignores: list[str]) -> list[str]:
     """Expand ``path`` (file or directory) into a sorted list of script files."""
     files: list[str] = []
+    if _is_armalint_state_path(path):
+        return files
     if os.path.isdir(path):
-        for root, _dirs, names in os.walk(path):
+        for root, dirs, names in os.walk(path):
+            # Armalint stores downloaded dependencies, indexes, and caches in
+            # this directory.  It is project state, not mission source, and
+            # must never be linted when the project root is scanned.
+            dirs[:] = [name for name in dirs if name.lower() != ".armalint"]
             for name in sorted(names):
                 if not _is_script_file(name):
                     continue
@@ -102,9 +114,10 @@ def _collect_macro_files(path: str) -> list[str]:
     roots = [path] if os.path.isdir(path) else [os.path.dirname(path)]
     result: list[str] = []
     for root_path in roots:
-        if not os.path.isdir(root_path):
+        if _is_armalint_state_path(root_path) or not os.path.isdir(root_path):
             continue
-        for root, _dirs, names in os.walk(root_path):
+        for root, dirs, names in os.walk(root_path):
+            dirs[:] = [name for name in dirs if name.lower() != ".armalint"]
             result.extend(
                 os.path.join(root, name)
                 for name in names
