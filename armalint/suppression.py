@@ -5,12 +5,14 @@ from __future__ import annotations
 import re
 
 from .diagnostic import Diagnostic, Severity
+from .rules import RULES
 
 _DIRECTIVE = re.compile(
     r"//\s*armalint:\s*(disable-next-line|disable-line|disable|enable)\b(.*)$",
     re.IGNORECASE,
 )
 _RULE = re.compile(r"\b(?:E|W)\d{3}\b", re.IGNORECASE)
+_MARKER = re.compile(r"//\s*armalint\s*:\s*(.*)$", re.IGNORECASE)
 
 
 def _codes(raw: str) -> set[str]:
@@ -78,12 +80,21 @@ def check_suppression_quality(source: str, diagnostics: list[Diagnostic], requir
     lines = source.splitlines()
     directives: list[tuple[int, str, set[str], str]] = []
     for line_no, line in enumerate(lines, 1):
+        marker = _MARKER.search(line)
         match = _DIRECTIVE.search(line)
+        if marker and not match:
+            findings.append(Diagnostic(Severity.WARNING, "W231", "malformed suppression directive", line_no, 1))
+            continue
         if not match:
             continue
         action, raw = match.groups()
         codes = _codes(raw)
-        reason = re.sub(r"\b(?:E|W)\d{3}\b", "", raw, flags=re.IGNORECASE).strip(" -:;")
+        directive_text, _, reason_text = raw.partition("--")
+        unknown_codes = re.findall(r"\b(?:E|W)\d{3}\b", directive_text, re.IGNORECASE)
+        for code in unknown_codes:
+            if code.upper() not in RULES:
+                findings.append(Diagnostic(Severity.WARNING, "W231", f"unknown suppression rule: {code.upper()}", line_no, 1))
+        reason = reason_text.strip() if "--" in raw else re.sub(r"\b(?:E|W)\d{3}\b", "", raw, flags=re.IGNORECASE).strip(" -:;")
         directives.append((line_no, action.lower(), codes or {"*"}, reason))
         if require_justification and not reason:
             findings.append(Diagnostic(Severity.WARNING, "W229", "suppression requires a justification comment", line_no, 1))
@@ -131,4 +142,6 @@ if __name__ == "__main__":
     quality = check_suppression_quality("// armalint: disable-next-line W206\nif (true) then {};\n// armalint: disable-line W102 -- generated\nhint \"x\";\n", diagnostics, True)
     assert any(item.code == "W229" for item in quality)
     assert any(item.code == "W230" for item in quality)
+    malformed = check_suppression_quality("// armalint: disble W206\n// armalint: disable-next-line W999 -- temporary\n", [], False)
+    assert sum(item.code == "W231" for item in malformed) == 2
     print("suppression self-test passed")

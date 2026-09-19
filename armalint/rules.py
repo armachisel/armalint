@@ -45,6 +45,7 @@ RULES = {
     "W228": ("warning", "Unsupported or malformed preprocessor directive"),
     "W229": ("warning", "Suppression is missing a justification"),
     "W230": ("info", "Suppression does not match a diagnostic"),
+    "W231": ("warning", "Malformed or unknown suppression directive"),
     "W301": ("warning", "Trailing whitespace"),
     "W302": ("warning", "Tab character in source indentation"),
 }

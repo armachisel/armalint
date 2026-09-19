@@ -66,6 +66,7 @@ armalint-lsp
 | `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
 | `--fix`         | Apply safe style fixes (trailing whitespace and tabs) in place.      |
 | `--diff [REF]`  | Report only findings on lines changed from `REF` (default `HEAD`).  |
+| `--diff-staged` | Report only findings in the staged Git index.                  |
 | `--fail-on LEVEL` | Fail on `error`, `warning`, `info`, or `none` (default `error`).   |
 | `--github-actions` | Emit GitHub Actions workflow-command annotations.                |
 | `--preset NAME` | Apply a named rule preset (`recommended`, `strict`, `style`, `performance`). |
@@ -190,6 +191,7 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W228 | warning  | A preprocessor directive is unsupported or malformed.              |
 | W229 | warning  | An inline suppression is missing a justification.                  |
 | W230 | info     | An inline suppression does not match any diagnostic.               |
+| W231 | warning  | A suppression directive is malformed or names an unknown rule.    |
 | W301 | warning  | Trailing whitespace when `--style` is enabled.                 |
 | W302 | warning  | Tab character when `--style` is enabled.                       |
 

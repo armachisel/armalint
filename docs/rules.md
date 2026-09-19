@@ -60,6 +60,7 @@ mistakes are found.
 | `W228` | A preprocessor directive is unsupported or malformed. |
 | `W229` | An inline suppression is missing a justification. |
 | `W230` | An inline suppression does not match any diagnostic. |
+| `W231` | A suppression directive is malformed or names an unknown rule. |
 
 The SQF contract checks are intentionally conservative. `params` declarations
 are checked for the supported string and `[name, default, validators]` shapes;
