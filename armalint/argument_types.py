@@ -719,6 +719,15 @@ def _narrowed_type(tokens: list[Token], index: int, variables: dict[str, str]) -
     for i in range(index - 1, -1, -1):
         if tokens[i].type == "semicolon":
             break
+        if (i + 2 < index and tokens[i].value == "!"
+                and tokens[i + 1].value.lower() == "isnull"
+                and tokens[i + 2].type == "local"
+                and tokens[i + 2].value.lower() == name):
+            return "Object"
+        if (i + 1 < index and tokens[i].value.lower() == "isnull"
+                and tokens[i + 1].type == "local"
+                and tokens[i + 1].value.lower() == name):
+            return "Object"
         if (i + 3 < index and tokens[i].value.lower() == "typename"
                 and tokens[i + 1].type == "local" and tokens[i + 1].value.lower() == name
                 and tokens[i + 2].type == "operator" and tokens[i + 2].value in ("==", "isequalto")

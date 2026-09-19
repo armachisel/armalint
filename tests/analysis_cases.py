@@ -17,6 +17,8 @@ from armalint.update_commands import _metadata_return_type, _parse_command_xml
 from armalint.undefined import check_undefined_text
 from armalint.locals import check_unused_locals_text
 from armalint.sqf_contracts import check_sqf_contracts_text
+from armalint.value_flow import check_value_flow_text
+from armalint.preprocessor_checks import check_preprocessor
 from armalint.diagnostic import Diagnostic, Severity
 
 
@@ -50,6 +52,12 @@ def _sqf_contracts() -> bool:
     )
     codes = {item.code for item in invalid}
     return not valid and {"W217", "W218", "W219", "W220", "W221"} <= codes
+
+
+def _semantic_and_preprocessor_diagnostics() -> bool:
+    value_codes = {item.code for item in check_value_flow_text('_x = 1; _x = 2; _x = 2; {} ; [] select 0;')}
+    macro_codes = {item.code for item in check_preprocessor('#define X 1\n#define X 2\n#if UNKNOWN\n#endif\n#endif\n#pragma bad\n')}
+    return {"W222", "W223", "W224"} <= value_codes and {"W225", "W226", "W227", "W228"} <= macro_codes
 
 
 def _ast_try_catch() -> bool:
@@ -486,6 +494,7 @@ CASES = (
     ("function definition overwrite checks", _definition_overwrite_checks),
     ("conservative unused locals", _unused_locals),
     ("SQF API contract checks", _sqf_contracts),
+    ("semantic and preprocessor diagnostics", _semantic_and_preprocessor_diagnostics),
     ("postfix command syntax", _postfix_command_syntax),
     ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),

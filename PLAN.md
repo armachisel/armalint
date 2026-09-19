@@ -22,17 +22,17 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Report duplicate function definitions, suspicious overwrites, and constant conditions.
 - [x] Report unused locals conservatively across include and nested-scope boundaries.
 - [x] Detect variable shadowing, duplicate locals, and more use-before-assignment paths.
-- [ ] Add union-type narrowing after `isEqualType`, `isNull`, `typeName`, and guard branches.
+- [x] Add union-type narrowing after `isEqualType`, `isNull`, `typeName`, and guard branches.
 - [x] Propagate types through common command chains and detect impossible comparisons.
 - [x] Add SQF-specific checks for `params` shapes, namespace misuse, event-handler lifecycle, remote execution, and public-variable contracts.
-- [ ] Add value-flow diagnostics for overwritten-before-use, constant assignments, and ineffective empty code/array expressions.
+- [x] Add value-flow diagnostics for overwritten-before-use, constant assignments, and ineffective empty code/array expressions.
 
 ## Priority 3: preprocessor and config coverage
 
 - [x] Add include-guard diagnostics; object-like macro substitution, conditional compilation, and nested includes are supported.
 - [x] Make CfgFunctions inheritance and custom `file` mappings fully parser-based.
 - [x] Improve callback discovery through event handlers and namespace variables.
-- [ ] Diagnose macro redefinition, undefined macro use, malformed conditional nesting, and unsupported directives.
+- [x] Diagnose macro redefinition, undefined macro use, malformed conditional nesting, and unsupported directives.
 - [x] Validate deeper `description.ext` and `config.cpp` property types and inheritance.
 - [x] Validate `mission.sqm` structure, version, required addons, and common property errors.
 
