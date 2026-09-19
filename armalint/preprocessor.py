@@ -20,6 +20,7 @@ _UNDEF_RE = re.compile(r'^\s*#\s*undef\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IFDEF_RE = re.compile(r'^\s*#\s*(ifdef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IF_DEFINED_RE = re.compile(r'^\s*#\s*if\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
 _IF_LITERAL_RE = re.compile(r'^\s*#\s*if\s+(0|1|true|false)\s*$')
+_IF_NAME_RE = re.compile(r'^\s*#\s*if\s+(!\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*$')
 _ELIF_RE = re.compile(r'^\s*#\s*elif\s+(0|1|true|false)\s*$')
 _ELIF_DEFINED_RE = re.compile(r'^\s*#\s*elif\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
 _ELSE_RE = re.compile(r'^\s*#\s*else\s*$')
@@ -346,6 +347,20 @@ def _preprocess_lines(
                 continuation_name = name
                 continuation_params = params
                 continuation_body = [body.rstrip()[:-1].rstrip()]
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _IF_NAME_RE.match(line)
+        if match:
+            # Build systems commonly provide symbolic flags such as
+            # __A3_DEBUG__.  If the flag is unavailable, choose the release
+            # branch (undefined => false) while keeping the conditional stack
+            # balanced so a following #else/#endif cannot hide the rest of
+            # the included source.
+            enabled = match.group(2).lower() in _defines
+            if match.group(1):
+                enabled = not enabled
+            _conditions.append(enabled and all(_conditions))
             lines.append("")
             line_map.append((filename, orig_line))
             continue

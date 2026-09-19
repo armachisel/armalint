@@ -61,7 +61,7 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     registrations: set[tuple[str, str, str]] = set()
     for i, token in enumerate(tokens):
-        if token.type in _TRIVIA:
+        if token.type in _TRIVIA or token.type not in ("ident", "keyword"):
             continue
         name = token.value.lower()
 
@@ -69,6 +69,12 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
             opening = _next(tokens, i)
             parsed = _items(tokens, opening) if opening < len(tokens) else None
             if parsed is None:
+                # Method-form params is valid when the declaration array is
+                # held in a local (for example ``_x params [...]`` inside a
+                # forEach callback).  Without flow-sensitive provenance we
+                # cannot prove that local is non-array, so leave it unknown.
+                if opening < len(tokens) and tokens[opening].type in ("local", "ident"):
+                    continue
                 diagnostics.append(_diag(_PARAMS, "params expects an array of parameter declarations", token))
                 continue
             declarations, _ = parsed
@@ -144,7 +150,7 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
         if name in ("remoteexec", "remoteexeccall"):
             opening = _next(tokens, i)
             parsed = _items(tokens, opening) if opening < len(tokens) else None
-            if parsed is None or len(parsed[0]) not in (2, 3):
+            if parsed is None or len(parsed[0]) not in (1, 2, 3):
                 diagnostics.append(_diag(_REMOTE, f"{token.value} expects [function, targets, jip]", token))
             elif len(parsed[0]) == 3:
                 jip = _first(parsed[0][2])
