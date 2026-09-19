@@ -293,6 +293,9 @@ for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
         accepted, label = _SIGNATURES[_handle_command]
         _SIGNATURES[_handle_command] = (accepted | frozenset(("Group",)), label + " or Group")
 _SIGNATURES["units"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["deletegroup"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["joinsilent"] = (frozenset(("Object", "Group")), "Object or Group")
+_BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group",)), "Group")
 if "leavevehicle" in _BINARY_SIGNATURES:
     accepted, label = _BINARY_SIGNATURES["leavevehicle"]
     _BINARY_SIGNATURES["leavevehicle"] = (accepted | frozenset(("Group",)), label + " or Group")
@@ -647,6 +650,14 @@ def _infer_expression(
             index = int(float(tokens[j].value))
             if 0 <= index < len(_items):
                 return _simple_item_type(_items[index], variables)
+        if j < len(tokens) and tokens[j].type == "keyword" and tokens[j].value.lower() in ("true", "false"):
+            item_types = {_simple_item_type(item, variables) for item in _items}
+            if len(item_types) == 1:
+                return next(iter(item_types))
+        if j < len(tokens) and tokens[j].type == "lparen":
+            item_types = {_simple_item_type(item, variables) for item in _items}
+            if len(item_types) == 1:
+                return next(iter(item_types))
     return direct
 
 

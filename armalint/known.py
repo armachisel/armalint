@@ -259,6 +259,8 @@ _INLINE_COMMANDS: set[str] = {
 
 _INLINE_FUNCTIONS: set[str] = {
     "CBA_fnc_execNextFrame",
+    "CBA_fnc_createUUID", "CBA_fnc_localEvent", "CBA_fnc_addEventHandler",
+    "CBA_fnc_removeEventHandler",
     "BIS_fnc_param", "BIS_fnc_paramDaytime", "BIS_fnc_addStackedEventHandler",
     "BIS_fnc_removeStackedEventHandler", "BIS_fnc_MP", "BIS_fnc_remoteExec",
     "BIS_fnc_spawn", "BIS_fnc_call", "BIS_fnc_initMultiplayer",
