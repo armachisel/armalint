@@ -16,6 +16,7 @@ plugins; indexed function metadata is combined across the files being linted.
 ```json
 {
   "mods": ["https://steamcommunity.com/sharedfiles/filedetails/?id=123456789"],
+  "dependencies": ["cba_main", "cba_events"],
   "functionTags": ["ace_medical"],
   "functionTypes": {"ALT_fnc_route": ["Object", "String"]},
   "functionReturns": {"ALT_fnc_route": "Array"},
@@ -26,6 +27,11 @@ plugins; indexed function metadata is combined across the files being linted.
   "plugins": ["tools/armalint_rules.py"]
 }
 ```
+
+`dependencies` declares external addon patches used by the project. This is
+especially useful for preprocessor providers such as CBA: Armalint only treats
+CBA macros as available when a `cba_*` dependency is declared. `requiredAddons`
+is accepted as an equivalent name for projects that mirror Arma config syntax.
 
 `functionTags` is a broad fallback. Prefer an updater-generated exact index
 when possible, because a tag also accepts misspelled names. `functionTypes`

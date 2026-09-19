@@ -277,9 +277,14 @@ file at the project root:
 
 ```json
 {
+  "dependencies": ["cba_main", "cba_events"],
   "functionTags": ["ace_medical", "ace_hearing", "CBA_settings"]
 }
 ```
+
+Declare external addon patches in `dependencies`. For example, projects that
+use CBA macros should list the relevant `cba_*` patches; Armalint then reports
+an undeclared CBA dependency instead of silently accepting copied macro code.
 
 The mod updater also extracts argument types from explicit `params` and `param` validators
 in installed mod function source. Run `python -m armalint.update` to write
