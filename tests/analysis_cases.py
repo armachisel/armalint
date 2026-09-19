@@ -270,6 +270,12 @@ def _location_and_distance_overloads() -> bool:
     return not any(d.code in {"W203", "W216"} for d in diagnostics)
 
 
+def _config_iteration_and_conditional_values() -> bool:
+    source = 'private _a = [0, 0, 0]; private _b = [10, 10, 0]; private _p = if (true) then {_a} else {_b}; _p doMove _b; { private _tag = getText (_x/"tag"); private _deps = getArray (_x/"requiredAddons"); private _ok = isClass (configFile/"CfgPatches"/_tag); } forEach ("true" configClasses (configFile/"CfgFunctions"));'
+    diagnostics = check_argument_types_text(source)
+    return not any(d.code == "W203" for d in diagnostics)
+
+
 def _command_xml_metadata_parser() -> bool:
     xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
     metadata = _parse_command_xml(xml)
@@ -520,6 +526,7 @@ CASES = (
     ("engine array operand commands", _engine_array_operand_commands),
     ("extension distance and UI handles", _extension_distance_and_ui_handles),
     ("location and distance overloads", _location_and_distance_overloads),
+    ("config iteration and conditional values", _config_iteration_and_conditional_values),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),
