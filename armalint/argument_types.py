@@ -305,6 +305,9 @@ _SIGNATURES["roadsconnectedto"] = (frozenset(("Object", "Array")), "Object or Ar
 # group handle in the join form, so do not report a spurious mismatch here.
 _BINARY_SIGNATURES["join"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["join"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["groupid"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["oneachframe"] = (frozenset(("Code", "String")), "Code or String")
+_BINARY_SIGNATURES["distancesqr"] = (frozenset(("Object", "Location", "Array")), "Object, Location or Array")
 for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
     if _handle_command in _SIGNATURES:
         accepted, label = _SIGNATURES[_handle_command]
@@ -405,6 +408,10 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
     if tok.type == "lbrace":
         return "Code"
     if tok.type == "local":
+        if tok.value.lower() == "_x":
+            # _x is scoped to the active forEach callback; a file-wide pass
+            # must not carry an element type from an unrelated loop.
+            return None
         inferred = variables.get(tok.value.lower())
         if inferred == "Array":
             # Chained hash indexing (``_records#0#1``) selects a field from a
@@ -441,6 +448,9 @@ def _infer_expression(
     rhs_end = start
     while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
         rhs_end += 1
+    if (start < rhs_end and tokens[start].value.lower() == "leader"
+            and any(t.value.lower() == "group" for t in tokens[start + 1:rhs_end])):
+        return "Object"
     # ``private _p = if (...) then {_a} else {_b}`` is a value expression.
     # Infer it from the two branch values when both are known and compatible.
     if start < len(tokens) and tokens[start].value.lower() == "if":
@@ -818,6 +828,8 @@ def _collect_foreach_element_types(
             values = [t for t in header[1:-1] if t.type in ("number", "string", "keyword")]
             if values and all(t.type == "number" for t in values):
                 element_type = "Number"
+            elif values and all(t.type == "string" for t in values):
+                element_type = "String"
         if node.body:
             previous_x = variables.get("_x")
             collect_body(node.body, element_type or "Unknown")
