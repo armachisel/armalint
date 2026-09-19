@@ -278,6 +278,11 @@ _load_generated_command_signatures()
 # numeric return in some versions.  SQF's command used here returns an Array;
 # keep the stable engine type explicit so array subtraction remains typed.
 _COMMAND_RETURN_TYPES["toarray"] = "Array"
+# SQF accepts groups for these unary commands, and ``reveal`` uses the
+# documented array-encoded right operand ``[target, knowledge]``.
+_SIGNATURES["leader"] = (frozenset(("Object", "Group")), "Object or Group")
+_SIGNATURES["side"] = (frozenset(("Object", "Group", "Location")), "Object, Group or Location")
+_BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array")
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "controlnull": "Control", "displaynull": "Display", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
