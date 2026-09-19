@@ -305,9 +305,11 @@ _SIGNATURES["roadsconnectedto"] = (frozenset(("Object", "Array")), "Object or Ar
 # group handle in the join form, so do not report a spurious mismatch here.
 _BINARY_SIGNATURES["join"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["join"] = (frozenset(("Group", "Object")), "Group or Object")
+_BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["groupid"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["oneachframe"] = (frozenset(("Code", "String")), "Code or String")
 _BINARY_SIGNATURES["distancesqr"] = (frozenset(("Object", "Location", "Array")), "Object, Location or Array")
+_SIGNATURES["isonroad"] = (frozenset(("Object", "Array")), "Object or Array")
 for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
     if _handle_command in _SIGNATURES:
         accepted, label = _SIGNATURES[_handle_command]
@@ -315,7 +317,7 @@ for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
 _SIGNATURES["units"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["deletegroup"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["joinsilent"] = (frozenset(("Object", "Group")), "Object or Group")
-_BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group",)), "Group")
+_BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group", "Object")), "Group or Object")
 if "leavevehicle" in _BINARY_SIGNATURES:
     accepted, label = _BINARY_SIGNATURES["leavevehicle"]
     _BINARY_SIGNATURES["leavevehicle"] = (accepted | frozenset(("Group",)), label + " or Group")
