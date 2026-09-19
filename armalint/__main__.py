@@ -12,6 +12,7 @@ import re
 import subprocess
 import shutil
 import sys
+import threading
 import time
 
 from . import __version__
@@ -588,7 +589,22 @@ def _main(argv: list[str] | None = None) -> int:
     if cached_index is not None:
         index = cached_index
     else:
-        index = build_symbol_index(index_files, token_cache=token_cache, source_cache=source_cache)
+        spinner_stop = threading.Event()
+        spinner_frames = "|/-\\"
+
+        def spin_index() -> None:
+            frame = 0
+            while not spinner_stop.wait(0.15):
+                show_phase(f"Building symbol index {spinner_frames[frame % len(spinner_frames)]}")
+                frame += 1
+
+        spinner_thread = threading.Thread(target=spin_index, daemon=True)
+        spinner_thread.start()
+        try:
+            index = build_symbol_index(index_files, token_cache=token_cache, source_cache=source_cache)
+        finally:
+            spinner_stop.set()
+            spinner_thread.join(timeout=1)
         try:
             os.makedirs(os.path.dirname(symbol_cache_path), exist_ok=True)
             with open(symbol_cache_path, "w", encoding="utf-8") as fh:
