@@ -60,3 +60,6 @@ presets, while the [plugin guide](plugins.md) documents project-defined checks.
 
 Armalint's vendored typed command definitions are based on the XML data from
 the [arma-commands-syntax project](https://github.com/kayler-renslow/arma-commands-syntax).
+The built-in `BIS_fnc_*` function registry is seeded from
+[HakonRydland/Arma3CfgFunctions](https://github.com/HakonRydland/Arma3CfgFunctions)
+and [AgentRev's BIS function gist](https://gist.github.com/AgentRev/6426982).

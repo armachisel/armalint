@@ -242,6 +242,12 @@ The `W201` check looks up names in `armalint/known.py`, which holds two
 case-insensitive sets: `KNOWN_COMMANDS` (engine commands) and
 `KNOWN_FUNCTIONS` (`BIS_fnc_*`-style functions).
 
+The built-in function snapshot is regenerated from two community-maintained
+sources: [HakonRydland/Arma3CfgFunctions](https://github.com/HakonRydland/Arma3CfgFunctions)
+and [AgentRev's BIS function gist](https://gist.github.com/AgentRev/6426982).
+These sources are useful indexes, but can lag behind the game, so the registry
+is additive and verified entries may also be added locally.
+
 `KNOWN_COMMANDS` is seeded from a comprehensive, generated list at
 `armalint/data/commands.txt` (one lowercase command per line, sourced from the
 Bohemia Interactive Community Wiki and its GitHub mirrors), UNION-ed with an
@@ -432,3 +438,6 @@ python -m armalint.rule_docs --check
 
 Armalint's vendored typed command definitions are based on the XML data from
 the [arma-commands-syntax project](https://github.com/kayler-renslow/arma-commands-syntax).
+Its built-in `BIS_fnc_*` function names are seeded from
+[HakonRydland/Arma3CfgFunctions](https://github.com/HakonRydland/Arma3CfgFunctions)
+and [AgentRev's BIS function gist](https://gist.github.com/AgentRev/6426982).

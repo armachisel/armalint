@@ -138,6 +138,12 @@ The normal command update uses the checked-in snapshot. Use
 `--refresh-signatures` only when you intentionally want to contact the XML
 source and refresh typed command metadata.
 
+The built-in `BIS_fnc_*` names in that snapshot come from
+[HakonRydland/Arma3CfgFunctions](https://github.com/HakonRydland/Arma3CfgFunctions)
+and [AgentRev's BIS function gist](https://gist.github.com/AgentRev/6426982).
+Those community indexes can lag behind the game; the checked-in registry is
+therefore additive and can include separately verified entries.
+
 ## `armalint-mcp`
 
 Armalint includes a dependency-free MCP server using stdio JSON-RPC. It is
