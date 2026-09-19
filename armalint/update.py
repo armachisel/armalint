@@ -28,6 +28,9 @@ import os
 import shutil
 import sys
 import subprocess
+import urllib.request
+import urllib.error
+import zipfile
 import threading
 import time
 
@@ -77,6 +80,36 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str) -
         _warn(f"SteamCMD failed to download Workshop item {workshop_id}")
         return False
     return True
+
+
+def _ensure_steamcmd(project_state: str, detected: str | None) -> str | None:
+    if detected:
+        return detected
+    if not sys.stdin.isatty():
+        _warn("SteamCMD was not found; rerun interactively to download it into .armalint/bin")
+        return None
+    answer = input("SteamCMD is required to download dependencies. Download it from Valve now? [y/N] ").strip().lower()
+    if answer not in ("y", "yes"):
+        _warn("SteamCMD download declined; dependencies were not downloaded")
+        return None
+    bin_dir = os.path.join(project_state, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    archive = os.path.join(bin_dir, "steamcmd.zip")
+    try:
+        urllib.request.urlretrieve("https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip", archive)
+        with zipfile.ZipFile(archive) as package:
+            package.extractall(bin_dir)
+    except (OSError, urllib.error.URLError, zipfile.BadZipFile) as exc:
+        _warn(f"could not download SteamCMD: {exc}")
+        return None
+    finally:
+        try: os.remove(archive)
+        except OSError: pass
+    executable = os.path.join(bin_dir, "steamcmd.exe")
+    if not os.path.isfile(executable):
+        _warn("SteamCMD download completed but steamcmd.exe was not found")
+        return None
+    return executable
 
 
 def _extract_with_progress(path: str, label: str, root_number: int, root_total: int,
@@ -202,6 +235,7 @@ def run_update(args) -> int:
         steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd(
             [mission_dir, os.getcwd()]
         )
+        steamcmd = _ensure_steamcmd(os.path.dirname(out_path), steamcmd)
         dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
         specs_to_download = list(dependency_specs)
         cba_specs = [spec for spec in specs_to_download if spec.get("name", "").startswith("cba_")]
