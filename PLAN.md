@@ -127,7 +127,7 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
   or malformed options with suggestions.
 - [x] Add rule categories and named presets such as `recommended`, `strict`,
   `style`, and `performance`.
-- [ ] Diagnose malformed, misspelled, or ineffective inline suppression
+- [x] Diagnose malformed, misspelled, or ineffective inline suppression
   directives.
 - [ ] Add Checkstyle and other common CI/editor output formats.
 - [ ] Improve project discovery for nested missions and monorepos.
