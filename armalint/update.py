@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 import subprocess
@@ -43,6 +44,7 @@ from .mods import (
     find_game_addon,
     extract_mod_data_cached,
     extract_mod_macros,
+    extract_source_macros,
     load_mod_scan_cache,
     save_mod_scan_cache,
     list_addons,
@@ -156,6 +158,36 @@ def _download_steamcmd_archive(destination: str) -> None:
     if stream:
         stream.write("\r" + (" " * width) + "\r")
         stream.flush()
+
+
+def _acquire_dependency_source(spec: dict, source_root: str) -> str | None:
+    """Clone a declared dependency source into the project cache."""
+    source = spec.get("source")
+    if isinstance(source, dict):
+        url = source.get("url")
+        ref = source.get("ref") or source.get("branch")
+    else:
+        url = source
+        ref = spec.get("ref")
+    if not isinstance(url, str) or not url.strip():
+        return None
+    destination = os.path.join(source_root, re.sub(r"[^A-Za-z0-9_.-]+", "_", str(spec.get("name", "dependency"))))
+    if os.path.isdir(os.path.join(destination, ".git")):
+        try:
+            subprocess.run(["git", "-C", destination, "pull", "--ff-only"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return destination
+        except OSError:
+            return None
+    os.makedirs(source_root, exist_ok=True)
+    command = ["git", "clone", "--depth", "1"]
+    if isinstance(ref, str) and ref:
+        command.extend(["--branch", ref])
+    command.extend([url.strip(), destination])
+    try:
+        result = subprocess.run(command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return None
+    return destination if result.returncode == 0 else None
 
 
 def _ensure_steamcmd(project_state: str, detected: str | None) -> str | None:
@@ -310,6 +342,27 @@ def run_update(args) -> int:
 
     # 3. Search roots: workshop content roots + Arma install directories.
     workshop_roots = list(getattr(args, "workshop", None) or discover_workshop_roots())
+    source_macros: set[str] = set()
+    source_cache_root = os.path.join(os.path.dirname(out_path), "dependencies", "source")
+    for spec in dependency_specs:
+        source = spec.get("source")
+        if not source:
+            continue
+        source_path = None
+        if getattr(args, "download_dependencies", False):
+            source_path = _acquire_dependency_source(spec, source_cache_root)
+        else:
+            candidate = os.path.join(source_cache_root, re.sub(r"[^A-Za-z0-9_.-]+", "_", str(spec.get("name", "dependency"))))
+            if os.path.isdir(candidate):
+                source_path = candidate
+        if source_path:
+            source_info = source if isinstance(source, dict) else spec
+            roots = source_info.get("includeRoots", source_info.get("include_roots", [])) if isinstance(source_info, dict) else []
+            if isinstance(roots, str):
+                roots = [roots]
+            source_macros |= extract_source_macros(source_path, roots if isinstance(roots, list) else [])
+        elif getattr(args, "download_dependencies", False):
+            _warn(f"could not acquire source dependency {spec.get('name', '<unnamed>')}")
     if getattr(args, "download_dependencies", False):
         steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd(
             [mission_dir]
@@ -413,6 +466,7 @@ def run_update(args) -> int:
     functions: set[str] = set()
     function_types: dict[str, list[str | None]] = {}
     macros: set[str] = set()
+    macros |= source_macros
     scan_roots = [
         (path, "mod") for path in sorted(resolved, key=lambda p: os.path.normcase(p))
     ] + [(root, "game data") for root in game_addon_roots]

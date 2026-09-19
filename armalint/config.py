@@ -250,7 +250,7 @@ def extract_dependencies(config: dict) -> set[str]:
     return {item.strip().lower() for item in raw if isinstance(item, str) and item.strip()}
 
 
-def extract_dependency_specs(config: dict) -> list[dict[str, str]]:
+def extract_dependency_specs(config: dict) -> list[dict]:
     """Return declared dependency names and optional Workshop identifiers."""
     raw = config.get("dependencies", config.get("requiredAddons", []))
     if isinstance(raw, str): raw = [raw]
@@ -263,8 +263,11 @@ def extract_dependency_specs(config: dict) -> list[dict[str, str]]:
             result.append({"name": item.strip().lower()})
         elif isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"].strip():
             spec = {"name": item["name"].strip().lower()}
-            for key in ("workshopId", "workshop_id", "source"):
-                if isinstance(item.get(key), str) and item[key].strip(): spec[key] = item[key].strip()
+            for key in ("workshopId", "workshop_id", "source", "ref", "includeRoots", "include_roots"):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip(): spec[key] = value.strip()
+                elif isinstance(value, (dict, list)):
+                    spec[key] = value
             result.append(spec)
     return result
 
