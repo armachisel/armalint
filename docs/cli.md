@@ -3,7 +3,7 @@
 ## `armalint`
 
 ```text
-armalint [--json|--sarif] [--style] [--ignore GLOB] [--ignore-rule RULE] [--config PATH] [--version] PATH ...
+armalint [OPTIONS] PATH ...
 armalint --file PATH [--json|--sarif]
 armalint --snippet 'sleep "soon";' [--json|--sarif]
 armalint --mission PATH --snippet 'sleep _delay;' [--json|--sarif]
@@ -12,8 +12,9 @@ armalint-lsp
 ```
 
 `PATH` can be a file or a directory. Directories are searched for `.sqf`,
-`.sqs`, `.hpp`, and `.ext` files. The command exits with status 1 when it finds
-an error-severity diagnostic. Warnings do not make it fail.
+`.sqs`, `.hpp`, and `.ext` files. The default failure threshold is error; use
+`--fail-on` to fail on warnings or informational findings, or to always return
+success.
 
 The most useful options are:
 
@@ -34,6 +35,11 @@ The most useful options are:
 | `--github-actions` | Emit GitHub Actions annotation commands in text output. |
 | `--file PATH` | Lint one specific file; repeat the option for several files. |
 | `--snippet SOURCE` | Lint inline SQF and label diagnostics as `<snippet>`. |
+| `--mission PATH` | Use a mission's symbols and configuration with a snippet or file. |
+| `--ignore GLOB` | Skip matching files. Repeatable. |
+| `--ignore-rule RULE` | Suppress a rule for the whole run. Repeatable. |
+| `--config PATH` | Use an explicit configuration file. |
+| `--version` | Print the installed version. |
 
 ## Incremental watching and editors
 
@@ -56,11 +62,6 @@ merge-base or target branch to `--diff`. Deleted lines are ignored because they
 cannot produce current source diagnostics. For GitHub Actions, combine
 `--github-actions` with `--fail-on warning` to annotate findings and fail when
 warnings or errors are present.
-| `--mission PATH` | Use a mission's symbols and configuration while linting a snippet or file. |
-| `--ignore GLOB` | Skip matching files. Repeat it when needed. |
-| `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run, such as `W206`. Repeatable. |
-| `--config PATH` | Use this `armalint.json` instead of discovering one. |
-| `--version` | Print the installed version. |
 
 For a quick check without creating a file, pass SQF directly:
 
@@ -87,6 +88,10 @@ file-level or section-wide exception. A mission's `armalint.json` can set
 `{"ignoreRules": ["W206", "W101"]}` for every file in that mission.
 Command-line and mission-configured rule suppressions also apply to diagnostics
 from files pulled in through `#include`.
+
+Project-defined Python checks are configured with the `plugins` key in
+`armalint.json`; see [Project plugins](plugins.md). They use the same output,
+suppression, severity, and CI integrations as built-in rules.
 
 Project configuration can also set rule severity and file patterns:
 

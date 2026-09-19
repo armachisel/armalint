@@ -38,9 +38,11 @@ uv tool install .
 pipx install .
 ```
 
-The package also installs `armalint-update`, `armalint-update-commands`, and
-`armalint-mcp` entry points. The updater builds project-specific base-game,
-DLC, and mod indexes; the MCP server exposes read-only lint and lookup tools.
+The package also installs `armalint-update`, `armalint-update-commands`,
+`armalint-mcp`, `armalint-watch`, and `armalint-lsp` entry points. The updater
+builds project-specific base-game, DLC, and mod indexes; the MCP server exposes
+read-only lint and lookup tools; the watcher and LSP provide incremental editor
+feedback.
 
 ## Usage
 
@@ -76,16 +78,18 @@ armalint-lsp
 | `--rules RULE` | Select individual rule codes or categories such as `syntax` or `style`. |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
+| `--config PATH` | Use an explicit configuration file instead of discovery.       |
+| `--version`     | Print the version and exit.                                        |
 
 `armalint-watch` polls a mission or set of SQF files and emits one JSON event
 per changed file. It rebuilds the mission symbol index only when files change
 and re-lints only affected files. `armalint-lsp` provides stdio LSP support for
 open and changed documents, publishing diagnostics as they are edited.
-| `--version`     | Print the version and exit.                                        |
 
 When given a directory, Armalint walks it recursively and lints files ending
-in `.sqf`, `.sqs`, `.hpp`, and `.ext`. The exit code is `0` when there are no
-`error`-severity diagnostics and `1` otherwise.
+in `.sqf`, `.sqs`, `.hpp`, and `.ext`. The default exit code is `0` unless an
+error is reported. Use `--fail-on warning`, `--fail-on info`, or
+`--fail-on none` to select a different CI policy.
 
 For a quick expression check, lint a snippet directly:
 
@@ -151,6 +155,9 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 
 ## Rule set
 
+The complete registry-backed catalog, including categories and default
+severities, is in [`docs/rule-catalog.md`](docs/rule-catalog.md).
+
 | Code | Severity | Meaning                                                            |
 | ---- | -------- | ------------------------------------------------------------------ |
 | E001 | error    | Bracket balance: an unclosed or unmatched `(`, `[`, or `{`.         |
@@ -164,6 +171,7 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | E009 | error    | Invalid postfix command expression.                              |
 | E010 | error    | Malformed class-based config structure.                           |
 | E011 | error    | Malformed text `mission.sqm` structure.                            |
+| E012 | error    | Invalid project configuration or plugin load/check failure.         |
 | W101 | warning  | Possible undefined local variable (used before definition).         |
 | W104 | warning  | Unreachable code after unconditional control flow.                   |
 | W201 | warning  | Unknown function/command name after `call` or `spawn`.              |
@@ -297,14 +305,20 @@ function name before the first `_fnc_` — so the tag `ace_medical` suppresses
 other `<tag>_fnc_*` reference.
 
 The config file is discovered automatically by walking **up** from each linted
-path toward the filesystem root (`armalint.json` is preferred over
-`.armalint.json` in the same directory). If several paths resolve to different
-config files, their tags are unioned. You can override discovery with an
-explicit path:
+file toward the filesystem root (`armalint.json` is preferred over
+`.armalint.json` in the same directory). Nested missions and monorepos can
+therefore use separate configs; metadata is combined for indexing while each
+file keeps its nearest config for suppressions, severities, and plugins. You
+can override discovery with an explicit path:
 
 ```powershell
 python -m armalint --config path/to/armalint.json <paths>
 ```
+
+Configuration also supports `presets` (`recommended`, `strict`, `style`, and
+`performance`), rule categories, and project Python plugins. See the
+[configuration guide](docs/configuration.md) and [plugin guide](docs/plugins.md)
+for the schemas and examples.
 
 ## Mod function cache (exact function names)
 
@@ -395,7 +409,16 @@ python tests/run_all.py
 ```
 
 It runs each analyzer module's built-in self-test, lints the fixtures, and
-prints a PASS/FAIL summary (exits non-zero on any failure).
+prints a PASS/FAIL summary (exits non-zero on any failure). It also checks the
+registry-generated rule catalog and runs the minimized production regression
+corpus in `tests/corpus/`.
+
+Regenerate or verify the catalog with:
+
+```powershell
+python -m armalint.rule_docs
+python -m armalint.rule_docs --check
+```
 
 ## Credits
 

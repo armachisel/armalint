@@ -38,8 +38,10 @@ it.
 ## Adding a rule or analyzer
 
 Give a diagnostic a stable `E###` or `W###` code and add its description to
-`armalint/rules.py` and `docs/rules.md`. Prefer a focused regression case in
-`tests/analysis_cases.py` or a module self-test. Run the full suite before
+`armalint/rules.py`, including its category. Regenerate
+`docs/rule-catalog.md` with `python -m armalint.rule_docs`; update the prose in
+`docs/rules.md` when the user-facing explanation needs more context. Prefer a
+focused regression case in `tests/analysis_cases.py` or a module self-test. Run the full suite before
 changing the expected count. Keep inference conservative: an unknown value is
 usually safer than a warning based on a naming guess.
 

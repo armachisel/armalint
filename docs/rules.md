@@ -9,7 +9,8 @@ generated in [`rule-catalog.md`](rule-catalog.md). Run
 
 ## Syntax errors
 
-These are errors and make the command exit with status 1.
+These are errors by default. The process exit threshold can be changed with
+`--fail-on` when a project needs a different CI policy.
 
 | Code | Check |
 | --- | --- |
@@ -24,10 +25,11 @@ These are errors and make the command exit with status 1.
 | `E009` | A statement uses a known command in postfix form, such as `_items reverse;`, which is not a complete SQF command expression. |
 | `E010` | A class-based config has unmatched or unclosed braces. |
 | `E011` | A text `mission.sqm` is missing its required `version` field. |
+| `E012` | The project configuration or a configured plugin is invalid. |
 
 ## Analysis warnings
 
-Warnings do not make the command fail, but they are often where the useful
+Warnings do not make the command fail by default, but they are often where the useful
 mistakes are found.
 
 | Code | Check |
