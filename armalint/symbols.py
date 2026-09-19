@@ -23,6 +23,7 @@ class SymbolIndex:
 
     tags: set[str] = field(default_factory=set)
     functions: set[str] = field(default_factory=set)
+    cba_declared: bool = False
 
     def add_tag(self, tag: str) -> None:
         """Register a function tag (e.g. ``ALT`` -> ``alt``)."""
@@ -47,6 +48,11 @@ class SymbolIndex:
             if tag in self.tags:
                 return True
         return False
+
+    def is_known_macro(self, name: str) -> bool:
+        """True when a project-declared dependency provides this macro."""
+        from .known import is_known_macro
+        return is_known_macro(name, cba_declared=self.cba_declared)
 
     def counts(self) -> tuple[int, int]:
         """Return ``(len(tags), len(functions))``."""

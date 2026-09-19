@@ -222,6 +222,11 @@ def build_symbol_index(
         if source_cache is not None:
             source_cache[path] = source
         if ext in _CONFIG_EXTENSIONS:
+            # CBA preprocessor helpers are available only when the project
+            # explicitly declares a CBA addon patch.  Merely using a copied
+            # CBA macro must remain visible as an unresolved macro/command.
+            if re.search(r"requiredAddons\s*\[\]\s*=\s*\{[^}]*\bcba_[A-Za-z0-9_]+", source, re.IGNORECASE | re.DOTALL):
+                index.cba_declared = True
             collect_description_cfg_functions(source, index)
             # CBA's standard ``script_component.hpp`` defines the config tag
             # as ``ADDON``.  When that external macro header is unavailable,
