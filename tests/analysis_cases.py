@@ -264,6 +264,12 @@ def _extension_distance_and_ui_handles() -> bool:
     return not any(d.code == "W203" for d in check_argument_types_text(source))
 
 
+def _location_and_distance_overloads() -> bool:
+    source = 'private _location = locationNull; private _names = allVariables _location; private _position = [0, 0, 0]; private _base = [100, 100, 0]; if (_position distance _base < 500) then { hint "near"; };'
+    diagnostics = check_argument_types_text(source)
+    return not any(d.code in {"W203", "W216"} for d in diagnostics)
+
+
 def _command_xml_metadata_parser() -> bool:
     xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
     metadata = _parse_command_xml(xml)
@@ -513,6 +519,7 @@ CASES = (
     ("UI and array-encoded commands stay unchecked", _ui_and_array_encoded_commands_stay_unchecked),
     ("engine array operand commands", _engine_array_operand_commands),
     ("extension distance and UI handles", _extension_distance_and_ui_handles),
+    ("location and distance overloads", _location_and_distance_overloads),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),

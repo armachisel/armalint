@@ -70,7 +70,11 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "configsourcemod": (frozenset(("Config",)), "Config"),
     "configclasses": (frozenset(("Config", "Array")), "Config or Array"),
     "configproperties": (frozenset(("Config", "Array")), "Config or Array"),
-    "allvariables": (frozenset(("Namespace", "Object", "Group", "Display", "Control")), "Namespace, Object, Group, Display or Control"),
+    # Locations expose the same variable namespace interface as the other
+    # engine-owned containers.  The XML mirror predates that overload, but
+    # mission code commonly calls allVariables on a Location returned from
+    # getNestedObject.
+    "allvariables": (frozenset(("Namespace", "Object", "Group", "Display", "Control", "Location")), "Namespace, Object, Group, Display, Control or Location"),
 }
 
 _BINARY_SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
@@ -98,6 +102,9 @@ _BINARY_SIGNATURES.update({
     "callextension": (frozenset(("String", "Array")), "String or Array"),
     "distance": (frozenset(("Object", "Location", "Array")), "Object, Location or Array"),
     "iskindof": (frozenset(("String", "Array")), "String or Array"),
+    # Arma accepts the array-encoded [road, includeJunctions] form in
+    # addition to the older unary road-object form.
+    "roadsconnectedto": (frozenset(("Object", "Array")), "Object or Array"),
 })
 
 _RETURN_TYPES = {
@@ -444,6 +451,10 @@ def _infer_expression(
             and tokens[start].value.lower() == "createhashmap"
             and tokens[start + 1].value.lower() == "get"):
         return "Anything"
+    expression_tokens = [t for t in tokens[start:rhs_end] if t.type not in _TRIVIA]
+    if (any(t.type == "operator" and t.value in ("*", "/", "%") for t in expression_tokens)
+            and not any(t.type == "lbracket" for t in expression_tokens)):
+        return "Number"
     if start < len(tokens) and tokens[start].type == "lparen":
         depth = 0
         for close in range(start, len(tokens)):
@@ -470,6 +481,10 @@ def _infer_expression(
         # unary - is numeric.
         return (_infer_operand(tokens, start + 1, variables)
                 if tokens[start].value == "+" else "Number")
+    # Arithmetic expressions are numeric even when their operands are
+    # composed values such as ``(_sdiff#0) / _div``.  Recognizing this before
+    # grouped-expression handling prevents a stale array type from leaking
+    # into scalar commands such as vectorMultiply.
     if start < len(tokens) and tokens[start].type == "local":
         call = start + 1
         while call < len(tokens) and tokens[call].type in _TRIVIA:
@@ -1107,12 +1122,12 @@ def check_argument_types(
         # token before the comparison is their string argument. Do not compare
         # that argument's type; the command expression is the left operand.
         command_result_comparison = (
-            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction", "getvariable")
+            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction", "getvariable", "distance", "distance2d", "distancesqr")
         )
         if not command_result_comparison:
             scan = left - 1
             while scan >= 0 and tokens[scan].type != "semicolon" and left - scan <= 96:
-                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction", "getvariable"):
+                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction", "getvariable", "distance", "distance2d", "distancesqr"):
                     command_result_comparison = True
                     break
                 scan -= 1
