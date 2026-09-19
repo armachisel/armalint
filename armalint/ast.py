@@ -627,7 +627,40 @@ class Parser:
             negated = True
             condition_start += 1
         if condition_start >= limit or self.tokens[condition_start].type != "lparen":
-            return None, pos + 1
+            # SQF also permits the compact guard form
+            # ``if _condition exitWith { ... };``.  Parse it as a conditional
+            # node so the exitWith only terminates the guarded path; treating
+            # the exitWith as a top-level terminator incorrectly marks the
+            # remainder of the function unreachable.
+            exit_pos = condition_start
+            depth = 0
+            while exit_pos < limit:
+                token = self.tokens[exit_pos]
+                if token.type in ("lparen", "lbracket", "lbrace"):
+                    depth += 1
+                elif token.type in ("rparen", "rbracket", "rbrace"):
+                    depth = max(0, depth - 1)
+                elif depth == 0 and token.type == "keyword" and token.value.lower() == "exitwith":
+                    break
+                elif depth == 0 and token.type == "semicolon":
+                    return None, pos + 1
+                exit_pos += 1
+            if exit_pos >= limit or self.tokens[exit_pos].value.lower() != "exitwith":
+                return None, pos + 1
+            body_start = exit_pos + 1
+            if body_start >= limit or self.tokens[body_start].type != "lbrace":
+                return None, pos + 1
+            then_node, next_pos = self._node(body_start, limit)
+            if not isinstance(then_node, Block):
+                return None, pos + 1
+            end = then_node.end
+            if next_pos < limit and self.tokens[next_pos].type == "semicolon":
+                end = self.tokens[next_pos]
+                next_pos += 1
+            condition = self.tokens[condition_start:exit_pos]
+            return IfStatement(start=self.tokens[pos], end=end, condition=condition,
+                               then_block=then_node, else_block=None, negated=False,
+                               condition_ast=parse_expression(condition)), next_pos
         close = _matching(self.tokens, condition_start, "lparen", "rparen")
         if close is None or close + 1 >= limit:
             return None, pos + 1
