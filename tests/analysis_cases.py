@@ -48,7 +48,7 @@ def _sqf_contracts() -> bool:
     invalid = check_sqf_contracts_text(
         'params "_x"; missionNamespace setVariable 1; '
         'player removeEventHandler ["Killed", 9]; '
-        '[] remoteExec ["TAG_fnc_update", 2, "yes"]; publicVariable 42;'
+        '[] remoteExec ["TAG_fnc_update", 2, 1]; publicVariable 42;'
     )
     codes = {item.code for item in invalid}
     return not valid and {"W217", "W218", "W219", "W220", "W221"} <= codes
