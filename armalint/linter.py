@@ -196,7 +196,7 @@ def lint_file(
     # such as W216 are meaningless until the macro is expanded at a call site.
     diags = [
         d for d in diags
-        if not (d.code == "W216" and d.file and os.path.splitext(d.file)[1].lower() in {".hpp", ".inc"})
+        if not (d.code in {"W203", "W216", "W220"} and d.file and os.path.splitext(d.file)[1].lower() in {".hpp", ".inc"})
     ]
 
     adjusted = apply_rule_severities(diags, rule_severities)
