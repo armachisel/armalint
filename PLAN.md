@@ -133,5 +133,5 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [ ] Improve project discovery for nested missions and monorepos.
 - [x] Report scan duration, cache hit rate, and per-phase performance data.
 - [ ] Generate rule documentation from the rule registry to prevent drift.
-- [ ] Maintain a regression corpus from real-world missions and mods.
+- [x] Maintain a regression corpus from real-world missions and mods.
 - [x] Support project-defined plugin rules without modifying Armalint itself.

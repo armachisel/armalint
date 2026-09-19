@@ -18,6 +18,11 @@ diagnostic, add a small fixture or a focused module test that demonstrates the
 case. Small examples are easier to reason about when a later change breaks
 one.
 
+Production regressions belong in `tests/corpus/`. Add a minimized SQF file and
+an entry in `manifest.json` with the real-world context and diagnostic codes it
+must continue to produce. The aggregate runner executes the corpus on every
+change.
+
 To work on the documentation locally:
 
 ```powershell
