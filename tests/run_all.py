@@ -311,6 +311,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as temp_dir:
         style_file = Path(temp_dir) / "style.sqf"
         style_file.write_text('hint "x";  \n\thint "y";\n', encoding="utf-8")
+        preview = run_cli(str(style_file), "--fix-preview")
+        preview_payload = json.loads(preview.stdout or "[]")
+        preview_ok = preview.returncode == 0 and preview_payload and "edits" in preview_payload[0] and "  \n" in style_file.read_text(encoding="utf-8")
         fixed = run_cli(str(style_file), "--fix", "--style", "--json")
         fixed_payload = json.loads(fixed.stdout or "[]")
         fix_ok = fixed.returncode == 0 and not fixed_payload and "  \n" not in style_file.read_text(encoding="utf-8") and "\t" not in style_file.read_text(encoding="utf-8")
@@ -320,8 +323,16 @@ def main() -> int:
     diff_ok = diff_clean.returncode == 0 and json.loads(diff_clean.stdout or "[]") == []
     annotation = run_cli(str(BUGGY_FIXTURE), "--github-actions")
     annotation_ok = "::error" in annotation.stdout and "::warning" in annotation.stdout
-    policy_ok = fix_ok and warning_fail and no_fail and diff_ok and annotation_ok
-    print(f"[{'PASS' if policy_ok else 'FAIL'}] fix={fix_ok} warning={warning_fail} none={no_fail} diff={diff_ok} annotations={annotation_ok}")
+    checkstyle = run_cli(str(BUGGY_FIXTURE), "--checkstyle")
+    checkstyle_ok = checkstyle.returncode == 1 and "<checkstyle" in checkstyle.stdout and "<error" in checkstyle.stdout
+    timings = run_cli(str(CLEAN_FIXTURE), "--timings", "--json")
+    try:
+        timing_payload = json.loads(timings.stderr or "{}")
+        timings_ok = timings.returncode == 0 and "total_ms" in timing_payload and "lint_ms" in timing_payload
+    except json.JSONDecodeError:
+        timings_ok = False
+    policy_ok = preview_ok and fix_ok and warning_fail and no_fail and diff_ok and annotation_ok and checkstyle_ok and timings_ok
+    print(f"[{'PASS' if policy_ok else 'FAIL'}] preview={preview_ok} fix={fix_ok} warning={warning_fail} none={no_fail} diff={diff_ok} annotations={annotation_ok} checkstyle={checkstyle_ok} timings={timings_ok}")
     if policy_ok:
         passed += 1
     else:
