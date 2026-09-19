@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import re
 
 from .cfgfunctions import extract_cfg_functions, extract_cfg_function_files, extract_cfg_function_metadata
@@ -104,6 +105,34 @@ def _steam_install_dirs() -> list[str]:
         if os.path.isdir(cand):
             result.append(cand)
     return result
+
+
+def discover_steamcmd() -> str | None:
+    """Locate SteamCMD through PATH, environment variables, and common roots."""
+    candidates: list[str] = []
+    for name in ("STEAMCMD", "STEAMCMD_PATH"):
+        value = os.environ.get(name)
+        if value: candidates.append(value)
+    for executable in ("steamcmd.exe", "steamcmd"):
+        found = shutil.which(executable)
+        if found: candidates.append(found)
+    user = os.path.expanduser("~")
+    candidates.extend([
+        os.path.join(user, "steamcmd", "steamcmd.exe"),
+        os.path.join(user, "tools", "steamcmd", "steamcmd.exe"),
+        os.path.join(os.environ.get("LOCALAPPDATA", user), "SteamCMD", "steamcmd.exe"),
+        r"C:\steamcmd\steamcmd.exe", r"C:\SteamCMD\steamcmd.exe",
+    ])
+    for steam in _steam_install_dirs():
+        candidates.append(os.path.join(steam, "steamcmd.exe"))
+    seen: set[str] = set()
+    for candidate in candidates:
+        candidate = os.path.abspath(os.path.expanduser(candidate))
+        key = os.path.normcase(candidate)
+        if key not in seen and os.path.isfile(candidate):
+            return candidate
+        seen.add(key)
+    return None
 
 
 def discover_arma_install_dirs(steam_dirs: list[str] | None = None) -> list[str]:
