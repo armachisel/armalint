@@ -156,6 +156,7 @@ def _preprocess_lines(
     _include_stack: tuple[str, ...],
     _defines: dict[str, str],
     _conditions: list[bool],
+    _source_cache: dict[str, str] | None = None,
 ) -> tuple[list[str], list[tuple[str, int]]]:
     """Split out the line-by-line work; returns ``(lines, line_map)``."""
     lines: list[str] = []
@@ -242,8 +243,12 @@ def _preprocess_lines(
             resolved = os.path.normpath(os.path.join(base_dir, include_path))
             normalized_resolved = _normalized(resolved)
             if os.path.isfile(resolved) and normalized_resolved not in _include_stack:
-                with open(resolved, "r", encoding="utf-8", errors="replace") as fh:
-                    sub_source = fh.read()
+                sub_source = None
+                if _source_cache is not None:
+                    sub_source = _source_cache.get(resolved) or _source_cache.get(normalized_resolved)
+                if sub_source is None:
+                    with open(resolved, "r", encoding="utf-8", errors="replace") as fh:
+                        sub_source = fh.read()
                 sub_lines, sub_map = _preprocess_lines(
                     sub_source,
                     filename=resolved,
@@ -251,6 +256,7 @@ def _preprocess_lines(
                     _include_stack=_include_stack + (normalized_resolved,),
                     _defines=_defines,
                     _conditions=_conditions,
+                    _source_cache=_source_cache,
                 )
                 lines.extend(sub_lines)
                 line_map.extend(sub_map)
@@ -267,6 +273,7 @@ def preprocess(
     filename: str,
     base_dir: str,
     _include_stack: tuple = (),
+    source_cache: dict[str, str] | None = None,
 ) -> tuple[str, list]:
     """Resolve ``#include`` directives in ``source``.
 
@@ -280,7 +287,7 @@ def preprocess(
     if "#" not in source:
         lines = source.split("\n")
         return source, [(filename, line) for line in range(1, len(lines) + 1)]
-    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, {}, [])
+    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, {}, [], source_cache)
     return "\n".join(lines), line_map
 
 
