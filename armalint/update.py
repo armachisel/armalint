@@ -68,15 +68,43 @@ def _warn(message: str) -> None:
 
 def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str) -> bool:
     os.makedirs(install_dir, exist_ok=True)
+    stream = sys.stderr if sys.stderr.isatty() else None
+    process = None
+    stop = threading.Event()
+    spinner = None
     try:
-        result = subprocess.run([steamcmd, "+login", "anonymous", "+force_install_dir", install_dir,
-                                 "+workshop_download_item", "107410", workshop_id, "+quit"],
-                                check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding="utf-8", errors="replace")
+        process = subprocess.Popen(
+            [steamcmd, "+login", "anonymous", "+force_install_dir", install_dir,
+             "+workshop_download_item", "107410", workshop_id, "+quit"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        )
+        if stream:
+            frames = "|/-\\"
+            width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
+
+            def show_progress() -> None:
+                index = 0
+                while not stop.wait(0.15):
+                    message = f"SteamCMD preparing dependency {workshop_id} {frames[index % len(frames)]}"
+                    stream.write("\r" + message[:width].ljust(width))
+                    stream.flush()
+                    index += 1
+
+            spinner = threading.Thread(target=show_progress, daemon=True)
+            spinner.start()
+        returncode = process.wait()
     except OSError as exc:
         _warn(f"could not run SteamCMD for Workshop item {workshop_id}: {exc}")
         return False
-    if result.returncode != 0:
+    finally:
+        stop.set()
+        if spinner:
+            spinner.join(timeout=1)
+        if stream:
+            width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
+            stream.write("\r" + (" " * width) + "\r")
+            stream.flush()
+    if returncode != 0:
         _warn(f"SteamCMD failed to download Workshop item {workshop_id}")
         return False
     return True
