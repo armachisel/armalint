@@ -35,7 +35,7 @@ def _result(value: Any) -> dict[str, Any]:
 
 
 def _diagnostics(items) -> list[dict[str, Any]]:
-    return [{"file": d.file, "line": d.line, "column": d.column, "severity": d.severity.value, "code": d.code, "message": d.message} for d in items]
+    return [{"file": d.file, "line": d.line, "column": d.column, "severity": d.severity.value, "code": d.code, "message": d.message, **({"relatedLocations": d.related_locations} if d.related_locations else {})} for d in items]
 
 
 def _context(mission: str | None):

@@ -7,6 +7,8 @@ armalint [--json|--sarif] [--style] [--ignore GLOB] [--ignore-rule RULE] [--conf
 armalint --file PATH [--json|--sarif]
 armalint --snippet 'sleep "soon";' [--json|--sarif]
 armalint --mission PATH --snippet 'sleep _delay;' [--json|--sarif]
+armalint-watch PATH [--interval SECONDS] [--once]
+armalint-lsp
 ```
 
 `PATH` can be a file or a directory. Directories are searched for `.sqf`,
@@ -24,6 +26,18 @@ The most useful options are:
 | `--style` | Enable optional style diagnostics (`W301`/`W302`). |
 | `--file PATH` | Lint one specific file; repeat the option for several files. |
 | `--snippet SOURCE` | Lint inline SQF and label diagnostics as `<snippet>`. |
+
+## Incremental watching and editors
+
+`armalint-watch` polls one or more SQF files or mission directories and emits
+one JSON object for each changed file. The first poll reports all files; later
+polls report only files whose timestamp or size changed. Use `--once` for a
+single incremental pass, or set `--interval` to control polling frequency.
+
+`armalint-lsp` speaks the Language Server Protocol over standard input/output.
+It supports `initialize`, full-text `didOpen`/`didChange`, `didClose`, and
+diagnostic publication. Configure it as an editor's stdio language server with
+the command `armalint-lsp`.
 | `--mission PATH` | Use a mission's symbols and configuration while linting a snippet or file. |
 | `--ignore GLOB` | Skip matching files. Repeat it when needed. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run, such as `W206`. Repeatable. |

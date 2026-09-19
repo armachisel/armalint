@@ -12,7 +12,7 @@ from .definitions import check_definitions
 from .diagnostic import Diagnostic, Severity
 from .functions import check_functions
 from .locals import check_unused_locals
-from .preprocessor import find_include_cycles, find_include_guard_issues, preprocess
+from .preprocessor import find_include_cycles, find_include_guard_issues, find_include_origins, preprocess
 from .symbols import SymbolIndex
 from .suppression import apply_rule_severities, filter_suppressed, check_suppression_quality
 from .syntax import check_syntax
@@ -120,6 +120,7 @@ def lint_file(
     combined, line_map = preprocess(
         source, path, os.path.dirname(os.path.abspath(path))
     )
+    include_origins = find_include_origins(path)
     tokens = pretokenized if combined == source and pretokenized is not None else tokenize(combined)
     from .ast import parse
     tree = parse(tokens)
@@ -162,6 +163,14 @@ def lint_file(
             orig_file, orig_line = line_map[d.line - 1]
             d.file = orig_file
             d.line = orig_line
+            if os.path.normcase(os.path.abspath(orig_file)) != normalized_path:
+                for including_file, include_line in include_origins.get(os.path.normcase(os.path.abspath(orig_file)), []):
+                    d.related_locations.append({
+                        "file": including_file,
+                        "line": include_line,
+                        "column": 1,
+                        "message": f"included from {os.path.basename(including_file)}",
+                    })
         else:
             d.file = path
 

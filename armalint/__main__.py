@@ -352,6 +352,7 @@ def _main(argv: list[str] | None = None) -> int:
                     "message": {"text": d.message},
                     "partialFingerprints": {"armalint/v1": _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message)},
                     "locations": [{"physicalLocation": {"artifactLocation": {"uri": d.file}, "region": {"startLine": d.line, "startColumn": d.column}}}],
+                    **({"relatedLocations": _sarif_related_locations(d)} if _sarif_related_locations(d) else {}),
                 } for d in all_diags],
             }],
         }
@@ -382,6 +383,26 @@ def _diagnostic_fingerprint(code: object, file: object, line: object, column: ob
     """Stable identity shared by SARIF output and JSON baselines."""
     raw = "|".join(str(value or "") for value in (code, file, line, column, message))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def _sarif_related_locations(diagnostic) -> list[dict[str, object]]:
+    """Convert diagnostic provenance locations to SARIF related locations."""
+    related: list[dict[str, object]] = []
+    for index, location in enumerate(getattr(diagnostic, "related_locations", []), 1):
+        if not isinstance(location, dict) or not location.get("file"):
+            continue
+        related.append({
+            "id": index,
+            "message": {"text": str(location.get("message") or "related source location")},
+            "physicalLocation": {
+                "artifactLocation": {"uri": str(location["file"])},
+                "region": {
+                    "startLine": int(location.get("line") or 1),
+                    "startColumn": int(location.get("column") or 1),
+                },
+            },
+        })
+    return related
 
 
 if __name__ == "__main__":

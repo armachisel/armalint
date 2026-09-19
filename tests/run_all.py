@@ -268,6 +268,44 @@ def main() -> int:
     else:
         failures.append("SARIF or baseline integration did not produce stable CI metadata")
 
+    print("--- include provenance, watcher, and LSP smoke tests ---")
+    total += 1
+    provenance_ok = watcher_ok = lsp_ok = False
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        shared = temp_root / "shared.sqf"
+        main_file = temp_root / "main.sqf"
+        shared.write_text("hint str _missing;\n", encoding="utf-8")
+        main_file.write_text('#include "shared.sqf"\n', encoding="utf-8")
+        related_proc = run_cli(str(main_file), "--sarif")
+        try:
+            related_results = json.loads(related_proc.stdout)["runs"][0]["results"]
+            provenance_ok = any(result.get("relatedLocations") for result in related_results)
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+            provenance_ok = False
+        try:
+            from armalint.watch import IncrementalLinter
+            watcher = IncrementalLinter([str(temp_root)])
+            first_events = watcher.poll()
+            second_events = watcher.poll()
+            watcher_ok = bool(first_events) and not second_events
+        except Exception:
+            watcher_ok = False
+        try:
+            from armalint.lsp import Server
+            server = Server()
+            server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+            _response, notifications = server.handle({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": main_file.as_uri(), "text": "hint str _missing;"}}})
+            lsp_ok = bool(notifications and notifications[0]["method"] == "textDocument/publishDiagnostics")
+        except Exception:
+            lsp_ok = False
+    tooling_ok = provenance_ok and watcher_ok and lsp_ok
+    print(f"[{'PASS' if tooling_ok else 'FAIL'}] related={provenance_ok} watcher={watcher_ok} lsp={lsp_ok}")
+    if tooling_ok:
+        passed += 1
+    else:
+        failures.append("include provenance, watcher, or LSP smoke test failed")
+
     print("--- CLI: mission fixture (expect symbol index suppresses ALT_fnc_*) ---")
     total += 1
     mission = run_cli(str(MISSION_FIXTURE), "--json")
