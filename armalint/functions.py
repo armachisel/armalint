@@ -94,6 +94,8 @@ def check_functions(tokens: list[Token], index: SymbolIndex | None = None) -> li
 
         if ttype == "ident":
             name = nxt.value
+            if index is not None and index.cba_declared and j + 1 < n and tokens[j + 1].type == "lparen" and name.isupper():
+                continue  # project preprocessor macro invocation
             if not _is_known(name, index):
                 diags.append(
                     Diagnostic(
@@ -158,5 +160,6 @@ if __name__ == "__main__":
     assert check_functions_text("call ZZZ_fnc_nope;", idx)[0].code == _CODE
     cba_idx = SymbolIndex(cba_declared=True)
     assert check_functions_text("call FUNCMAIN(findSpawnHelperPosition);", cba_idx) == []
+    assert check_functions_text("call EFUNC(Events,triggerEvent);", cba_idx) == []
 
     print("functions self-test passed")
