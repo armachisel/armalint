@@ -9,7 +9,7 @@ docstring note below.
 from __future__ import annotations
 
 from .diagnostic import Diagnostic, Severity
-from .known import SCRIPT_EXTENSIONS, is_known, is_known_macro
+from .known import SCRIPT_EXTENSIONS, is_known, is_known_cba_function, is_known_macro
 from .symbols import SymbolIndex
 from .tokenizer import Token, tokenize
 
@@ -29,7 +29,7 @@ def _is_known(name: str, index: SymbolIndex | None) -> bool:
     """
     if is_known(name):
         return True
-    return index is not None and (index.is_known_function(name) or index.is_known_macro(name))
+    return index is not None and (index.is_known_function(name) or index.is_known_macro(name) or is_known_cba_function(name, cba_declared=index.cba_declared))
 
 
 def _next_significant(tokens: list[Token], index: int) -> int:
@@ -161,5 +161,7 @@ if __name__ == "__main__":
     cba_idx = SymbolIndex(cba_declared=True)
     assert check_functions_text("call FUNCMAIN(findSpawnHelperPosition);", cba_idx) == []
     assert check_functions_text("call EFUNC(Events,triggerEvent);", cba_idx) == []
+    assert check_functions_text("call CBA_fnc_execNextFrame;")[0].code == _CODE
+    assert check_functions_text("call CBA_fnc_execNextFrame;", cba_idx) == []
 
     print("functions self-test passed")
