@@ -188,6 +188,10 @@ _ARRAY_ELEMENT_TYPES = {
     "allman": "Object", "allstaticobjects": "Object", "allstaticweapons": "Object",
     "lineintersectswith": "Array", "lineintersectssurfaces": "Array", "fullcrew": "Array",
     "weapons": "String", "magazines": "String", "items": "String", "assigneditems": "String",
+    # configClasses/configProperties enumerate Config entries.  Treating the
+    # loop variable as a Number produces cascades of bogus getText/getArray/
+    # isClass diagnostics in dynamic function loaders.
+    "configclasses": "Config", "configproperties": "Config",
 }
 
 
@@ -431,6 +435,17 @@ def _infer_expression(
     rhs_end = start
     while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
         rhs_end += 1
+    # ``private _p = if (...) then {_a} else {_b}`` is a value expression.
+    # Infer it from the two branch values when both are known and compatible.
+    if start < len(tokens) and tokens[start].value.lower() == "if":
+        branch_types: list[str] = []
+        for index, token in enumerate(tokens[start:rhs_end], start):
+            if token.type == "local":
+                inferred = variables.get(token.value.lower())
+                if inferred and inferred not in branch_types:
+                    branch_types.append(inferred)
+        if len(branch_types) == 1:
+            return branch_types[0]
     if (start < len(tokens) and tokens[start].value.lower() in _ARRAY_ELEMENT_TYPES
             and any(t.value.lower() == "select" for t in tokens[start + 1:rhs_end])):
         return "Array"
@@ -452,7 +467,8 @@ def _infer_expression(
             and tokens[start + 1].value.lower() == "get"):
         return "Anything"
     expression_tokens = [t for t in tokens[start:rhs_end] if t.type not in _TRIVIA]
-    if (any(t.type == "operator" and t.value in ("*", "/", "%") for t in expression_tokens)
+    if (start < len(tokens) and tokens[start].type == "lparen"
+            and any(t.type == "operator" and t.value in ("*", "/", "%") for t in expression_tokens)
             and not any(t.type == "lbracket" for t in expression_tokens)):
         return "Number"
     if start < len(tokens) and tokens[start].type == "lparen":
