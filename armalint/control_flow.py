@@ -162,6 +162,7 @@ if __name__ == "__main__":
     negated_group = check_control_flow_text('if (!(true && false)) then { hint "constant"; };')
     assert len([d for d in negated_group if d.code == _CONSTANT_CONDITION]) == 1, negated_group
     assert check_control_flow_text('if (_condition) then { exitWith {}; }; hint "maybe";') == []
+    assert check_control_flow_text('if _condition exitWith {}; hint "maybe";') == []
     embedded = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
     assert any(d.code == _CODE and "unreachable" in d.message for d in embedded), embedded
     embedded_exit = check_control_flow_text('x = ({ exitWith {}; hint "never"; } forEach allUnits);')
