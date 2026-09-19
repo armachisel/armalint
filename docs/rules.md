@@ -3,6 +3,10 @@
 The rule codes are stable. They are useful in a terminal, in an editor, and
 in JSON consumed by another tool.
 
+The complete registry-backed catalog, including severity and categories, is
+generated in [`rule-catalog.md`](rule-catalog.md). Run
+`python -m armalint.rule_docs --check` in CI to detect documentation drift.
+
 ## Syntax errors
 
 These are errors and make the command exit with status 1.

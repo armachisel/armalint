@@ -85,6 +85,27 @@ def find_config(start_path: str) -> str | None:
     return _find_upwards(start_path, _CONFIG_FILENAMES)
 
 
+def discover_configs(paths: list[str]) -> dict[str, str]:
+    """Map each file under *paths* to its nearest project configuration.
+
+    Unlike a single upward lookup from a monorepo root, this preserves separate
+    settings for nested missions and sibling projects.
+    """
+    discovered: dict[str, str] = {}
+    for raw in paths:
+        if os.path.isfile(raw):
+            candidates = [raw]
+        elif os.path.isdir(raw):
+            candidates = [os.path.join(root, name) for root, _dirs, names in os.walk(raw) for name in names]
+        else:
+            continue
+        for candidate in candidates:
+            config_path = find_config(candidate)
+            if config_path:
+                discovered[os.path.normcase(os.path.abspath(candidate))] = config_path
+    return discovered
+
+
 def find_mod_cache(start_path: str) -> str | None:
     """Walk up from ``start_path`` looking for an Armalint mod function cache.
 
@@ -295,12 +316,18 @@ if __name__ == "__main__":
         assert find_config(nested) == cfg
         assert find_config(os.path.join(nested, "x.sqf")) == cfg
         assert find_config(tmp) is None
-
         # armalint.json is preferred over .armalint.json in the same directory.
         plain = os.path.join(root, "armalint.json")
         with open(plain, "w", encoding="utf-8") as fh:
             fh.write("{}")
         assert find_config(nested) == plain
+        nested_cfg = os.path.join(root, "a", "armalint.json")
+        with open(nested_cfg, "w", encoding="utf-8") as fh:
+            fh.write('{"ignoreRules": ["W206"]}')
+        nested_file = os.path.join(root, "a", "b", "x.sqf")
+        with open(nested_file, "w", encoding="utf-8") as fh:
+            fh.write('if (true) then {};')
+        assert discover_configs([nested_file])[os.path.normcase(os.path.abspath(nested_file))] == nested_cfg
 
         assert extract_function_return_types({
             "functionReturns": {"ALT_fnc_distanceToRoute": "Number", "bad": 3}

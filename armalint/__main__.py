@@ -24,6 +24,7 @@ from .config import (
     extract_presets,
     validate_config,
     find_config,
+    discover_configs,
     find_mod_cache,
     find_mod_type_cache,
     load_config_file,
@@ -382,6 +383,18 @@ def _main(argv: list[str] | None = None) -> int:
 
     # De-duplicate while preserving determinism, then sort.
     files = sorted(set(files))
+    file_configs = discover_configs(files)
+    filtered_files: list[str] = []
+    for file in files:
+        config_path = file_configs.get(os.path.normcase(os.path.abspath(file)))
+        patterns = extract_ignore_patterns(load_checked(config_path)) if config_path else []
+        relative = os.path.relpath(file, os.path.dirname(config_path)) if config_path else os.path.basename(file)
+        if not _is_ignored(relative, patterns):
+            filtered_files.append(file)
+    files = filtered_files
+    file_configs = discover_configs(files)
+    for config_path in sorted(set(file_configs.values())):
+        load_checked(config_path)
     timings["collection_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
 
     if args.fix_preview:
@@ -427,6 +440,13 @@ def _main(argv: list[str] | None = None) -> int:
                     function_return_types.setdefault(name, return_type)
                 ignored_rules |= extract_ignored_rules(loaded_config)
                 rule_severities.update(extract_rule_severities(loaded_config))
+    for config_path in sorted(set(file_configs.values())):
+        loaded_config = load_checked(config_path)
+        config_tags |= extract_function_tags(loaded_config)
+        for name, types in extract_function_type_signatures(loaded_config).items():
+            function_signatures.setdefault(name, types)
+        for name, return_type in extract_function_return_types(loaded_config).items():
+            function_return_types.setdefault(name, return_type)
 
     project_presets = [*args.preset]
     for config in checked_configs.values():
@@ -485,6 +505,13 @@ def _main(argv: list[str] | None = None) -> int:
     linted_files: list[str] = []
     all_diags = []
     for f in files:
+        nearest_config = file_configs.get(os.path.normcase(os.path.abspath(f)))
+        file_config = load_checked(nearest_config) if nearest_config else {}
+        file_ignored_rules = ignored_rules | extract_ignored_rules(file_config)
+        file_severities = dict(rule_severities)
+        file_severities.update(extract_rule_severities(file_config))
+        file_presets = {name.lower() for name in extract_presets(file_config)}
+        file_style = style_requested or "style" in file_presets
         if _is_sqf_file(f):
             pretokenized = token_cache.get(f)
             if args.fix:
@@ -500,7 +527,7 @@ def _main(argv: list[str] | None = None) -> int:
                 except OSError:
                     pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=style_requested, check_suppressions=args.check_suppressions, pretokenized=pretokenized, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, pretokenized=pretokenized, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -508,7 +535,7 @@ def _main(argv: list[str] | None = None) -> int:
             except OSError:
                 continue
             linted_files.append(f)
-            all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=args.style))
+            all_diags.extend(lint_config(source, filename=f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style))
         elif _is_mission_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
