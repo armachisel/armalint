@@ -68,6 +68,8 @@ armalint-lsp
 | `--diff [REF]`  | Report only findings on lines changed from `REF` (default `HEAD`).  |
 | `--fail-on LEVEL` | Fail on `error`, `warning`, `info`, or `none` (default `error`).   |
 | `--github-actions` | Emit GitHub Actions workflow-command annotations.                |
+| `--preset NAME` | Apply a named rule preset (`recommended`, `strict`, `style`, `performance`). |
+| `--rules RULE` | Select individual rule codes or categories such as `syntax` or `style`. |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
 

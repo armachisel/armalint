@@ -19,18 +19,21 @@ from .config import (
     extract_ignored_rules,
     extract_ignore_patterns,
     extract_rule_severities,
+    extract_presets,
+    validate_config,
     find_config,
     find_mod_cache,
     find_mod_type_cache,
     load_config_file,
 )
 from .config_lint import lint_config
-from .diagnostic import Severity, format_diagnostic
+from .diagnostic import Diagnostic, Severity, format_diagnostic
 from .linter import build_symbol_index, lint_file, lint_text
 from .mods import load_mod_cache
 from .mods import load_mod_type_cache
 from .sqm import check_mission_sqm
 from .rules import metadata as rule_metadata
+from .rules import PRESETS, RULES, RULE_CATEGORIES
 from .style import fix_style
 
 _SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext", ".sqm")
@@ -165,7 +168,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="RULE",
-        help="rules to enable (accepted for forward-compat, currently ignored)",
+        help="rule code or category to select (repeatable)",
+    )
+    parser.add_argument(
+        "--preset", action="append", default=[], metavar="NAME",
+        help="named rule preset: recommended, strict, style, or performance",
     )
     parser.add_argument(
         "--config",
@@ -225,6 +232,16 @@ def _github_annotation(diagnostic) -> str:
 
 def _main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
+    config_issues: dict[str, list[str]] = {}
+    checked_configs: dict[str, dict] = {}
+
+    def load_checked(path: str) -> dict:
+        absolute = os.path.abspath(path)
+        if absolute not in checked_configs:
+            loaded = load_config_file(path)
+            checked_configs[absolute] = loaded
+            config_issues[absolute] = validate_config(loaded)
+        return checked_configs[absolute]
 
     baseline_keys: set[str] = set()
     if args.baseline:
@@ -246,6 +263,9 @@ def _main(argv: list[str] | None = None) -> int:
     if args.snippet is None and not (args.paths or args.files):
         if not args.mission:
             _build_arg_parser().error("provide a file/directory, --file PATH, or --snippet SOURCE")
+    unknown_presets = [name for name in args.preset if name.strip().lower() not in PRESETS]
+    if unknown_presets:
+        _build_arg_parser().error(f"unknown rule preset: {unknown_presets[0]}")
 
     input_paths = [*args.paths, *args.files]
 
@@ -256,9 +276,9 @@ def _main(argv: list[str] | None = None) -> int:
         context_signatures: dict[str, list[str]] = {}
         context_returns: dict[str, str] = {}
         if args.config:
-            context_config = load_config_file(args.config)
+            context_config = load_checked(args.config)
         elif args.mission and (context_path := find_config(args.mission)):
-            context_config = load_config_file(context_path)
+            context_config = load_checked(context_path)
         else:
             context_config = {}
         context_tags = extract_function_tags(context_config)
@@ -266,13 +286,27 @@ def _main(argv: list[str] | None = None) -> int:
         context_returns = extract_function_return_types(context_config)
         context_ignored_rules = extract_ignored_rules(context_config) | {rule.upper() for rule in args.ignore_rule}
         context_severities = extract_rule_severities(context_config)
+        context_presets = [*extract_presets(context_config), *(name.lower() for name in args.preset)]
+        if "strict" in context_presets:
+            context_severities.update({code: "error" for code, (severity, _message) in RULES.items() if severity == "warning"})
+        context_selected: set[str] = set()
+        for item in args.rules:
+            key = item.strip().lower()
+            if key.upper() in RULES:
+                context_selected.add(key.upper())
+            elif key in RULE_CATEGORIES:
+                context_selected.update(RULE_CATEGORIES[key])
+        if context_selected:
+            context_ignored_rules |= set(RULES) - context_selected
         for tag in context_tags:
             context_index.add_tag(tag)
         all_diags = lint_text(
             args.snippet, filename="<snippet>", index=context_index,
             function_signatures=context_signatures, function_return_types=context_returns,
-            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=args.style, check_suppressions=args.check_suppressions,
+            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=(args.style or "style" in context_presets or bool(context_selected & {"W301", "W302"})), check_suppressions=args.check_suppressions,
         )
+        for config_path, issues in config_issues.items():
+            all_diags.extend(Diagnostic(Severity.ERROR, "E012", message, 1, 1, config_path) for message in issues)
         if baseline_keys:
             all_diags = [
                 d for d in all_diags
@@ -290,13 +324,15 @@ def _main(argv: list[str] | None = None) -> int:
             for d in all_diags:
                 print(format_diagnostic(d))
             print(f"{len(linted_files)} snippet(s) linted, {len(all_diags)} diagnostic(s)")
-        return 1 if any(d.severity is Severity.ERROR for d in all_diags) else 0
+        threshold = {"error": 3, "warning": 2, "info": 1, "none": 99}[args.fail_on]
+        severity_rank = {Severity.INFO: 1, Severity.WARNING: 2, Severity.ERROR: 3}
+        return 1 if any(severity_rank[d.severity] >= threshold for d in all_diags) else 0
 
     collection_ignores = list(args.ignore)
     for path in input_paths:
         cfg_path = args.config or find_config(path)
         if cfg_path:
-            collection_ignores.extend(extract_ignore_patterns(load_config_file(cfg_path)))
+            collection_ignores.extend(extract_ignore_patterns(load_checked(cfg_path)))
     files: list[str] = []
     for path in input_paths:
         files.extend(_collect_files(path, collection_ignores))
@@ -314,7 +350,7 @@ def _main(argv: list[str] | None = None) -> int:
     rule_severities: dict[str, str] = {}
     context_paths = [*input_paths, args.mission] if args.mission else input_paths
     if args.config:
-        loaded_config = load_config_file(args.config)
+        loaded_config = load_checked(args.config)
         config_tags = extract_function_tags(loaded_config)
         function_signatures = extract_function_type_signatures(loaded_config)
         function_return_types = extract_function_return_types(loaded_config)
@@ -324,7 +360,7 @@ def _main(argv: list[str] | None = None) -> int:
         for path in context_paths:
             cfg_path = find_config(path)
             if cfg_path:
-                loaded_config = load_config_file(cfg_path)
+                loaded_config = load_checked(cfg_path)
                 config_tags |= extract_function_tags(loaded_config)
                 for name, types in extract_function_type_signatures(loaded_config).items():
                     function_signatures.setdefault(name, types)
@@ -332,6 +368,24 @@ def _main(argv: list[str] | None = None) -> int:
                     function_return_types.setdefault(name, return_type)
                 ignored_rules |= extract_ignored_rules(loaded_config)
                 rule_severities.update(extract_rule_severities(loaded_config))
+
+    project_presets = [*args.preset]
+    for config in checked_configs.values():
+        project_presets.extend(extract_presets(config))
+    if "strict" in {name.lower() for name in project_presets}:
+        rule_severities.update({code: "error" for code, (severity, _message) in RULES.items() if severity == "warning"})
+    selected_rules: set[str] = set()
+    for item in args.rules:
+        key = item.strip().lower()
+        if key.upper() in RULES:
+            selected_rules.add(key.upper())
+        elif key in RULE_CATEGORIES:
+            selected_rules.update(RULE_CATEGORIES[key])
+        else:
+            _build_arg_parser().error(f"unknown rule or category: {item}")
+    if selected_rules:
+        ignored_rules |= set(RULES) - selected_rules
+    style_requested = args.style or args.fix or "style" in {name.lower() for name in project_presets} or bool(selected_rules & {"W301", "W302"})
 
     # Build a mission-wide symbol index so mission-defined functions are not
     # reported as unknown (W201) before linting each file.
@@ -381,7 +435,7 @@ def _main(argv: list[str] | None = None) -> int:
                 except OSError:
                     pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=(args.style or args.fix), check_suppressions=args.check_suppressions, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=style_requested, check_suppressions=args.check_suppressions, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -398,6 +452,12 @@ def _main(argv: list[str] | None = None) -> int:
                 continue
             linted_files.append(f)
             all_diags.extend(check_mission_sqm(source, f))
+
+    for config_path, issues in config_issues.items():
+        all_diags.extend(
+            Diagnostic(Severity.ERROR, "E012", message, 1, 1, config_path)
+            for message in issues
+        )
 
     if baseline_keys:
         all_diags = [d for d in all_diags if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys]

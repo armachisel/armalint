@@ -16,7 +16,8 @@ each other.
   "functionReturns": {"ALT_fnc_route": "Array"},
   "ignoreRules": ["W206"],
   "ignore": ["vendor/**", "generated/**"],
-  "severity": {"W101": "error", "W206": "off"}
+  "severity": {"W101": "error", "W206": "off"},
+  "presets": ["recommended"]
 }
 ```
 
@@ -25,6 +26,13 @@ when possible, because a tag also accepts misspelled names. `functionTypes`
 and `functionReturns` document project contracts that cannot be extracted from
 source. Severity values are `error`, `warning`, `info`, and `off`; the aliases
 `ruleSeverity` and `ignorePatterns` are accepted.
+
+Supported presets are `recommended`, `strict`, `style`, and `performance`.
+`strict` promotes warnings to errors, while `style` enables whitespace rules.
+The `--rules` option can select individual codes or categories (`syntax`,
+`correctness`, `flow`, `suppression`, and `style`) for focused checks.
+Configuration files are schema-checked; unknown keys, rule codes, presets, and
+invalid severity values produce `E012` instead of being silently ignored.
 
 ## Cache files
 
