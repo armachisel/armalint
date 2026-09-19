@@ -338,13 +338,14 @@ def run_update(args) -> int:
                 specs_to_download.append({"name": "cba_main", "workshopId": cba_id})
             else:
                 _warn("CBA is declared but has no Workshop ID; skipping download")
-        specs_to_download = [
-            spec for spec in specs_to_download
-            if not (spec.get("workshopId") or spec.get("workshop_id"))
-            or not resolve_workshop_mod(
-                spec.get("workshopId") or spec.get("workshop_id"), workshop_roots
-            )
-        ]
+        if not getattr(args, "force_download_dependencies", False):
+            specs_to_download = [
+                spec for spec in specs_to_download
+                if not (spec.get("workshopId") or spec.get("workshop_id"))
+                or not resolve_workshop_mod(
+                    spec.get("workshopId") or spec.get("workshop_id"), workshop_roots
+                )
+            ]
         for spec in specs_to_download:
             workshop_id = spec.get("workshopId") or spec.get("workshop_id")
             if not workshop_id:
@@ -544,6 +545,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--download-dependencies", action="store_true",
                         help="download declared Workshop dependencies with SteamCMD")
+    parser.add_argument("--force-download-dependencies", action="store_true",
+                        help="refresh declared Workshop dependencies even when already installed")
     parser.add_argument("--steamcmd", metavar="PATH", default=None,
                         help="SteamCMD executable for --download-dependencies")
     parser.add_argument("--steamcmd-user", metavar="NAME", default=None,
