@@ -8,6 +8,11 @@ from .tokenizer import Token, tokenize
 _CODE = "W209"
 _TRIVIA = frozenset(("comment", "preprocessor"))
 _IGNORED = frozenset(("_x", "_this", "_thisargs"))
+_EVENT_HANDLERS = frozenset((
+    "addeventhandler", "addmissioneventhandler", "addstackedeventhandler",
+    "displayaddeventhandler", "ctrladdeventhandler", "ctrlseteventhandler",
+    "buttonsetaction",
+))
 
 
 def _next(tokens: list[Token], index: int) -> int:
@@ -38,13 +43,47 @@ def check_unused_locals(tokens: list[Token]) -> list[Diagnostic]:
     paths: list[tuple[int, ...]] = []
     stack: list[int] = []
     next_scope = 1
-    for token in tokens:
+    brace_scopes: dict[int, tuple[int, ...]] = {}
+    for index, token in enumerate(tokens):
         paths.append(tuple(stack))
         if token.type == "lbrace":
+            brace_scopes[index] = tuple(stack) + (next_scope,)
             stack.append(next_scope)
             next_scope += 1
         elif token.type == "rbrace" and stack:
             stack.pop()
+
+    # Parameters in event-handler callbacks are supplied by the engine. A
+    # handler is allowed to ignore any of them, so unused-parameter warnings
+    # inside its callback scope are noise rather than useful findings.
+    event_callback_scopes: list[tuple[int, ...]] = []
+    for i, token in enumerate(tokens):
+        if token.value.lower() not in _EVENT_HANDLERS:
+            continue
+        j = _next(tokens, i)
+        while j < len(tokens) and tokens[j].type != "lbracket":
+            j += 1
+        if j >= len(tokens):
+            continue
+        depth = 0
+        for k in range(j, len(tokens)):
+            if tokens[k].type == "lbracket":
+                depth += 1
+            elif tokens[k].type == "rbracket":
+                depth -= 1
+                if depth == 0:
+                    break
+            elif tokens[k].type == "lbrace":
+                scope = brace_scopes.get(k)
+                if scope is not None:
+                    event_callback_scopes.append(scope)
+                break
+
+    def in_event_callback(scope: tuple[int, ...]) -> bool:
+        return any(
+            len(scope) >= len(prefix) and scope[:len(prefix)] == prefix
+            for prefix in event_callback_scopes
+        )
 
     declarations: list[tuple[str, int, tuple[int, ...], Token]] = []
     for i, token in enumerate(tokens):
@@ -60,6 +99,7 @@ def check_unused_locals(tokens: list[Token]) -> list[Diagnostic]:
             continue
         if tokens[j].type != "lbracket":
             continue
+        callback_params = token.value.lower() == "params" and in_event_callback(paths[j])
         depth = 0
         k = j
         while k < len(tokens):
@@ -71,7 +111,7 @@ def check_unused_locals(tokens: list[Token]) -> list[Diagnostic]:
                     break
             elif depth == 1 and tokens[k].type == "string" and tokens[k].value.startswith("_"):
                 name = tokens[k].value.lower()
-                if name not in _IGNORED:
+                if name not in _IGNORED and not callback_params:
                     declarations.append((name, k, paths[k], tokens[k]))
             k += 1
 
@@ -107,4 +147,5 @@ if __name__ == "__main__":
     assert [d.code for d in check_unused_locals_text("params [\"_used\"]; { hint str _used; };")] == []
     assert [d.code for d in check_unused_locals_text("#include \"shared.sqf\"\nprivate _maybeUsed;")] == []
     assert [d.code for d in check_unused_locals_text("{ private _inner; hint str _outer; }; private _outer;")] == [_CODE, _CODE]
+    assert check_unused_locals_text('displayAddEventHandler ["KeyDown", { params ["_displayorcontrol", "_key", "_xPos"]; }];') == []
     print("locals self-test passed")
