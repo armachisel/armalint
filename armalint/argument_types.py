@@ -283,6 +283,7 @@ _COMMAND_RETURN_TYPES["toarray"] = "Array"
 _SIGNATURES["leader"] = (frozenset(("Object", "Group")), "Object or Group")
 _SIGNATURES["side"] = (frozenset(("Object", "Group", "Location")), "Object, Group or Location")
 _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array")
+_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "controlnull": "Control", "displaynull": "Display", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
