@@ -26,9 +26,9 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
             continue
         if directive == "define":
             name = rest.split(None, 1)[0] if rest else ""
-            if "(" in name:
-                diagnostics.append(Diagnostic(Severity.WARNING, "W228", "function-like macros are unsupported", line_number, token_column))
-                continue
+            function_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)", name)
+            if function_match:
+                name = function_match.group(1)
             if not _NAME.match(name):
                 diagnostics.append(Diagnostic(Severity.WARNING, "W228", "malformed #define directive", line_number, token_column))
                 continue
