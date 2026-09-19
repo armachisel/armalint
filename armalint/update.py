@@ -111,6 +111,10 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
     if returncode != 0:
         _warn(f"SteamCMD failed to download Workshop item {workshop_id}")
         return False
+    content_path = os.path.join(install_dir, "steamapps", "workshop", "content", "107410", workshop_id)
+    if not os.path.isdir(content_path) or not any(os.scandir(content_path)):
+        _warn(f"SteamCMD did not install Workshop dependency {name or workshop_id}; check its SteamCMD log (authenticated Arma 3 access may be required)")
+        return False
     return True
 
 
