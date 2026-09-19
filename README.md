@@ -58,7 +58,9 @@ python -m armalint --mission PATH --snippet SOURCE [--json|--sarif]
 | `--snippet SOURCE` | Lint inline SQF without creating a file.                          |
 | `--mission PATH` | Use mission symbols/configuration with `--snippet` or `--file`.      |
 | `--json`        | Emit a single JSON array of diagnostic objects instead of text.     |
-| `--sarif`       | Emit SARIF 2.1.0 with stable rule metadata for CI/code scanning.      |
+| `--sarif`       | Emit SARIF 2.1.0 with stable fingerprints and rule help links.       |
+| `--check-suppressions` | Report unjustified or unused inline suppressions.              |
+| `--baseline PATH` | Suppress diagnostics recorded in a JSON baseline.                 |
 | `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
@@ -173,6 +175,8 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W226 | warning  | A preprocessor macro is undefined or cannot be resolved.           |
 | W227 | warning  | Preprocessor conditional directives are unbalanced.                |
 | W228 | warning  | A preprocessor directive is unsupported or malformed.              |
+| W229 | warning  | An inline suppression is missing a justification.                  |
+| W230 | info     | An inline suppression does not match any diagnostic.               |
 | W301 | warning  | Trailing whitespace when `--style` is enabled.                 |
 | W302 | warning  | Tab character when `--style` is enabled.                       |
 

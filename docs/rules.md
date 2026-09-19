@@ -58,6 +58,8 @@ mistakes are found.
 | `W226` | A preprocessor macro is undefined or an expression cannot be resolved. |
 | `W227` | Preprocessor conditional directives are unbalanced. |
 | `W228` | A preprocessor directive is unsupported or malformed. |
+| `W229` | An inline suppression is missing a justification. |
+| `W230` | An inline suppression does not match any diagnostic. |
 
 The SQF contract checks are intentionally conservative. `params` declarations
 are checked for the supported string and `[name, default, validators]` shapes;
@@ -108,6 +110,12 @@ An `armalint.json` file may set `severity` (or `ruleSeverity`) for rules to
 `error`, `warning`, `info`, or `off`, and `ignore` (or `ignorePatterns`) to
 filename globs for generated or vendor files. These settings are
 project-specific and complement command-line and source-comment controls.
+
+Use `--check-suppressions` in CI to require a reason after each inline rule
+code, for example `// armalint: disable-next-line W206 -- intentional fallback`,
+and to report suppressions that no longer match a diagnostic. Use
+`--baseline PATH` to carry known findings between CI runs; baseline entries use
+the same stable fingerprints emitted in SARIF.
 
 Use `--style` to enable optional whitespace rules `W301` (trailing whitespace)
 and `W302` (tab characters). Use `--sarif` for SARIF 2.1.0 output with stable
