@@ -276,6 +276,11 @@ def _config_iteration_and_conditional_values() -> bool:
     return not any(d.code == "W203" for d in diagnostics)
 
 
+def _engine_group_and_road_overloads() -> bool:
+    source = 'private _group = objNull; [_unit] join _group; private _road = objNull; private _roads = roadsConnectedTo [_road, true];'
+    return not any(d.code == "W203" for d in check_argument_types_text(source))
+
+
 def _command_xml_metadata_parser() -> bool:
     xml = """<command name='fake' version='1.70' game='arma3' format='1'><syntax><return><value type='OBJECT' order='0'/></return><param type='STRING' name='id' optional='f' order='1'/></syntax></command>"""
     metadata = _parse_command_xml(xml)
@@ -527,6 +532,7 @@ CASES = (
     ("extension distance and UI handles", _extension_distance_and_ui_handles),
     ("location and distance overloads", _location_and_distance_overloads),
     ("config iteration and conditional values", _config_iteration_and_conditional_values),
+    ("engine group and road overloads", _engine_group_and_road_overloads),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),
     ("HashMap foreach value scope", _hashmap_foreach_value_scope),

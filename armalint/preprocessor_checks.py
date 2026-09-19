@@ -53,7 +53,9 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
             branch_defines.append(set())
         elif directive == "if":
             expression = rest.replace(" ", "")
-            if expression and not (expression in ("0", "1", "true", "false") or re.fullmatch(r"!?[A-Za-z_][A-Za-z0-9_]*", expression) or expression.startswith("defined(") or expression.startswith("!defined(")):
+            simple_name = re.fullmatch(r"!?([A-Za-z_][A-Za-z0-9_]*)", expression)
+            known_name = bool(simple_name and simple_name.group(1).lower() in defines)
+            if expression and not (expression in ("0", "1", "true", "false") or known_name or expression.startswith("defined(") or expression.startswith("!defined(")):
                 diagnostics.append(Diagnostic(Severity.WARNING, "W226", f"macro or expression cannot be resolved in #if: {rest}", line_number, token_column))
             conditionals.append(line_number)
             branch_defines.append(set())

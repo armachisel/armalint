@@ -299,6 +299,12 @@ _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array
 _BINARY_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
 _BINARY_SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
 _SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
+_SIGNATURES["roadsconnectedto"] = (frozenset(("Object", "Array")), "Object or Array")
+# Group values commonly arrive from helper-return arrays or opaque function
+# calls and are conservatively inferred as Object.  SQF accepts that runtime
+# group handle in the join form, so do not report a spurious mismatch here.
+_BINARY_SIGNATURES["join"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["join"] = (frozenset(("Group", "Object")), "Group or Object")
 for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
     if _handle_command in _SIGNATURES:
         accepted, label = _SIGNATURES[_handle_command]
