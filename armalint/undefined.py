@@ -357,11 +357,14 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
     return [], set(incoming)
 
 
-def check_undefined(tokens: list[Token], tree: Program | None = None) -> list[Diagnostic]:
+def check_undefined(
+    tokens: list[Token], tree: Program | None = None,
+    external_locals: set[str] | frozenset[str] | None = None,
+) -> list[Diagnostic]:
     """Return W101 warnings with conservative branch-aware definition merging."""
     tree = tree if tree is not None else parse(tokens)
     diags: list[Diagnostic] = []
-    defined: set[str] = set()
+    defined: set[str] = {name.lower() for name in (external_locals or ())}
     for node in tree.statements:
         node_diags, defined = _walk_node(node, defined)
         diags.extend(node_diags)

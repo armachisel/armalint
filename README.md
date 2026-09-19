@@ -79,6 +79,7 @@ armalint-lsp
 | `--rules RULE` | Select individual rule codes or categories such as `syntax` or `style`. |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
+| `--external-local NAME` | Declare a local supplied by a dynamic `call compile` boundary. Repeatable. |
 | `--config PATH` | Use an explicit configuration file instead of discovery.       |
 | `--version`     | Print the version and exit.                                        |
 

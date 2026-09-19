@@ -42,6 +42,25 @@ invalid severity values produce `E012` instead of being silently ignored.
 Project plugins are Python files resolved relative to the configuration file;
 see [`plugins.md`](plugins.md) for the registration API.
 
+### External locals
+
+Some projects compile template files into a caller's local scope. For example,
+`call compile preprocessFileLineNumbers _path` may execute a template after the
+caller creates `_addon`. Declare those contracts so use-before-definition checks
+do not report the injected locals:
+
+```json
+{
+  "externalLocals": ["_addon"]
+}
+```
+
+For a one-off check, use `--external-local _addon`. During a project scan,
+Armalint also discovers locals explicitly declared before an exact
+`call compile preprocessFileLineNumbers` sequence. Dynamic loaders whose
+scope cannot be proven from source should keep using this explicit contract;
+names are never inferred from variable names or file paths alone.
+
 ## Cache files
 
 `armalint-update` writes these files beside the mission configuration:

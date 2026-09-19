@@ -19,6 +19,7 @@ from .config import (
     extract_function_type_signatures,
     extract_function_return_types,
     extract_ignored_rules,
+    extract_external_locals,
     extract_ignore_patterns,
     extract_rule_severities,
     extract_presets,
@@ -31,6 +32,7 @@ from .config import (
     load_config_file,
 )
 from .config_lint import lint_config
+from .contracts import discover_external_locals
 from .diagnostic import Diagnostic, Severity, format_diagnostic
 from .linter import build_symbol_index, lint_file, lint_text
 from .mods import load_mod_cache
@@ -179,6 +181,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ignore-rule", action="append", default=[], metavar="RULE",
         help="suppress a diagnostic rule code for this run (repeatable)",
+    )
+    parser.add_argument(
+        "--external-local", action="append", default=[], metavar="NAME",
+        help="declare a local supplied by an external call-compile contract (repeatable)",
     )
     parser.add_argument(
         "--rules",
@@ -341,6 +347,9 @@ def _main(argv: list[str] | None = None) -> int:
         context_signatures = extract_function_type_signatures(context_config)
         context_returns = extract_function_return_types(context_config)
         context_ignored_rules = extract_ignored_rules(context_config) | {rule.upper() for rule in args.ignore_rule}
+        context_external_locals = extract_external_locals(context_config) | {
+            name.strip().lower() for name in args.external_local if name.strip()
+        }
         context_severities = extract_rule_severities(context_config)
         context_presets = [*extract_presets(context_config), *(name.lower() for name in args.preset)]
         context_plugin_rules, context_plugin_errors = load_plugins(extract_plugins(context_config), os.path.dirname(args.config or context_path) if (args.config or context_path) else os.getcwd())
@@ -360,7 +369,7 @@ def _main(argv: list[str] | None = None) -> int:
         all_diags = lint_text(
             args.snippet, filename="<snippet>", index=context_index,
             function_signatures=context_signatures, function_return_types=context_returns,
-            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=(args.style or "style" in context_presets or bool(context_selected & {"W301", "W302"})), check_suppressions=args.check_suppressions, plugin_rules=context_plugin_rules,
+            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=(args.style or "style" in context_presets or bool(context_selected & {"W301", "W302"})), check_suppressions=args.check_suppressions, plugin_rules=context_plugin_rules, external_locals=context_external_locals,
         )
         all_diags.extend(Diagnostic(Severity.ERROR, "E012", f"plugin load failed: {error}", 1, 1, "") for error in context_plugin_errors)
         for config_path, issues in config_issues.items():
@@ -443,6 +452,9 @@ def _main(argv: list[str] | None = None) -> int:
     function_signatures: dict[str, list[str]] = {}
     function_return_types: dict[str, str] = {}
     ignored_rules: set[str] = {rule.upper() for rule in args.ignore_rule}
+    external_locals: set[str] = {
+        name.strip().lower() for name in args.external_local if name.strip()
+    }
     rule_severities: dict[str, str] = {}
     context_paths = [*input_paths, args.mission] if args.mission else input_paths
     if args.config:
@@ -451,6 +463,7 @@ def _main(argv: list[str] | None = None) -> int:
         function_signatures = extract_function_type_signatures(loaded_config)
         function_return_types = extract_function_return_types(loaded_config)
         ignored_rules |= extract_ignored_rules(loaded_config)
+        external_locals |= extract_external_locals(loaded_config)
         rule_severities.update(extract_rule_severities(loaded_config))
     else:
         for path in context_paths:
@@ -463,10 +476,12 @@ def _main(argv: list[str] | None = None) -> int:
                 for name, return_type in extract_function_return_types(loaded_config).items():
                     function_return_types.setdefault(name, return_type)
                 ignored_rules |= extract_ignored_rules(loaded_config)
+                external_locals |= extract_external_locals(loaded_config)
                 rule_severities.update(extract_rule_severities(loaded_config))
     for config_path in sorted(set(file_configs.values())):
         loaded_config = load_checked(config_path)
         config_tags |= extract_function_tags(loaded_config)
+        external_locals |= extract_external_locals(loaded_config)
         for name, types in extract_function_type_signatures(loaded_config).items():
             function_signatures.setdefault(name, types)
         for name, return_type in extract_function_return_types(loaded_config).items():
@@ -506,6 +521,11 @@ def _main(argv: list[str] | None = None) -> int:
     timings["index_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]), 2)
     timings["index_files"] = len(index_files)
     timings["token_cache_entries"] = len(token_cache)
+    # A dynamically compiled template executes in the caller's scope.  Infer
+    # explicitly declared locals from exact ``call compile
+    # preprocessFileLineNumbers`` sites so template files do not require a
+    # manual externalLocals entry in common static-loader patterns.
+    external_locals |= discover_external_locals(source_cache)
     included_files = _collect_included_files(files, source_cache)
     for tag in config_tags:
         index.add_tag(tag)
@@ -539,6 +559,7 @@ def _main(argv: list[str] | None = None) -> int:
         nearest_config = file_configs.get(os.path.normcase(os.path.abspath(f)))
         file_config = load_checked(nearest_config) if nearest_config else {}
         file_ignored_rules = ignored_rules | extract_ignored_rules(file_config)
+        file_external_locals = external_locals | extract_external_locals(file_config)
         file_severities = dict(rule_severities)
         file_severities.update(extract_rule_severities(file_config))
         file_presets = {name.lower() for name in extract_presets(file_config)}
@@ -559,7 +580,7 @@ def _main(argv: list[str] | None = None) -> int:
                 except OSError:
                     pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, plugin_rules=plugin_rules, pretokenized=pretokenized, source_text=source_cache.get(f), source_cache=source_cache, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, plugin_rules=plugin_rules, pretokenized=pretokenized, source_text=source_cache.get(f), source_cache=source_cache, external_locals=file_external_locals, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:

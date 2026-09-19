@@ -41,6 +41,7 @@ SELF_TEST_MODULES = (
     "cfgfunctions",
     "config_lint",
     "locals",
+    "contracts",
 )
 
 CLEAN_FIXTURE = FIXTURES_DIR / "clean.sqf"
