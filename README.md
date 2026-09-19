@@ -61,10 +61,13 @@ armalint-lsp
 | `--mission PATH` | Use mission symbols/configuration with `--snippet` or `--file`.      |
 | `--json`        | Emit a single JSON array of diagnostic objects instead of text.     |
 | `--sarif`       | Emit SARIF 2.1.0 with stable fingerprints and rule help links.       |
+| `--checkstyle`  | Emit Checkstyle XML for CI integrations.                           |
+| `--timings`     | Report phase timings and in-process token-cache reuse on stderr.    |
 | `--check-suppressions` | Report unjustified or unused inline suppressions.              |
 | `--baseline PATH` | Suppress diagnostics recorded in a JSON baseline.                 |
 | `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
 | `--fix`         | Apply safe style fixes (trailing whitespace and tabs) in place.      |
+| `--fix-preview` | Emit safe autofix edits as JSON without changing files.             |
 | `--diff [REF]`  | Report only findings on lines changed from `REF` (default `HEAD`).  |
 | `--diff-staged` | Report only findings in the staged Git index.                  |
 | `--fail-on LEVEL` | Fail on `error`, `warning`, `info`, or `none` (default `error`).   |

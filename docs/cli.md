@@ -21,10 +21,13 @@ The most useful options are:
 | --- | --- |
 | `--json` | Print one JSON array of diagnostics. |
 | `--sarif` | Print SARIF 2.1.0 results with stable fingerprints, rule metadata, and help links. |
+| `--checkstyle` | Print Checkstyle XML for CI systems that consume XML reports. |
+| `--timings` | Report collection, indexing, lint, and total timings as JSON on stderr. |
 | `--check-suppressions` | Report inline suppressions without reasons or matching diagnostics. |
 | `--baseline PATH` | Suppress findings whose fingerprints are recorded in a JSON baseline. |
 | `--style` | Enable optional style diagnostics (`W301`/`W302`). |
 | `--fix` | Apply safe style fixes for trailing whitespace and tabs. |
+| `--fix-preview` | Emit machine-readable safe edits without modifying files. |
 | `--diff [REF]` | Report only findings on changed lines relative to `REF` (default `HEAD`). |
 | `--diff-staged` | Report only findings in the staged Git index. |
 | `--fail-on LEVEL` | Set the failure threshold: `error`, `warning`, `info`, or `none`. |
@@ -44,7 +47,9 @@ It supports `initialize`, full-text `didOpen`/`didChange`, `didClose`, and
 diagnostic publication. Configure it as an editor's stdio language server with
 the command `armalint-lsp`.
 
-`--fix` is intentionally limited to whitespace changes. `--diff` is useful in
+`--fix` applies whitespace fixes and removes a trailing comma immediately
+before an array close. Use `--fix-preview` to review the exact file offsets,
+line/column, replacement text, and rule code before applying them. `--diff` is useful in
 pull-request jobs where existing findings are already tracked separately. For
 staged pre-commit checks, use `--diff-staged`; for pull requests, pass the
 merge-base or target branch to `--diff`. Deleted lines are ignored because they

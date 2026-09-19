@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import html
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 
 from . import __version__
 from .config import (
@@ -34,7 +36,7 @@ from .mods import load_mod_type_cache
 from .sqm import check_mission_sqm
 from .rules import metadata as rule_metadata
 from .rules import PRESETS, RULES, RULE_CATEGORIES
-from .style import fix_style
+from .style import apply_safe_fix_edits, safe_fix_edits
 
 _SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext", ".sqm")
 _CONFIG_EXTENSIONS = (".hpp", ".ext")
@@ -145,12 +147,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="emit a JSON array of diagnostics",
     )
     parser.add_argument("--sarif", action="store_true", help="emit SARIF 2.1.0 diagnostics")
+    parser.add_argument("--checkstyle", action="store_true", help="emit Checkstyle XML diagnostics")
     parser.add_argument("--style", action="store_true", help="enable optional source style checks")
     parser.add_argument("--fix", action="store_true", help="apply safe formatting fixes and write changed files")
+    parser.add_argument("--fix-preview", action="store_true", help="emit safe autofix edits as JSON without changing files")
     parser.add_argument("--diff", nargs="?", const="HEAD", metavar="REF", help="report only diagnostics on lines changed from REF (default: HEAD)")
     parser.add_argument("--diff-staged", action="store_true", help="report only diagnostics in the staged Git index")
     parser.add_argument("--fail-on", choices=("error", "warning", "info", "none"), default="error", help="minimum severity that makes the command fail (default: error)")
     parser.add_argument("--github-actions", action="store_true", help="emit GitHub Actions workflow-command annotations")
+    parser.add_argument("--timings", action="store_true", help="report scan duration and phase timings as JSON on stderr")
     parser.add_argument("--check-suppressions", action="store_true", help="report unjustified and unused inline suppressions")
     parser.add_argument("--baseline", metavar="PATH", help="suppress diagnostics recorded in a JSON baseline file")
     parser.add_argument(
@@ -238,8 +243,30 @@ def _github_annotation(diagnostic) -> str:
     return f"::{command} file={file_name},line={diagnostic.line},col={diagnostic.column},title={diagnostic.code}::{message}"
 
 
+def _checkstyle_output(diagnostics) -> str:
+    """Render diagnostics in the Checkstyle XML interchange format."""
+    grouped: dict[str, list] = {}
+    for diagnostic in diagnostics:
+        grouped.setdefault(diagnostic.file or "<snippet>", []).append(diagnostic)
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<checkstyle version="1.0">']
+    for file_name, items in grouped.items():
+        lines.append(f'  <file name="{html.escape(file_name, quote=True)}">')
+        for diagnostic in items:
+            lines.append(
+                f'    <error line="{diagnostic.line}" column="{diagnostic.column}" '
+                f'severity="{html.escape(diagnostic.severity.value)}" '
+                f'message="{html.escape(diagnostic.message, quote=True)}" '
+                f'source="armalint.{html.escape(diagnostic.code, quote=True)}" />'
+            )
+        lines.append("  </file>")
+    lines.append("</checkstyle>")
+    return "\n".join(lines)
+
+
 def _main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
+    started_at = time.perf_counter()
+    timings: dict[str, float | int] = {}
     config_issues: dict[str, list[str]] = {}
     checked_configs: dict[str, dict] = {}
 
@@ -270,6 +297,8 @@ def _main(argv: list[str] | None = None) -> int:
         _build_arg_parser().error("--diff requires files or a directory, not --snippet")
     if args.snippet is not None and args.diff_staged:
         _build_arg_parser().error("--diff-staged requires files or a directory, not --snippet")
+    if args.snippet is not None and (args.fix or args.fix_preview):
+        _build_arg_parser().error("autofixes require files or a directory, not --snippet")
     if args.diff and args.diff_staged:
         _build_arg_parser().error("--diff and --diff-staged cannot be combined")
     if args.snippet is None and not (args.paths or args.files):
@@ -325,7 +354,9 @@ def _main(argv: list[str] | None = None) -> int:
                 if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys
             ]
         linted_files = ["<snippet>"]
-        if args.json:
+        if args.checkstyle:
+            print(_checkstyle_output(all_diags))
+        elif args.json:
             payload = [
                 {"file": d.file, "line": d.line, "column": d.column,
                  "severity": d.severity.value, "code": d.code, "message": d.message}
@@ -351,6 +382,22 @@ def _main(argv: list[str] | None = None) -> int:
 
     # De-duplicate while preserving determinism, then sort.
     files = sorted(set(files))
+    timings["collection_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+
+    if args.fix_preview:
+        preview: list[dict[str, object]] = []
+        for file in files:
+            if not _is_sqf_file(file):
+                continue
+            try:
+                with open(file, "r", encoding="utf-8", errors="replace") as fh:
+                    edits = safe_fix_edits(fh.read())
+            except OSError:
+                continue
+            if edits:
+                preview.append({"file": file, "edits": edits})
+        print(json.dumps(preview, indent=2))
+        return 0
     included_files = _collect_included_files(files)
 
     # Resolve mod function tags from project config, then register them on the
@@ -406,6 +453,9 @@ def _main(argv: list[str] | None = None) -> int:
         index_files.extend(_collect_files(args.mission, collection_ignores))
     token_cache = {}
     index = build_symbol_index(sorted(set(index_files)), token_cache=token_cache)
+    timings["index_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]), 2)
+    timings["index_files"] = len(index_files)
+    timings["token_cache_entries"] = len(token_cache)
     for tag in config_tags:
         index.add_tag(tag)
 
@@ -436,18 +486,21 @@ def _main(argv: list[str] | None = None) -> int:
     all_diags = []
     for f in files:
         if _is_sqf_file(f):
+            pretokenized = token_cache.get(f)
             if args.fix:
                 try:
                     with open(f, "r", encoding="utf-8", errors="replace") as fh:
                         original = fh.read()
-                    fixed = fix_style(original)
+                    edits = safe_fix_edits(original)
+                    fixed = apply_safe_fix_edits(original, edits)
                     if fixed != original:
                         with open(f, "w", encoding="utf-8", newline="") as fh:
                             fh.write(fixed)
+                        pretokenized = None
                 except OSError:
                     pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=style_requested, check_suppressions=args.check_suppressions, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=style_requested, check_suppressions=args.check_suppressions, pretokenized=pretokenized, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -464,6 +517,10 @@ def _main(argv: list[str] | None = None) -> int:
                 continue
             linted_files.append(f)
             all_diags.extend(check_mission_sqm(source, f))
+
+    timings["lint_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]) - float(timings["index_ms"]), 2)
+    timings["files"] = len(linted_files)
+    timings["diagnostics"] = len(all_diags)
 
     for config_path, issues in config_issues.items():
         all_diags.extend(
@@ -482,7 +539,9 @@ def _main(argv: list[str] | None = None) -> int:
             and d.line in changed_lines[os.path.normcase(os.path.abspath(d.file))]
         ]
 
-    if args.sarif:
+    if args.checkstyle:
+        print(_checkstyle_output(all_diags))
+    elif args.sarif:
         payload = {
             "version": "2.1.0",
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -524,6 +583,10 @@ def _main(argv: list[str] | None = None) -> int:
 
     threshold = {"error": 3, "warning": 2, "info": 1, "none": 99}[args.fail_on]
     severity_rank = {Severity.INFO: 1, Severity.WARNING: 2, Severity.ERROR: 3}
+    if args.timings:
+        timings["total_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+        timings["token_cache_hit_rate"] = round((len(token_cache) / len(index_files)) if index_files else 1.0, 3)
+        print(json.dumps(timings, sort_keys=True), file=sys.stderr)
     return 1 if any(severity_rank[d.severity] >= threshold for d in all_diags) else 0
 
 

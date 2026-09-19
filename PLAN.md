@@ -118,9 +118,9 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 
 ## Priority 9: common linter capabilities
 
-- [ ] Extend safe autofix coverage beyond whitespace, with preview mode and
+- [x] Extend safe autofix coverage beyond whitespace, with preview mode and
   machine-readable fix edits.
-- [ ] Extend diff-aware linting for staged changes, pull requests, and untracked
+- [x] Extend diff-aware linting for staged changes, pull requests, and untracked
   files with explicit handling for deleted lines.
 - [x] Add severity-based exit policies and GitHub Actions annotations.
 - [x] Validate configuration against a documented schema and diagnose unknown
@@ -129,9 +129,9 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
   `style`, and `performance`.
 - [x] Diagnose malformed, misspelled, or ineffective inline suppression
   directives.
-- [ ] Add Checkstyle and other common CI/editor output formats.
+- [x] Add Checkstyle and other common CI/editor output formats.
 - [ ] Improve project discovery for nested missions and monorepos.
-- [ ] Report scan duration, cache hit rate, and per-phase performance data.
+- [x] Report scan duration, cache hit rate, and per-phase performance data.
 - [ ] Generate rule documentation from the rule registry to prevent drift.
 - [ ] Maintain a regression corpus from real-world missions and mods.
 - [ ] Support project-defined plugin rules without modifying Armalint itself.
