@@ -77,8 +77,18 @@ class _Scanner:
         return ch
 
     def _scan_identifier(self) -> None:
-        while _is_ident_char(self.peek()):
-            self.advance()
+        # Identifiers cannot contain newlines, so update the cursor in one
+        # pass instead of calling ``peek``/``advance`` for every character.
+        src = self.src
+        pos = self.pos
+        length = len(src)
+        while pos < length:
+            ch = src[pos]
+            if not (("a" <= ch <= "z") or ("A" <= ch <= "Z") or ch == "_" or "0" <= ch <= "9"):
+                break
+            pos += 1
+        self.col += pos - self.pos
+        self.pos = pos
 
     def _scan_string(self) -> str:
         quote = self.advance()
@@ -131,10 +141,14 @@ class _Scanner:
                     self.advance()
 
     def _scan_line_comment(self) -> None:
-        self.advance()
-        self.advance()
-        while self.peek() and self.peek() not in ("\n", "\r"):
-            self.advance()
+        # A line comment cannot contain a newline by definition. Jump to the
+        # line terminator while retaining the scanner's column bookkeeping.
+        start = self.pos
+        end = self.src.find("\n", start + 2)
+        if end < 0:
+            end = len(self.src)
+        self.pos = end
+        self.col += end - start
 
     def _scan_block_comment(self) -> None:
         self.advance()
