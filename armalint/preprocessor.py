@@ -322,18 +322,10 @@ def _preprocess_lines(
             lines.append("")
             line_map.append((filename, orig_line))
             continue
-        match = _DEFINE_RE.match(line)
-        if match and all(_conditions):
-            body = _strip_macro_comment(match.group(2) or "1")
-            _defines[match.group(1).lower()] = body or "1"
-            macro_continuation = line.rstrip().endswith("\\")
-            if macro_continuation:
-                continuation_name = match.group(1).lower()
-                continuation_params = None
-                continuation_body = [body.rstrip()[:-1].rstrip()]
-            lines.append("")
-            line_map.append((filename, orig_line))
-            continue
+        # Function-like definitions must be recognized before object-like
+        # definitions.  The latter also matches ``#define NAME(args) body``
+        # and would otherwise register only NAME as an object macro, leaving
+        # calls such as ``FactionGet(...)`` or ``QUOTE(...)`` unresolved.
         function_match = _FUNCTION_DEFINE_RE.match(line)
         if function_match and all(_conditions):
             name = function_match.group(1).lower()
@@ -345,6 +337,18 @@ def _preprocess_lines(
             if macro_continuation:
                 continuation_name = name
                 continuation_params = params
+                continuation_body = [body.rstrip()[:-1].rstrip()]
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        match = _DEFINE_RE.match(line)
+        if match and all(_conditions):
+            body = _strip_macro_comment(match.group(2) or "1")
+            _defines[match.group(1).lower()] = body or "1"
+            macro_continuation = line.rstrip().endswith("\\")
+            if macro_continuation:
+                continuation_name = match.group(1).lower()
+                continuation_params = None
                 continuation_body = [body.rstrip()[:-1].rstrip()]
             lines.append("")
             line_map.append((filename, orig_line))
