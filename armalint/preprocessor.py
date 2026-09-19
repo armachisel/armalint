@@ -194,7 +194,14 @@ def _expand_macros(
                     if len(arguments) == len(names):
                         replacement = body
                         for name, value in zip(names, arguments):
-                            replacement = re.sub(r"\b" + re.escape(name) + r"\b", value, replacement)
+                            # Use a callable replacement so backslashes in
+                            # paths (common in Arma macro arguments) remain
+                            # literal instead of being parsed as regex escapes.
+                            replacement = re.sub(
+                                r"\b" + re.escape(name) + r"\b",
+                                lambda _match, value=value: value,
+                                replacement,
+                            )
                         replacement = re.sub(r"\s*##\s*", "", replacement)
                         output.append(_expand_macros(replacement, defines, function_defines, depth + 1))
                         index = call_end
@@ -501,6 +508,10 @@ if __name__ == "__main__":
         function_expanded, _ = preprocess(function_macro, main_path, tmpdir)
         assert 'hint "hello";' in function_expanded
         assert "private _path = foobar;" in function_expanded
+
+        windows_path_macro = '#define PATH(value) value\nprivate _path = PATH("A:\\Mission\\scripts\\fn.sqf");\n'
+        windows_path_expanded, _ = preprocess(windows_path_macro, main_path, tmpdir)
+        assert 'private _path = "A:\\Mission\\scripts\\fn.sqf";' in windows_path_expanded
 
         multiline_macro = '#define WRAP(value) { \\\n+    hint value; \\\n+}\nWRAP("ok");\n'
         multiline_expanded, _ = preprocess(multiline_macro, main_path, tmpdir)
