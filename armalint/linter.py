@@ -22,6 +22,7 @@ from .tokenizer import tokenize
 from .undefined import check_undefined
 from .value_flow import check_value_flow
 from .preprocessor_checks import check_preprocessor
+from .plugins import PluginRule, run_plugin_checks
 
 # Extensions treated as config files for symbol collection.
 _CONFIG_EXTENSIONS = (".hpp", ".ext", ".cpp", ".cfg")
@@ -55,6 +56,7 @@ def lint_text(
     rule_severities: dict[str, str] | None = None,
     style: bool = False,
     check_suppressions: bool = False,
+    plugin_rules: list[PluginRule] | None = None,
 ) -> list[Diagnostic]:
     """Run all analyzers over ``source`` and return their diagnostics.
 
@@ -86,6 +88,9 @@ def lint_text(
     diags.extend(check_value_flow(tokens))
     if style:
         diags.extend(check_style(source))
+    plugin_diags, plugin_errors = run_plugin_checks(source, filename, plugin_rules or [])
+    diags.extend(plugin_diags)
+    diags.extend(Diagnostic(Severity.ERROR, "E012", f"plugin check failed: {error}", 1, 1, filename) for error in plugin_errors)
 
     for d in diags:
         d.file = filename
@@ -105,6 +110,7 @@ def lint_file(
     rule_severities: dict[str, str] | None = None,
     style: bool = False,
     check_suppressions: bool = False,
+    plugin_rules: list[PluginRule] | None = None,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -156,6 +162,9 @@ def lint_file(
     diags.extend(check_value_flow(source_tokens))
     if style:
         diags.extend(check_style(source))
+    plugin_diags, plugin_errors = run_plugin_checks(source, path, plugin_rules or [])
+    diags.extend(plugin_diags)
+    diags.extend(Diagnostic(Severity.ERROR, "E012", f"plugin check failed: {error}", 1, 1, path) for error in plugin_errors)
 
     for d in diags:
         if 1 <= d.line <= len(line_map):

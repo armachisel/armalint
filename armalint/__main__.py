@@ -22,6 +22,7 @@ from .config import (
     extract_ignore_patterns,
     extract_rule_severities,
     extract_presets,
+    extract_plugins,
     validate_config,
     find_config,
     discover_configs,
@@ -37,6 +38,7 @@ from .mods import load_mod_type_cache
 from .sqm import check_mission_sqm
 from .rules import metadata as rule_metadata
 from .rules import PRESETS, RULES, RULE_CATEGORIES
+from .plugins import load_plugins
 from .style import apply_safe_fix_edits, safe_fix_edits
 
 _SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext", ".sqm")
@@ -270,6 +272,8 @@ def _main(argv: list[str] | None = None) -> int:
     timings: dict[str, float | int] = {}
     config_issues: dict[str, list[str]] = {}
     checked_configs: dict[str, dict] = {}
+    plugin_rules = []
+    plugin_errors: list[str] = []
 
     def load_checked(path: str) -> dict:
         absolute = os.path.abspath(path)
@@ -329,6 +333,7 @@ def _main(argv: list[str] | None = None) -> int:
         context_ignored_rules = extract_ignored_rules(context_config) | {rule.upper() for rule in args.ignore_rule}
         context_severities = extract_rule_severities(context_config)
         context_presets = [*extract_presets(context_config), *(name.lower() for name in args.preset)]
+        context_plugin_rules, context_plugin_errors = load_plugins(extract_plugins(context_config), os.path.dirname(args.config or context_path) if (args.config or context_path) else os.getcwd())
         if "strict" in context_presets:
             context_severities.update({code: "error" for code, (severity, _message) in RULES.items() if severity == "warning"})
         context_selected: set[str] = set()
@@ -345,8 +350,9 @@ def _main(argv: list[str] | None = None) -> int:
         all_diags = lint_text(
             args.snippet, filename="<snippet>", index=context_index,
             function_signatures=context_signatures, function_return_types=context_returns,
-            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=(args.style or "style" in context_presets or bool(context_selected & {"W301", "W302"})), check_suppressions=args.check_suppressions,
+            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=(args.style or "style" in context_presets or bool(context_selected & {"W301", "W302"})), check_suppressions=args.check_suppressions, plugin_rules=context_plugin_rules,
         )
+        all_diags.extend(Diagnostic(Severity.ERROR, "E012", f"plugin load failed: {error}", 1, 1, "") for error in context_plugin_errors)
         for config_path, issues in config_issues.items():
             all_diags.extend(Diagnostic(Severity.ERROR, "E012", message, 1, 1, config_path) for message in issues)
         if baseline_keys:
@@ -447,6 +453,9 @@ def _main(argv: list[str] | None = None) -> int:
             function_signatures.setdefault(name, types)
         for name, return_type in extract_function_return_types(loaded_config).items():
             function_return_types.setdefault(name, return_type)
+        rules, errors = load_plugins(extract_plugins(loaded_config), os.path.dirname(config_path))
+        plugin_rules.extend(rules)
+        plugin_errors.extend(errors)
 
     project_presets = [*args.preset]
     for config in checked_configs.values():
@@ -527,7 +536,7 @@ def _main(argv: list[str] | None = None) -> int:
                 except OSError:
                     pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, pretokenized=pretokenized, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, plugin_rules=plugin_rules, pretokenized=pretokenized, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -554,6 +563,7 @@ def _main(argv: list[str] | None = None) -> int:
             Diagnostic(Severity.ERROR, "E012", message, 1, 1, config_path)
             for message in issues
         )
+    all_diags.extend(Diagnostic(Severity.ERROR, "E012", f"plugin load failed: {error}", 1, 1, "") for error in plugin_errors)
 
     if baseline_keys:
         all_diags = [d for d in all_diags if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys]
@@ -574,7 +584,7 @@ def _main(argv: list[str] | None = None) -> int:
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "runs": [{
                 "automationDetails": {"id": "armalint/default"},
-                "tool": {"driver": {"name": "armalint", "version": __version__, "informationUri": "docs/", "rules": rule_metadata()}},
+                "tool": {"driver": {"name": "armalint", "version": __version__, "informationUri": "docs/", "rules": rule_metadata(plugin_rules)}},
                 "results": [{
                     "ruleId": d.code,
                     "level": {"error": "error", "warning": "warning", "info": "note"}.get(d.severity.value, "warning"),

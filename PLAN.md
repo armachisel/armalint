@@ -134,4 +134,4 @@ This roadmap is ordered by impact on correctness and false-positive reduction.
 - [x] Report scan duration, cache hit rate, and per-phase performance data.
 - [ ] Generate rule documentation from the rule registry to prevent drift.
 - [ ] Maintain a regression corpus from real-world missions and mods.
-- [ ] Support project-defined plugin rules without modifying Armalint itself.
+- [x] Support project-defined plugin rules without modifying Armalint itself.
