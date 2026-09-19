@@ -92,7 +92,7 @@ def _collect_files(path: str, ignores: list[str]) -> list[str]:
 _INCLUDE_LINE_RE = re.compile(r'^\s*#\s*include\s+(?:"([^"]*)"|<([^>]*)>)')
 
 
-def _collect_included_files(files: list[str]) -> set[str]:
+def _collect_included_files(files: list[str], source_cache: dict[str, str] | None = None) -> set[str]:
     """Return files referenced by local include directives.
 
     Included fragments are linted on their own for syntax and type errors, but
@@ -108,11 +108,18 @@ def _collect_included_files(files: list[str]) -> set[str]:
         if normalized in seen:
             continue
         seen.add(normalized)
-        try:
-            with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                lines = fh.readlines()
-        except OSError:
-            continue
+        normalized_path = os.path.normcase(os.path.abspath(path))
+        cached_source = None
+        if source_cache is not None:
+            cached_source = source_cache.get(path) or source_cache.get(normalized_path)
+        if cached_source is not None:
+            lines = cached_source.splitlines()
+        else:
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                    lines = fh.readlines()
+            except OSError:
+                continue
         base_dir = os.path.dirname(os.path.abspath(path))
         for line in lines:
             match = _INCLUDE_LINE_RE.match(line)
@@ -398,7 +405,13 @@ def _main(argv: list[str] | None = None) -> int:
         if not _is_ignored(relative, patterns):
             filtered_files.append(file)
     files = filtered_files
-    file_configs = discover_configs(files)
+    # Filtering cannot change a file's nearest config, so retain the first
+    # discovery result instead of walking upward through every file again.
+    file_configs = {
+        os.path.normcase(os.path.abspath(file)): file_configs[key]
+        for file in files
+        if (key := os.path.normcase(os.path.abspath(file))) in file_configs
+    }
     for config_path in sorted(set(file_configs.values())):
         load_checked(config_path)
     timings["collection_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
@@ -417,7 +430,7 @@ def _main(argv: list[str] | None = None) -> int:
                 preview.append({"file": file, "edits": edits})
         print(json.dumps(preview, indent=2))
         return 0
-    included_files = _collect_included_files(files)
+    source_cache: dict[str, str] = {}
 
     # Resolve mod function tags from project config, then register them on the
     # symbol index so mod-provided functions are not reported as unknown.
@@ -481,10 +494,14 @@ def _main(argv: list[str] | None = None) -> int:
     if args.mission:
         index_files.extend(_collect_files(args.mission, collection_ignores))
     token_cache = {}
-    index = build_symbol_index(sorted(set(index_files)), token_cache=token_cache)
+    index = build_symbol_index(
+        sorted(set(index_files)), token_cache=token_cache,
+        source_cache=source_cache,
+    )
     timings["index_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]), 2)
     timings["index_files"] = len(index_files)
     timings["token_cache_entries"] = len(token_cache)
+    included_files = _collect_included_files(files, source_cache)
     for tag in config_tags:
         index.add_tag(tag)
 
@@ -533,10 +550,11 @@ def _main(argv: list[str] | None = None) -> int:
                         with open(f, "w", encoding="utf-8", newline="") as fh:
                             fh.write(fixed)
                         pretokenized = None
+                        source_cache.pop(f, None)
                 except OSError:
                     pass
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, plugin_rules=plugin_rules, pretokenized=pretokenized, check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=file_ignored_rules, rule_severities=file_severities, style=file_style, check_suppressions=args.check_suppressions, plugin_rules=plugin_rules, pretokenized=pretokenized, source_text=source_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
