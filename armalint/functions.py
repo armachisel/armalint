@@ -94,14 +94,15 @@ def check_functions(tokens: list[Token], index: SymbolIndex | None = None) -> li
 
         if ttype == "ident":
             name = nxt.value
-            if index is not None and index.cba_declared and j + 1 < n and tokens[j + 1].type == "lparen" and name.isupper():
-                continue  # project preprocessor macro invocation
             if not _is_known(name, index):
+                message = f"unknown function/command: {name}"
+                if name.lower().startswith("cba_"):
+                    message += " (CBA dependency is not indexed; declare it and run update)" if index is None or not index.cba_declared else " (CBA is declared but not indexed; run update)"
                 diags.append(
                     Diagnostic(
                         Severity.WARNING,
                         _CODE,
-                        f"unknown function/command: {name}",
+                        message,
                         nxt.line,
                         nxt.column,
                     )
@@ -159,9 +160,9 @@ if __name__ == "__main__":
     assert len(check_functions_text("call ALT_fnc_formatScore;")) == 1
     assert check_functions_text("call ZZZ_fnc_nope;", idx)[0].code == _CODE
     cba_idx = SymbolIndex(cba_declared=True)
-    assert check_functions_text("call FUNCMAIN(findSpawnHelperPosition);", cba_idx) == []
-    assert check_functions_text("call EFUNC(Events,triggerEvent);", cba_idx) == []
+    assert check_functions_text("call FUNCMAIN(findSpawnHelperPosition);", cba_idx)
+    assert check_functions_text("call EFUNC(Events,triggerEvent);", cba_idx)
     assert check_functions_text("call CBA_fnc_execNextFrame;")[0].code == _CODE
-    assert check_functions_text("call CBA_fnc_execNextFrame;", cba_idx) == []
+    assert check_functions_text("call CBA_fnc_execNextFrame;", cba_idx)
 
     print("functions self-test passed")

@@ -302,11 +302,13 @@ def run_update(args) -> int:
             # CBA_MAIN, CBA_EVENTS, CBA_XEH, etc. are addon components from
             # one CBA Workshop item; they must not be downloaded separately.
             specs_to_download = [spec for spec in specs_to_download if not spec.get("name", "").startswith("cba_")]
-            cba_id = next((spec.get("workshopId") or spec.get("workshop_id") for spec in cba_specs), "450814997")
-            specs_to_download.append({"name": "cba_main", "workshopId": cba_id})
+            cba_id = next((spec.get("workshopId") or spec.get("workshop_id") for spec in cba_specs), None)
+            if cba_id:
+                specs_to_download.append({"name": "cba_main", "workshopId": cba_id})
+            else:
+                _warn("CBA is declared but has no Workshop ID; skipping download")
         for spec in specs_to_download:
             workshop_id = spec.get("workshopId") or spec.get("workshop_id")
-            if not workshop_id and spec.get("name") == "cba_main": workshop_id = "450814997"
             if not workshop_id:
                 _warn(f"dependency {spec['name']} has no Workshop ID; skipping download")
             elif steamcmd and _download_workshop_item(steamcmd, workshop_id, dependency_cache):

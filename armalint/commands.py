@@ -71,17 +71,17 @@ def check_commands(
         if j >= n:
             continue
 
-        if index is not None and index.cba_declared and tok.value.isupper() and tokens[j].type == "lparen":
-            continue  # unresolved project preprocessor macro invocation
-
         if not _is_operand_start(tokens[j]):
             continue
 
+        message = f"unknown command/function: {tok.value}"
+        if tok.value.lower().startswith("cba_"):
+            message += " (CBA dependency is not indexed; declare it and run update)" if index is None or not index.cba_declared else " (CBA is declared but not indexed; run update)"
         diags.append(
             Diagnostic(
                 Severity.WARNING,
                 _CODE,
-                f"unknown command/function: {tok.value}",
+                message,
                 tok.line,
                 tok.column,
             )
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     from .symbols import SymbolIndex
     cba_index = SymbolIndex(cba_declared=True)
     assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);')
-    assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);', cba_index) == []
-    assert check_commands_text('EFUNC(Events,triggerEvent);', cba_index) == []
+    assert check_commands_text('QUOTE("x"); PATHTOF_SYS(PREFIX,COMPONENT,x);', cba_index)
+    assert check_commands_text('EFUNC(Events,triggerEvent);', cba_index)
 
     print("commands self-test passed")
