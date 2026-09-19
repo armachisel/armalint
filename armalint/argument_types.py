@@ -962,8 +962,15 @@ def check_argument_types(
         # token before the comparison is their string argument. Do not compare
         # that argument's type; the command expression is the left operand.
         command_result_comparison = (
-            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count")
+            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction")
         )
+        if not command_result_comparison:
+            scan = left - 1
+            while scan >= 0 and tokens[scan].type != "semicolon" and left - scan <= 96:
+                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction"):
+                    command_result_comparison = True
+                    break
+                scan -= 1
         # A local may be reused by separate functions in one file. If an
         # earlier assignment of that local is a `findIf` producer, do not let
         # the stale type from another function make this numeric result look
@@ -980,11 +987,34 @@ def check_argument_types(
                     if assign < i and tokens[assign].value == "=":
                         end = assign + 1
                         while end < i and tokens[end].type != "semicolon":
-                            if tokens[end].value.lower() == "findif":
+                            if tokens[end].value.lower() in ("findif", "find", "count", "inputaction"):
                                 command_result_comparison = True
+                                if tokens[end].value.lower() in ("findif", "find", "count", "inputaction"):
+                                    actual_left = "Number"
                                 break
                             end += 1
                 cursor += 1
+            # Prefer an unambiguous local initializer immediately preceding
+            # this comparison over a stale type collected from another
+            # function in the same file.
+            for cursor in range(i - 1, max(-1, i - 160), -1):
+                if tokens[cursor].type != "local" or tokens[cursor].value.lower() != name:
+                    continue
+                assign = cursor + 1
+                while assign < i and tokens[assign].type in _TRIVIA:
+                    assign += 1
+                if assign >= i or tokens[assign].value != "=":
+                    continue
+                value = assign + 1
+                while value < i and tokens[value].type in _TRIVIA:
+                    value += 1
+                if value < i and tokens[value].type == "number":
+                    actual_left = "Number"
+                elif value < i and tokens[value].type == "string":
+                    actual_left = "String"
+                elif value < i and tokens[value].type == "keyword" and tokens[value].value.lower() in ("true", "false"):
+                    actual_left = "Boolean"
+                break
         # typeName returns a string describing the operand, so comparing it
         # with a string literal is intentional even though the underlying
         # operand may have a different inferred type.
@@ -1070,6 +1100,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_value = 1; if (typeName _value == "SCALAR") then { sleep _value; };') == []
     assert any(item.code == _COMPARISON_CODE for item in check_argument_types_text('_n = 1; _n == "one";'))
     assert check_argument_types_text('if ((toLower _x) find "auto" >= 0) then {};') == []
+    assert check_argument_types_text('if (inputAction "zoomIn" > 0) then {};') == []
+    assert check_argument_types_text('_n = { true } count []; if (_n > 0) then {};') == []
     assert check_argument_types_text('_d = findDisplay 46; _c = _d displayCtrl 1; isNull _c;') == []
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(
