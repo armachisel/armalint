@@ -201,7 +201,15 @@ def run_update(args) -> int:
     if getattr(args, "download_dependencies", False):
         steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd()
         dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
-        for spec in dependency_specs:
+        specs_to_download = list(dependency_specs)
+        cba_specs = [spec for spec in specs_to_download if spec.get("name", "").startswith("cba_")]
+        if cba_specs:
+            # CBA_MAIN, CBA_EVENTS, CBA_XEH, etc. are addon components from
+            # one CBA Workshop item; they must not be downloaded separately.
+            specs_to_download = [spec for spec in specs_to_download if not spec.get("name", "").startswith("cba_")]
+            cba_id = next((spec.get("workshopId") or spec.get("workshop_id") for spec in cba_specs), "450814997")
+            specs_to_download.append({"name": "cba_main", "workshopId": cba_id})
+        for spec in specs_to_download:
             workshop_id = spec.get("workshopId") or spec.get("workshop_id")
             if not workshop_id and spec.get("name") == "cba_main": workshop_id = "450814997"
             if not workshop_id:
