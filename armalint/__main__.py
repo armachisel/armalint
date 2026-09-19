@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+import shutil
 import sys
 import time
 
@@ -582,7 +583,24 @@ def _main(argv: list[str] | None = None) -> int:
     all_diags = []
     stream_diagnostics = not (args.json or args.sarif or args.checkstyle or args.github_actions or args.diff or args.diff_staged or baseline_keys)
     streamed_count = 0
-    for f in files:
+    progress_stream = sys.stderr if sys.stderr.isatty() else None
+    progress_width = max(32, shutil.get_terminal_size((100, 24)).columns - 1) if progress_stream else 0
+
+    def show_progress(current: int, path: str) -> None:
+        if progress_stream is None:
+            return
+        label = os.path.relpath(path, os.getcwd())
+        message = f"Linting {current:>{len(str(len(files)))}}/{len(files)}  {label}"
+        progress_stream.write("\r" + message[:progress_width].ljust(progress_width))
+        progress_stream.flush()
+
+    def clear_progress() -> None:
+        if progress_stream is not None:
+            progress_stream.write("\r" + (" " * progress_width) + "\r")
+            progress_stream.flush()
+
+    for file_number, f in enumerate(files, 1):
+        show_progress(file_number, f)
         nearest_config = file_configs.get(os.path.normcase(os.path.abspath(f)))
         file_config = load_checked(nearest_config) if nearest_config else {}
         file_ignored_rules = ignored_rules | extract_ignored_rules(file_config)
@@ -611,6 +629,7 @@ def _main(argv: list[str] | None = None) -> int:
             previous_count = len(all_diags)
             all_diags.extend(file_diags)
             if stream_diagnostics:
+                clear_progress()
                 emit_count = len(file_diags) if args.max_issues is None else max(0, min(len(file_diags), args.max_issues - previous_count))
                 for diagnostic in file_diags[:emit_count]:
                     print(format_diagnostic(diagnostic), flush=True)
@@ -626,6 +645,7 @@ def _main(argv: list[str] | None = None) -> int:
             previous_count = len(all_diags)
             all_diags.extend(file_diags)
             if stream_diagnostics:
+                clear_progress()
                 emit_count = len(file_diags) if args.max_issues is None else max(0, min(len(file_diags), args.max_issues - previous_count))
                 for diagnostic in file_diags[:emit_count]:
                     print(format_diagnostic(diagnostic), flush=True)
@@ -641,6 +661,7 @@ def _main(argv: list[str] | None = None) -> int:
             previous_count = len(all_diags)
             all_diags.extend(file_diags)
             if stream_diagnostics:
+                clear_progress()
                 emit_count = len(file_diags) if args.max_issues is None else max(0, min(len(file_diags), args.max_issues - previous_count))
                 for diagnostic in file_diags[:emit_count]:
                     print(format_diagnostic(diagnostic), flush=True)
@@ -648,6 +669,8 @@ def _main(argv: list[str] | None = None) -> int:
         if args.max_issues is not None and len(all_diags) >= args.max_issues:
             all_diags = all_diags[:args.max_issues]
             break
+
+    clear_progress()
 
     timings["lint_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]) - float(timings["index_ms"]), 2)
     timings["files"] = len(linted_files)
