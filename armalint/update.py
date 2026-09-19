@@ -69,19 +69,23 @@ def _warn(message: str) -> None:
     print(f"warning: {message}", file=sys.stderr)
 
 
-def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, name: str | None = None) -> bool:
+def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, name: str | None = None, steam_user: str | None = None) -> bool:
     os.makedirs(install_dir, exist_ok=True)
     stream = sys.stderr if sys.stderr.isatty() else None
     process = None
     stop = threading.Event()
     spinner = None
     try:
+        login = steam_user or "anonymous"
         process = subprocess.Popen(
-            [steamcmd, "+login", "anonymous", "+force_install_dir", install_dir,
+            [steamcmd, "+login", login, "+force_install_dir", install_dir,
              "+workshop_download_item", "107410", workshop_id, "+quit"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+            # Authentication prompts and Steam Guard challenges must remain
+            # visible; anonymous downloads can stay quiet behind the spinner.
+            stdout=None if steam_user else subprocess.DEVNULL,
+            stderr=None if steam_user else subprocess.STDOUT,
         )
-        if stream:
+        if stream and not steam_user:
             frames = "|/-\\"
             width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
 
@@ -104,7 +108,7 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
         stop.set()
         if spinner:
             spinner.join(timeout=1)
-        if stream:
+        if stream and not steam_user:
             width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
             stream.write("\r" + (" " * width) + "\r")
             stream.flush()
@@ -303,6 +307,11 @@ def run_update(args) -> int:
             [mission_dir]
         )
         steamcmd = _ensure_steamcmd(os.path.dirname(out_path), steamcmd)
+        steam_user = getattr(args, "steamcmd_user", None)
+        if steamcmd and not steam_user and sys.stdin.isatty() and sys.stdout.isatty():
+            answer = input("Use an authenticated Steam account for Workshop downloads? [y/N] ").strip().lower()
+            if answer in ("y", "yes"):
+                steam_user = input("Steam username: ").strip() or None
         dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
         specs_to_download = list(dependency_specs)
         cba_specs = [spec for spec in specs_to_download if spec.get("name", "").startswith("cba_")]
@@ -319,7 +328,7 @@ def run_update(args) -> int:
             workshop_id = spec.get("workshopId") or spec.get("workshop_id")
             if not workshop_id:
                 _warn(f"dependency {spec['name']} has no Workshop ID; skipping download")
-            elif steamcmd and _download_workshop_item(steamcmd, workshop_id, dependency_cache, spec.get("name")):
+            elif steamcmd and _download_workshop_item(steamcmd, workshop_id, dependency_cache, spec.get("name"), steam_user):
                 workshop_roots.append(os.path.join(dependency_cache, "steamapps", "workshop", "content", "107410"))
             elif not steamcmd:
                 _warn("--download-dependencies requested but SteamCMD was not found")
@@ -516,6 +525,8 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="download declared Workshop dependencies with SteamCMD")
     parser.add_argument("--steamcmd", metavar="PATH", default=None,
                         help="SteamCMD executable for --download-dependencies")
+    parser.add_argument("--steamcmd-user", metavar="NAME", default=None,
+                        help="authenticated Steam username for dependency downloads (password and Steam Guard remain interactive)")
     parser.add_argument(
         "--clear-cache",
         action="store_true",
