@@ -150,6 +150,19 @@ def main() -> int:
         else:
             failures.append(f"module self-test failed: armalint.{name}")
 
+    total += 1
+    try:
+        from armalint.rule_docs import render_rule_catalog
+        generated_catalog = (PROJECT_ROOT / "docs" / "rule-catalog.md").read_text(encoding="utf-8")
+        docs_ok = generated_catalog == render_rule_catalog()
+    except OSError:
+        docs_ok = False
+    print(f"[{'PASS' if docs_ok else 'FAIL'}] generated rule catalog is current")
+    if docs_ok:
+        passed += 1
+    else:
+        failures.append("generated rule catalog is stale")
+
     print("--- module self-tests (with flags) ---")
     for name, extra in (("update", ("--self-test",)),):
         total += 1
