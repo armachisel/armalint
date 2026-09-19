@@ -166,6 +166,13 @@ python -m armalint mission\ --ignore "vendor\**" --ignore "*.bak.sqf"
 | W219 | warning  | Invalid event-handler lifecycle or declaration.                   |
 | W220 | warning  | Invalid remote-execution contract.                                |
 | W221 | warning  | Invalid public-variable contract.                                 |
+| W222 | warning  | Local value is overwritten before it is read.                     |
+| W223 | warning  | Repeated assignment of the same constant value.                   |
+| W224 | warning  | Empty code or array expression has no useful effect.              |
+| W225 | warning  | A preprocessor macro is redefined.                                |
+| W226 | warning  | A preprocessor macro is undefined or cannot be resolved.           |
+| W227 | warning  | Preprocessor conditional directives are unbalanced.                |
+| W228 | warning  | A preprocessor directive is unsupported or malformed.              |
 | W301 | warning  | Trailing whitespace when `--style` is enabled.                 |
 | W302 | warning  | Tab character when `--style` is enabled.                       |
 

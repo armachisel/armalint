@@ -51,6 +51,13 @@ mistakes are found.
 | `W219` | An event-handler declaration or removal has an invalid lifecycle shape. |
 | `W220` | A `remoteExec` or `remoteExecCall` contract is malformed. |
 | `W221` | A public-variable command does not receive a variable name string. |
+| `W222` | A local value is overwritten before it is read. |
+| `W223` | A local is assigned the same constant value repeatedly. |
+| `W224` | An empty code block or empty-array expression has no useful effect. |
+| `W225` | A preprocessor macro is redefined. |
+| `W226` | A preprocessor macro is undefined or an expression cannot be resolved. |
+| `W227` | Preprocessor conditional directives are unbalanced. |
+| `W228` | A preprocessor directive is unsupported or malformed. |
 
 The SQF contract checks are intentionally conservative. `params` declarations
 are checked for the supported string and `[name, default, validators]` shapes;

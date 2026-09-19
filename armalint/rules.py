@@ -35,6 +35,13 @@ RULES = {
     "W219": ("warning", "Invalid event-handler lifecycle or declaration"),
     "W220": ("warning", "Invalid remote execution contract"),
     "W221": ("warning", "Invalid public-variable contract"),
+    "W222": ("warning", "Value overwritten before use"),
+    "W223": ("warning", "Repeated constant assignment"),
+    "W224": ("warning", "Ineffective empty expression"),
+    "W225": ("warning", "Macro redefined"),
+    "W226": ("warning", "Undefined or unresolved macro use"),
+    "W227": ("warning", "Malformed conditional preprocessor nesting"),
+    "W228": ("warning", "Unsupported or malformed preprocessor directive"),
     "W301": ("warning", "Trailing whitespace"),
     "W302": ("warning", "Tab character in source indentation"),
 }

@@ -20,6 +20,8 @@ from .style import check_style
 from .sqf_contracts import check_sqf_contracts
 from .tokenizer import tokenize
 from .undefined import check_undefined
+from .value_flow import check_value_flow
+from .preprocessor_checks import check_preprocessor
 
 # Extensions treated as config files for symbol collection.
 _CONFIG_EXTENSIONS = (".hpp", ".ext", ".cpp", ".cfg")
@@ -65,6 +67,7 @@ def lint_text(
     tokens = tokenize(source)
 
     diags: list[Diagnostic] = []
+    diags.extend(check_preprocessor(source))
     diags.extend(check_syntax(tokens))
     from .ast import parse
     tree = parse(tokens)
@@ -79,6 +82,7 @@ def lint_text(
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
     diags.extend(check_sqf_contracts(tokens))
+    diags.extend(check_value_flow(tokens))
     if style:
         diags.extend(check_style(source))
 
@@ -116,6 +120,7 @@ def lint_file(
     tree = parse(tokens)
 
     diags: list[Diagnostic] = []
+    diags.extend(check_preprocessor(source))
     normalized_path = os.path.normcase(os.path.abspath(path))
     for cycle_file, cycle_line, cycle_target in find_include_cycles(path):
         if os.path.normcase(os.path.abspath(cycle_file)) == normalized_path:
@@ -143,6 +148,7 @@ def lint_file(
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
     diags.extend(check_sqf_contracts(source_tokens))
+    diags.extend(check_value_flow(source_tokens))
     if style:
         diags.extend(check_style(source))
 
