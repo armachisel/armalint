@@ -109,7 +109,9 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                 argument = _next(tokens, i)
                 # Names may be computed dynamically (usually a local string).
                 # Literal numbers and booleans are the unambiguous misuse cases.
-                valid = argument < len(tokens) and tokens[argument].type in ("string", "lbracket", "local", "ident")
+                # Parenthesized expressions such as ``(_this select 0)`` are
+                # valid dynamic variable names when supplied by a caller.
+                valid = argument < len(tokens) and tokens[argument].type in ("string", "lbracket", "local", "ident", "lparen")
                 if not valid:
                     diagnostics.append(_diag(_NAMESPACE, f"{tokens[previous].value} {name} expects a name or [name, value] array", token))
 
@@ -167,6 +169,7 @@ if __name__ == "__main__":
     assert any(d.code == _PARAMS for d in check_sqf_contracts_text('params "_x";'))
     assert any(d.code == _NAMESPACE for d in check_sqf_contracts_text('missionNamespace setVariable 1;'))
     assert check_sqf_contracts_text('missionNamespace getVariable _name;') == []
+    assert check_sqf_contracts_text('uiNamespace getVariable (_this select 0);') == []
     assert check_sqf_contracts_text('player addEventHandler ["Killed", { hint "x"; }]; player removeEventHandler ["Killed", 0];') == []
     assert any(d.code == _EVENT for d in check_sqf_contracts_text('player removeEventHandler ["Killed", 0];'))
     assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, "yes"];'))

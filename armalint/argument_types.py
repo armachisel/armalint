@@ -274,6 +274,10 @@ def _load_generated_command_signatures() -> None:
 
 
 _load_generated_command_signatures()
+# The metadata mirror records ``toArray``'s scalar conversion variant as a
+# numeric return in some versions.  SQF's command used here returns an Array;
+# keep the stable engine type explicit so array subtraction remains typed.
+_COMMAND_RETURN_TYPES["toarray"] = "Array"
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "controlnull": "Control", "displaynull": "Display", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
@@ -512,6 +516,24 @@ def _infer_expression(
                 rhs += 1
             if _infer_operand(tokens, rhs, variables) == "Number":
                 return "Number"
+    # SQF uses ``array - array`` for array subtraction.  Treat it as an
+    # Array-producing operation so wrappers such as
+    # ``toString (toArray _text - [34])`` do not inherit numeric arithmetic.
+    if direct == "Array":
+        op = start + 1
+        # Skip the operand of a unary producer such as ``toArray _text``.
+        # The subtraction operator follows that operand, rather than sitting
+        # immediately after the command name.
+        while op < len(tokens) and tokens[op].type not in _TRIVIA and tokens[op].type != "operator":
+            op += 1
+        while op < len(tokens) and tokens[op].type in _TRIVIA:
+            op += 1
+        if op < len(tokens) and tokens[op].type == "operator" and tokens[op].value == "-":
+            rhs = op + 1
+            while rhs < len(tokens) and tokens[rhs].type in _TRIVIA:
+                rhs += 1
+            if _infer_operand(tokens, rhs, variables) == "Array":
+                return "Array"
     # Comparisons and boolean composition always produce Boolean values when
     # their operands are statically understood. This is useful for assignments
     # later consumed by condition-oriented commands or guards.
@@ -1116,6 +1138,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_n = { true } count []; if (_n > 0) then {};') == []
     assert check_argument_types_text('_d = findDisplay 46; _c = _d displayCtrl 1; isNull _c;') == []
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
+    assert check_argument_types_text('private _text = "abc"; private _clean = toString (toArray _text - [34]);') == []
     assert check_argument_types_text(
         'private _remaining = +ALT_currentEnemyPositions; while { (count _remaining) > 0 } do {};'
     ) == []
