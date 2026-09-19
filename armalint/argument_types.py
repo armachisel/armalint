@@ -288,6 +288,14 @@ _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array
 _BINARY_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
 _BINARY_SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
 _SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
+for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
+    if _handle_command in _SIGNATURES:
+        accepted, label = _SIGNATURES[_handle_command]
+        _SIGNATURES[_handle_command] = (accepted | frozenset(("Group",)), label + " or Group")
+_SIGNATURES["units"] = (frozenset(("Group", "Object")), "Group or Object")
+if "leavevehicle" in _BINARY_SIGNATURES:
+    accepted, label = _BINARY_SIGNATURES["leavevehicle"]
+    _BINARY_SIGNATURES["leavevehicle"] = (accepted | frozenset(("Group",)), label + " or Group")
 _RETURN_TYPES["bis_fnc_itemtype"] = "Array"
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "controlnull": "Control", "displaynull": "Display", "grpnull": "Group",
@@ -671,6 +679,13 @@ def _simple_item_type(item: list[Token], variables: dict[str, str]) -> str | Non
     return _infer_operand(visible, 0, variables)
 
 
+def _units_loop_element(tokens: list[Token], index: int) -> bool:
+    """Whether a local operand is inside a ``forEach units <group>`` body."""
+    start = max(0, index - 80)
+    window = [t.value.lower() for t in tokens[start:index] if t.type not in _TRIVIA]
+    return "foreach" in window and "units" in window
+
+
 def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None:
     """Infer locals from ``params [[name, default, [validators]], ...]``."""
     for i, token in enumerate(tokens):
@@ -960,6 +975,8 @@ def check_argument_types(
         if tokens[j].type == "local" and tokens[j].value.lower() == "_x":
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if actual == "Group" and j < len(tokens) and tokens[j].type == "local" and _units_loop_element(tokens, j):
+            actual = "Object"
         accepted, expected = rule
         if actual is not None and actual != "Anything" and not all(member in accepted for member in actual.split("|")):
             if (tok.value.lower() in ("ctrldelete", "ctrlshown", "ctrlposition") and actual == "Object"
