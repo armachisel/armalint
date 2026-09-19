@@ -165,7 +165,16 @@ def _preprocess_lines(
     if source == "":
         return lines, line_map
 
+    macro_continuation = False
     for orig_line, line in enumerate(source.split("\n"), start=1):
+        if macro_continuation:
+            # The continuation belongs to a ``#define`` body, not to the SQF
+            # program. Keep its physical line in the map while removing the
+            # macro text from downstream syntax and semantic analysis.
+            macro_continuation = line.rstrip().endswith("\\")
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
         if _ENDIF_RE.match(line):
             if _conditions:
                 _conditions.pop()
@@ -224,6 +233,7 @@ def _preprocess_lines(
         match = _DEFINE_RE.match(line)
         if match and all(_conditions):
             _defines[match.group(1).lower()] = match.group(2) or "1"
+            macro_continuation = line.rstrip().endswith("\\")
             lines.append("")
             line_map.append((filename, orig_line))
             continue

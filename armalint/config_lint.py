@@ -42,12 +42,31 @@ _TRIVIA = frozenset(("comment", "preprocessor"))
 _LOCAL_MARKER = re.compile(r"_\w")
 
 
+def _macro_lines(source: str) -> set[int]:
+    """Return physical lines belonging to preprocessor macro definitions."""
+    result: set[int] = set()
+    continuation = False
+    for line_number, line in enumerate(source.split("\n"), 1):
+        stripped = line.lstrip()
+        if continuation:
+            result.add(line_number)
+            continuation = line.rstrip().endswith("\\")
+            continue
+        if stripped.startswith("#define") and (len(stripped) == 7 or stripped[7].isspace()):
+            result.add(line_number)
+            continuation = line.rstrip().endswith("\\")
+    return result
+
+
 def check_config_structure(source: str, filename: str = "") -> list[Diagnostic]:
     """Check balanced config classes and duplicate properties in one class."""
     tokens = tokenize(source)
     diagnostics: list[Diagnostic] = []
     stack: list[tuple[Token, set[str]]] = []
+    macro_lines = _macro_lines(source)
     for i, token in enumerate(tokens):
+        if token.line in macro_lines:
+            continue
         if token.type == "lbrace":
             stack.append((token, set()))
         elif token.type == "rbrace":
