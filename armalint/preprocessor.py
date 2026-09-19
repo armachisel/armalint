@@ -273,6 +273,13 @@ def preprocess(
     Returns ``(combined_source, line_map)`` where ``line_map[i]`` is the
     ``(file, orig_line)`` (1-based) of combined line ``i + 1``.
     """
+    # Most SQF files contain no preprocessor directives. Avoid the regex,
+    # macro, and include machinery in that common case while preserving the
+    # exact line mapping produced by the general path (including a trailing
+    # empty line from ``str.split("\\n")``).
+    if "#" not in source:
+        lines = source.split("\n")
+        return source, [(filename, line) for line in range(1, len(lines) + 1)]
     lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, {}, [])
     return "\n".join(lines), line_map
 
