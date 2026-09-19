@@ -24,6 +24,10 @@ The most useful options are:
 | `--check-suppressions` | Report inline suppressions without reasons or matching diagnostics. |
 | `--baseline PATH` | Suppress findings whose fingerprints are recorded in a JSON baseline. |
 | `--style` | Enable optional style diagnostics (`W301`/`W302`). |
+| `--fix` | Apply safe style fixes for trailing whitespace and tabs. |
+| `--diff [REF]` | Report only findings on changed lines relative to `REF` (default `HEAD`). |
+| `--fail-on LEVEL` | Set the failure threshold: `error`, `warning`, `info`, or `none`. |
+| `--github-actions` | Emit GitHub Actions annotation commands in text output. |
 | `--file PATH` | Lint one specific file; repeat the option for several files. |
 | `--snippet SOURCE` | Lint inline SQF and label diagnostics as `<snippet>`. |
 
@@ -38,6 +42,11 @@ single incremental pass, or set `--interval` to control polling frequency.
 It supports `initialize`, full-text `didOpen`/`didChange`, `didClose`, and
 diagnostic publication. Configure it as an editor's stdio language server with
 the command `armalint-lsp`.
+
+`--fix` is intentionally limited to whitespace changes. `--diff` is useful in
+pull-request jobs where existing findings are already tracked separately. For
+GitHub Actions, combine `--github-actions` with `--fail-on warning` to annotate
+findings and fail when warnings or errors are present.
 | `--mission PATH` | Use a mission's symbols and configuration while linting a snippet or file. |
 | `--ignore GLOB` | Skip matching files. Repeat it when needed. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run, such as `W206`. Repeatable. |

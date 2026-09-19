@@ -64,6 +64,10 @@ armalint-lsp
 | `--check-suppressions` | Report unjustified or unused inline suppressions.              |
 | `--baseline PATH` | Suppress diagnostics recorded in a JSON baseline.                 |
 | `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
+| `--fix`         | Apply safe style fixes (trailing whitespace and tabs) in place.      |
+| `--diff [REF]`  | Report only findings on lines changed from `REF` (default `HEAD`).  |
+| `--fail-on LEVEL` | Fail on `error`, `warning`, `info`, or `none` (default `error`).   |
+| `--github-actions` | Emit GitHub Actions workflow-command annotations.                |
 | `--ignore GLOB` | Skip files matching a `fnmatch` glob (relative to each directory argument). Repeatable. |
 | `--ignore-rule RULE` | Suppress a diagnostic rule for the whole run. Repeatable. |
 
