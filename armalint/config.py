@@ -235,6 +235,16 @@ def extract_external_locals(config: dict) -> set[str]:
     }
 
 
+def extract_dependencies(config: dict) -> set[str]:
+    """Read declared addon dependencies used to resolve external macros/APIs."""
+    raw = config.get("dependencies", config.get("requiredAddons", []))
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return set()
+    return {item.strip().lower() for item in raw if isinstance(item, str) and item.strip()}
+
+
 def extract_rule_severities(config: dict) -> dict[str, str]:
     """Read optional per-rule severities (``error``, ``warning``, ``info``, ``off``)."""
     raw = config.get("severity", config.get("ruleSeverity"))
@@ -286,11 +296,11 @@ def validate_config(config: object) -> list[str]:
     if not isinstance(config, dict):
         return ["configuration root must be a JSON object"]
     allowed = {
-        "mods", "functionTags", "functionTypes", "functionReturns", "ignoreRules", "externalLocals", "externalLocal",
+        "mods", "dependencies", "requiredAddons", "functionTags", "functionTypes", "functionReturns", "ignoreRules", "externalLocals", "externalLocal",
         "ignore", "ignorePatterns", "severity", "ruleSeverity", "presets", "preset", "plugins",
     }
     errors = [f"unknown configuration key: {key}" for key in config if key not in allowed]
-    list_keys = ("functionTags", "ignoreRules", "externalLocals", "externalLocal", "ignore", "ignorePatterns", "presets", "plugins")
+    list_keys = ("dependencies", "requiredAddons", "functionTags", "ignoreRules", "externalLocals", "externalLocal", "ignore", "ignorePatterns", "presets", "plugins")
     for key in list_keys:
         if key in config and not isinstance(config[key], (list, tuple, str)):
             errors.append(f"{key} must be a string or array")
