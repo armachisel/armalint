@@ -867,8 +867,8 @@ def check_argument_types(
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
         accepted, expected = rule
         if actual is not None and actual != "Anything" and not all(member in accepted for member in actual.split("|")):
-            if (tok.value.lower() == "ctrldelete" and actual == "Object"
-                    and any(t.value.lower() == "controlnull" for t in tokens[:i])):
+            if (tok.value.lower() in ("ctrldelete", "ctrlshown", "ctrlposition") and actual == "Object"
+                    and any(t.value.lower() in ("controlnull", "ctrlcreate", "displayctrl") for t in tokens[:i])):
                 continue
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 

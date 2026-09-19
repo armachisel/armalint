@@ -13,7 +13,7 @@ _TRIVIA = frozenset(("comment", "preprocessor"))
 
 def check_value_flow(tokens: list[Token]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    assigned: dict[str, tuple[Token, int]] = {}
+    assigned: dict[str, tuple[Token, int, bool]] = {}
     read_since: set[str] = set()
     literal_assignments: dict[str, tuple[str, Token, int]] = {}
     depth = 0
@@ -33,11 +33,13 @@ def check_value_flow(tokens: list[Token]) -> list[Diagnostic]:
                         rhs_reads_name = True
                         break
                     rhs_scan += 1
-                if (not declaration and not rhs_reads_name
+                previous_declaration = assigned.get(name, (None, 0, False))[2]
+                rhs_starts_code = j + 1 < len(tokens) and tokens[j + 1].type == "lbrace"
+                if (not declaration and not previous_declaration and not rhs_starts_code and not rhs_reads_name
                         and name in assigned and assigned[name][1] == epoch
                         and name not in read_since):
                     diagnostics.append(Diagnostic(Severity.WARNING, _OVERWRITE, f"value assigned to {token.value} is overwritten before it is read", token.line, token.column))
-                assigned[name] = (token, epoch)
+                assigned[name] = (token, epoch, declaration)
                 read_since.discard(name)
                 rhs = j + 1
                 while rhs < len(tokens) and tokens[rhs].type in _TRIVIA:
@@ -54,16 +56,6 @@ def check_value_flow(tokens: list[Token]) -> list[Diagnostic]:
         if token.type == "lbrace":
             depth += 1
             epoch += 1
-            j = i + 1
-            while j < len(tokens) and tokens[j].type in _TRIVIA:
-                j += 1
-            if j < len(tokens) and tokens[j].type == "rbrace":
-                previous = i - 1
-                while previous >= 0 and tokens[previous].type in _TRIVIA:
-                    previous -= 1
-                if previous >= 0 and tokens[previous].value.lower() in ("then", "else", "do", "exitwith", "spawn", "call", "foreach"):
-                    continue
-                diagnostics.append(Diagnostic(Severity.WARNING, _EMPTY, "empty code block has no effect", token.line, token.column))
         elif token.type == "rbrace":
             depth = max(0, depth - 1)
             epoch += 1
