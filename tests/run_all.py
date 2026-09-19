@@ -229,6 +229,45 @@ def main() -> int:
         if missing:
             failures.append(f"buggy.sqf: missing expected codes {missing} in JSON output")
 
+    print("--- CLI: SARIF fingerprints and JSON baseline ---")
+    total += 1
+    sarif_proc = run_cli(str(BUGGY_FIXTURE), "--sarif")
+    try:
+        sarif_payload = json.loads(sarif_proc.stdout)
+        sarif_run = sarif_payload["runs"][0]
+        sarif_results = sarif_run["results"]
+        sarif_ok = (
+            sarif_proc.returncode == 1
+            and sarif_payload.get("version") == "2.1.0"
+            and sarif_run.get("automationDetails", {}).get("id") == "armalint/default"
+            and bool(sarif_results)
+            and all(result.get("partialFingerprints", {}).get("armalint/v1") for result in sarif_results)
+            and all("helpUri" in rule for rule in sarif_run["tool"]["driver"].get("rules", []))
+            and all(result.get("level") in {"error", "warning", "note"} for result in sarif_results)
+        )
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        sarif_ok = False
+        sarif_results = []
+    baseline_ok = False
+    if buggy_json.stdout.strip():
+        try:
+            baseline_entry = json.loads(buggy_json.stdout)[0]
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as baseline_file:
+                json.dump({"diagnostics": [baseline_entry]}, baseline_file)
+                baseline_path = baseline_file.name
+            baseline_proc = run_cli(str(BUGGY_FIXTURE), "--baseline", baseline_path, "--json")
+            baseline_payload = json.loads(baseline_proc.stdout or "[]")
+            baseline_ok = len(baseline_payload) == max(0, len(json.loads(buggy_json.stdout)) - 1)
+            Path(baseline_path).unlink(missing_ok=True)
+        except (OSError, json.JSONDecodeError, IndexError, TypeError):
+            baseline_ok = False
+    sarif_baseline_ok = sarif_ok and baseline_ok
+    print(f"[{'PASS' if sarif_baseline_ok else 'FAIL'}] SARIF results={len(sarif_results)} baseline={baseline_ok}")
+    if sarif_baseline_ok:
+        passed += 1
+    else:
+        failures.append("SARIF or baseline integration did not produce stable CI metadata")
+
     print("--- CLI: mission fixture (expect symbol index suppresses ALT_fnc_*) ---")
     total += 1
     mission = run_cli(str(MISSION_FIXTURE), "--json")

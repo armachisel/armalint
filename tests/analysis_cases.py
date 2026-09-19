@@ -11,7 +11,7 @@ from armalint.ast import BinaryExpression, Block, CallExpression, CommandExpress
 from armalint.tokenizer import tokenize
 from armalint.control_flow import check_control_flow_text
 from armalint.definitions import check_definitions_text
-from armalint.suppression import filter_suppressed
+from armalint.suppression import filter_suppressed, check_suppression_quality
 from armalint.syntax import check_syntax
 from armalint.update_commands import _metadata_return_type, _parse_command_xml
 from armalint.undefined import check_undefined_text
@@ -460,6 +460,13 @@ def _suppression_multi_code() -> bool:
     return filter_suppressed(diagnostics, source) == []
 
 
+def _suppression_quality() -> bool:
+    source = '// armalint: disable-next-line W206 -- intentional fallback\nif (true) then {};\n// armalint: disable-line W101\nhint "ok";\n'
+    diagnostics = [Diagnostic(Severity.WARNING, "W206", "constant", 2, 1)]
+    quality = check_suppression_quality(source, diagnostics, True)
+    return any(item.code == "W229" for item in quality) and any(item.code == "W230" for item in quality)
+
+
 CASES = (
     ("AST waitUntil node", _ast_wait_until),
     ("AST try/catch node", _ast_try_catch),
@@ -536,6 +543,7 @@ CASES = (
     ("selected fields stay unknown", _types_selected_fields_stay_unknown),
     ("nested type scope isolated", _types_nested_scope_isolated),
     ("multi-code suppression", _suppression_multi_code),
+    ("suppression quality", _suppression_quality),
 )
 
 

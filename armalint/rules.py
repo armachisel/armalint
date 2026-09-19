@@ -42,6 +42,8 @@ RULES = {
     "W226": ("warning", "Undefined or unresolved macro use"),
     "W227": ("warning", "Malformed conditional preprocessor nesting"),
     "W228": ("warning", "Unsupported or malformed preprocessor directive"),
+    "W229": ("warning", "Suppression is missing a justification"),
+    "W230": ("info", "Suppression does not match a diagnostic"),
     "W301": ("warning", "Trailing whitespace"),
     "W302": ("warning", "Tab character in source indentation"),
 }
@@ -49,6 +51,7 @@ RULES = {
 
 def metadata() -> list[dict[str, str]]:
     return [
-        {"id": code, "name": message, "defaultSeverity": severity}
+        {"id": code, "name": message, "defaultSeverity": severity,
+         "helpUri": f"docs/rules.md#rule-{code.lower()}"}
         for code, (severity, message) in sorted(RULES.items())
     ]

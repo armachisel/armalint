@@ -18,7 +18,9 @@ The most useful options are:
 | Option | What it does |
 | --- | --- |
 | `--json` | Print one JSON array of diagnostics. |
-| `--sarif` | Print SARIF 2.1.0 results with stable rule metadata for CI and code scanning. |
+| `--sarif` | Print SARIF 2.1.0 results with stable fingerprints, rule metadata, and help links. |
+| `--check-suppressions` | Report inline suppressions without reasons or matching diagnostics. |
+| `--baseline PATH` | Suppress findings whose fingerprints are recorded in a JSON baseline. |
 | `--style` | Enable optional style diagnostics (`W301`/`W302`). |
 | `--file PATH` | Lint one specific file; repeat the option for several files. |
 | `--snippet SOURCE` | Lint inline SQF and label diagnostics as `<snippet>`. |

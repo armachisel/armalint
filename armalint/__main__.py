@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -140,6 +141,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--sarif", action="store_true", help="emit SARIF 2.1.0 diagnostics")
     parser.add_argument("--style", action="store_true", help="enable optional source style checks")
+    parser.add_argument("--check-suppressions", action="store_true", help="report unjustified and unused inline suppressions")
+    parser.add_argument("--baseline", metavar="PATH", help="suppress diagnostics recorded in a JSON baseline file")
     parser.add_argument(
         "--ignore",
         action="append",
@@ -172,6 +175,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def _main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
+    baseline_keys: set[str] = set()
+    if args.baseline:
+        try:
+            with open(args.baseline, "r", encoding="utf-8") as fh:
+                baseline = json.load(fh)
+            entries = baseline.get("diagnostics", []) if isinstance(baseline, dict) else baseline if isinstance(baseline, list) else []
+            if isinstance(entries, list):
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        baseline_keys.add(_diagnostic_fingerprint(entry.get("code", entry.get("ruleId", "")), entry.get("file", ""), entry.get("line", entry.get("startLine", 0)), entry.get("column", entry.get("startColumn", 0)), entry.get("message", "")))
+        except (OSError, ValueError, TypeError):
+            _build_arg_parser().error("--baseline must point to a readable JSON baseline")
+
     if args.snippet is not None and (args.paths or args.files):
         _build_arg_parser().error("--snippet cannot be combined with files or directories; use --mission for context")
     if args.snippet is None and not (args.paths or args.files):
@@ -202,8 +218,13 @@ def _main(argv: list[str] | None = None) -> int:
         all_diags = lint_text(
             args.snippet, filename="<snippet>", index=context_index,
             function_signatures=context_signatures, function_return_types=context_returns,
-            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=args.style,
+            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=args.style, check_suppressions=args.check_suppressions,
         )
+        if baseline_keys:
+            all_diags = [
+                d for d in all_diags
+                if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys
+            ]
         linted_files = ["<snippet>"]
         if args.json:
             payload = [
@@ -297,7 +318,7 @@ def _main(argv: list[str] | None = None) -> int:
     for f in files:
         if _is_sqf_file(f):
             linted_files.append(f)
-            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=args.style, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
+            all_diags.extend(lint_file(f, index=index, function_signatures=function_signatures, function_return_types=function_return_types, ignored_rules=ignored_rules, rule_severities=rule_severities, style=args.style, check_suppressions=args.check_suppressions, pretokenized=token_cache.get(f), check_unused_locals_enabled=os.path.normcase(os.path.abspath(f)) not in included_files))
         elif _is_config_file(f):
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
@@ -315,16 +336,21 @@ def _main(argv: list[str] | None = None) -> int:
             linted_files.append(f)
             all_diags.extend(check_mission_sqm(source, f))
 
+    if baseline_keys:
+        all_diags = [d for d in all_diags if _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message) not in baseline_keys]
+
     if args.sarif:
         payload = {
             "version": "2.1.0",
             "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
             "runs": [{
-                "tool": {"driver": {"name": "armalint", "version": __version__, "rules": rule_metadata()}},
+                "automationDetails": {"id": "armalint/default"},
+                "tool": {"driver": {"name": "armalint", "version": __version__, "informationUri": "docs/", "rules": rule_metadata()}},
                 "results": [{
                     "ruleId": d.code,
-                    "level": d.severity.value,
+                    "level": {"error": "error", "warning": "warning", "info": "note"}.get(d.severity.value, "warning"),
                     "message": {"text": d.message},
+                    "partialFingerprints": {"armalint/v1": _diagnostic_fingerprint(d.code, d.file, d.line, d.column, d.message)},
                     "locations": [{"physicalLocation": {"artifactLocation": {"uri": d.file}, "region": {"startLine": d.line, "startColumn": d.column}}}],
                 } for d in all_diags],
             }],
@@ -350,6 +376,12 @@ def _main(argv: list[str] | None = None) -> int:
 
     has_error = any(d.severity is Severity.ERROR for d in all_diags)
     return 1 if has_error else 0
+
+
+def _diagnostic_fingerprint(code: object, file: object, line: object, column: object, message: object) -> str:
+    """Stable identity shared by SARIF output and JSON baselines."""
+    raw = "|".join(str(value or "") for value in (code, file, line, column, message))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
 if __name__ == "__main__":

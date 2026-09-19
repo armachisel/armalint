@@ -72,6 +72,41 @@ def apply_rule_severities(diagnostics: list[Diagnostic], severities: dict[str, s
     return result
 
 
+def check_suppression_quality(source: str, diagnostics: list[Diagnostic], require_justification: bool = False) -> list[Diagnostic]:
+    """Report uncommented or unused inline suppressions when requested."""
+    findings: list[Diagnostic] = []
+    lines = source.splitlines()
+    directives: list[tuple[int, str, set[str], str]] = []
+    for line_no, line in enumerate(lines, 1):
+        match = _DIRECTIVE.search(line)
+        if not match:
+            continue
+        action, raw = match.groups()
+        codes = _codes(raw)
+        reason = re.sub(r"\b(?:E|W)\d{3}\b", "", raw, flags=re.IGNORECASE).strip(" -:;")
+        directives.append((line_no, action.lower(), codes or {"*"}, reason))
+        if require_justification and not reason:
+            findings.append(Diagnostic(Severity.WARNING, "W229", "suppression requires a justification comment", line_no, 1))
+    for index, (line_no, action, codes, _reason) in enumerate(directives):
+        if action == "enable":
+            continue
+        if action == "disable-next-line":
+            target_lines = {line_no + 1}
+        elif action == "disable-line":
+            target_lines = {line_no}
+        else:
+            end = len(lines) + 1
+            for later_line, later_action, later_codes, _ in directives[index + 1:]:
+                if later_action == "enable" and ("*" in later_codes or "*" in codes or codes & later_codes):
+                    end = later_line
+                    break
+            target_lines = set(range(line_no + 1, end))
+        used = any(d.line in target_lines and ("*" in codes or d.code.upper() in codes) for d in diagnostics)
+        if not used:
+            findings.append(Diagnostic(Severity.INFO, "W230", "suppression does not match any diagnostic", line_no, 1))
+    return findings
+
+
 if __name__ == "__main__":
     from .diagnostic import Severity
 
@@ -93,4 +128,7 @@ if __name__ == "__main__":
     adjusted = apply_rule_severities(severity_diagnostics, {"W206": "error", "W101": "off"})
     assert len(adjusted) == 1
     assert adjusted[0].severity is Severity.ERROR
+    quality = check_suppression_quality("// armalint: disable-next-line W206\nif (true) then {};\n// armalint: disable-line W102 -- generated\nhint \"x\";\n", diagnostics, True)
+    assert any(item.code == "W229" for item in quality)
+    assert any(item.code == "W230" for item in quality)
     print("suppression self-test passed")

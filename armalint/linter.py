@@ -14,7 +14,7 @@ from .functions import check_functions
 from .locals import check_unused_locals
 from .preprocessor import find_include_cycles, find_include_guard_issues, preprocess
 from .symbols import SymbolIndex
-from .suppression import apply_rule_severities, filter_suppressed
+from .suppression import apply_rule_severities, filter_suppressed, check_suppression_quality
 from .syntax import check_syntax
 from .style import check_style
 from .sqf_contracts import check_sqf_contracts
@@ -54,6 +54,7 @@ def lint_text(
     ignored_rules: set[str] | frozenset[str] | None = None,
     rule_severities: dict[str, str] | None = None,
     style: bool = False,
+    check_suppressions: bool = False,
 ) -> list[Diagnostic]:
     """Run all analyzers over ``source`` and return their diagnostics.
 
@@ -89,7 +90,10 @@ def lint_text(
     for d in diags:
         d.file = filename
 
-    return _deduplicate(filter_suppressed(apply_rule_severities(diags, rule_severities), source, ignored_rules))
+    adjusted = apply_rule_severities(diags, rule_severities)
+    if check_suppressions:
+        adjusted.extend(check_suppression_quality(source, adjusted, True))
+    return _deduplicate(filter_suppressed(adjusted, source, ignored_rules))
 
 
 def lint_file(
@@ -101,6 +105,7 @@ def lint_file(
     check_unused_locals_enabled: bool = True,
     rule_severities: dict[str, str] | None = None,
     style: bool = False,
+    check_suppressions: bool = False,
 ) -> list[Diagnostic]:
     """Read the UTF-8 file at ``path`` and lint its contents.
 
@@ -160,7 +165,10 @@ def lint_file(
         else:
             d.file = path
 
-    return _deduplicate(filter_suppressed(apply_rule_severities(diags, rule_severities), source, ignored_rules))
+    adjusted = apply_rule_severities(diags, rule_severities)
+    if check_suppressions:
+        adjusted.extend(check_suppression_quality(source, adjusted, True))
+    return _deduplicate(filter_suppressed(adjusted, source, ignored_rules))
 
 
 def build_symbol_index(file_paths: list[str], token_cache: dict[str, list] | None = None) -> SymbolIndex:
