@@ -155,7 +155,7 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
 
         if name in ("publicvariable", "publicvariableserver", "publicvariableclient"):
             argument = _next(tokens, i)
-            if argument >= len(tokens) or tokens[argument].type != "string":
+            if argument >= len(tokens) or tokens[argument].type not in ("string", "local", "ident", "lparen"):
                 diagnostics.append(_diag(_PUBLIC, f"{token.value} expects the name of a public variable as a String", token))
     return diagnostics
 
@@ -176,4 +176,5 @@ if __name__ == "__main__":
     assert any(d.code == _EVENT for d in check_sqf_contracts_text('player removeEventHandler ["Killed", 0];'))
     assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, 1];'))
     assert any(d.code == _PUBLIC for d in check_sqf_contracts_text('publicVariable 42;'))
+    assert check_sqf_contracts_text('publicVariable ("ready_" + _suffix);') == []
     print("sqf_contracts self-test passed")

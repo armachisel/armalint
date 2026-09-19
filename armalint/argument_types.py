@@ -46,7 +46,8 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "acos": (frozenset(("Number",)), "Number"),
     "atan": (frozenset(("Number",)), "Number"),
     "selectrandom": (frozenset(("Array",)), "Array"),
-    "count": (frozenset(("String", "Array", "Config", "HashMap")), "String, Array, Config or HashMap"),
+    "count": (frozenset(("String", "Array", "Config", "HashMap", "Code")), "String, Array, Config, HashMap or Code"),
+    "isnil": (frozenset(("String", "Code")), "String or Code"),
     "getroadinfo": (frozenset(("Object",)), "Object"),
     "alive": (frozenset(("Object",)), "Object"),
     "canmove": (frozenset(("Object",)), "Object"),
@@ -285,6 +286,8 @@ _SIGNATURES["side"] = (frozenset(("Object", "Group", "Location")), "Object, Grou
 _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array")
 _BINARY_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
 _BINARY_SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
+_SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
+_RETURN_TYPES["bis_fnc_itemtype"] = "Array"
 _KNOWN_VARIABLE_TYPES = {
     "player": "Object", "objnull": "Object", "controlnull": "Control", "displaynull": "Display", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
@@ -373,7 +376,24 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
     if tok.type == "lbrace":
         return "Code"
     if tok.type == "local":
-        return variables.get(tok.value.lower())
+        inferred = variables.get(tok.value.lower())
+        if inferred == "Array":
+            # Chained hash indexing (``_records#0#1``) selects a field from a
+            # nested record.  The common SQF shape is an array of records
+            # whose second field is an engine handle; retain that useful fact
+            # for commands such as deleteVehicle without changing plain array
+            # indexing semantics.
+            hashes = 0
+            cursor = i + 1
+            while cursor < len(tokens) and hashes < 2:
+                if tokens[cursor].value == "#":
+                    hashes += 1
+                elif tokens[cursor].type not in _TRIVIA and tokens[cursor].type not in ("number",):
+                    break
+                cursor += 1
+            if hashes >= 2:
+                return "Object"
+        return inferred
     if tok.type == "keyword" and tok.value.lower() in ("true", "false"):
         return "Boolean"
     if tok.type in ("ident", "keyword"):
@@ -386,6 +406,17 @@ def _infer_expression(
     function_return_types: dict[str, str] | None = None,
 ) -> str | None:
     """Infer a few common composed expressions used in assignments."""
+    # Collection producers remain arrays when filtered with ``select``.  Do
+    # not apply the element type of a producer (for example magazines ->
+    # String) to the container variable itself.
+    rhs_end = start
+    while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
+        rhs_end += 1
+    if (start < len(tokens) and tokens[start].value.lower() in _ARRAY_ELEMENT_TYPES
+            and any(t.value.lower() == "select" for t in tokens[start + 1:rhs_end])):
+        return "Array"
+    if any(t.value.lower() in ("createvehicle", "createvehiclelocal") for t in tokens[start:rhs_end]):
+        return "Object"
     # A few common command chains have an unambiguous grammar.  Keep this
     # deliberately narrow: scanning every command in a statement would make
     # an earlier producer appear to have the type of a later, unrelated call.
@@ -422,6 +453,19 @@ def _infer_expression(
         # unary - is numeric.
         return (_infer_operand(tokens, start + 1, variables)
                 if tokens[start].value == "+" else "Number")
+    if start < len(tokens) and tokens[start].type == "local":
+        call = start + 1
+        while call < len(tokens) and tokens[call].type in _TRIVIA:
+            call += 1
+        if call < len(tokens) and tokens[call].value.lower() == "call":
+            target = call + 1
+            while target < len(tokens) and tokens[target].type in _TRIVIA:
+                target += 1
+            if target < len(tokens) and tokens[target].type == "ident":
+                return (function_return_types or {}).get(
+                    tokens[target].value.lower(),
+                    _RETURN_TYPES.get(tokens[target].value.lower()),
+                )
     if start < len(tokens) and tokens[start].value.lower() == "selectrandom":
         operand = start + 1
         if operand < len(tokens) and tokens[operand].type == "lbracket":
@@ -812,6 +856,7 @@ def check_argument_types(
     """Check built-in unary arguments and configured function argument types."""
     diags: list[Diagnostic] = []
     variables: dict[str, str] = {}
+    code_locals: set[str] = set()
     element_types: dict[str, str] = {}
     ast_nodes = ast_nodes if ast_nodes is not None else parse(tokens).statements
     _collect_param_types(tokens, variables)
@@ -823,6 +868,8 @@ def check_argument_types(
             continue
         inferred = _infer_expression(tokens, i + 2, variables, function_return_types)
         key = tok.value.lower()
+        if i + 2 < len(tokens) and tokens[i + 2].type == "lbrace":
+            code_locals.add(key)
         if inferred is None:
             variables.pop(key, None)
         else:
@@ -846,9 +893,6 @@ def check_argument_types(
                 break
             rhs_end += 1
         producer_names = {t.value.lower() for t in tokens[i + 2:rhs_end] if t.type in ("ident", "keyword")}
-        for producer, element_type in _ARRAY_ELEMENT_TYPES.items():
-            if producer in producer_names:
-                element_types[key] = element_type
         if i + 4 < len(tokens) and tokens[i + 2].type == "local" and tokens[i + 3].value.lower() == "select" and tokens[i + 4].type == "number":
             if tokens[i + 2].value.lower() in element_types:
                 variables[key] = element_types[tokens[i + 2].value.lower()]
@@ -884,6 +928,15 @@ def check_argument_types(
         rule = _SIGNATURES.get(tok.value.lower())
         if rule is None:
             continue
+        # ``{ ... } count ARRAY`` is SQF's filter form.  The code block is
+        # the left operand, so the array/group on the right must not be
+        # checked against count's unary container contract.
+        if tok.value.lower() == "count":
+            previous = i - 1
+            while previous >= 0 and tokens[previous].type in _TRIVIA:
+                previous -= 1
+            if previous >= 0 and tokens[previous].type == "rbrace":
+                continue
         j = i + 1
         while j < len(tokens) and tokens[j].type in _TRIVIA:
             j += 1
@@ -930,7 +983,7 @@ def check_argument_types(
             j += 1
         if j < len(tokens) and tokens[j].type == "local":
             actual = variables.get(tokens[j].value.lower())
-            if actual and actual not in ("Code", "String"):
+            if actual and actual not in ("Code", "String") and tokens[j].value.lower() not in code_locals:
                 diags.append(Diagnostic(
                     Severity.WARNING, _CALL_TARGET_CODE,
                     f"{tok.value} expects Code or String, got {actual}",
@@ -998,6 +1051,16 @@ def check_argument_types(
         while right < len(tokens) and tokens[right].type in _TRIVIA: right += 1
         actual_left = _infer_operand(tokens, left, variables) if left >= 0 else None
         actual_right = _infer_operand(tokens, right, variables) if right < len(tokens) else None
+        # In ``array select 0 == value`` the immediate token before the
+        # comparison is the numeric index, not the selected element.  The
+        # element type is producer-dependent, so leave this comparison
+        # unknown rather than reporting Number vs String.
+        if left >= 0 and tokens[left].type == "number":
+            prior = left - 1
+            while prior >= 0 and tokens[prior].type in _TRIVIA:
+                prior -= 1
+            if prior >= 0 and tokens[prior].value.lower() == "select":
+                actual_left = None
         primitive = {"Number", "String", "Boolean"}
         # Infix commands such as `find` return a number, but the immediate
         # token before the comparison is their string argument. Do not compare
@@ -1084,11 +1147,17 @@ if __name__ == "__main__":
     assert check_argument_types_text('systemChat 42;')[0].message.endswith("got Number")
     assert check_argument_types_text('uiSleep "soon";')[0].code == _CODE
     assert check_argument_types_text('count "abc";') == []
+    assert check_argument_types_text('isNil { true };') == []
+    assert check_argument_types_text('{ true } count [];') == []
     assert check_argument_types_text('count true;')[0].code == _CODE
     assert check_argument_types_text('count configFile; count createHashMap;') == []
     assert check_argument_types_text('sqrt "x";')[0].code == _CODE
     assert check_argument_types_text('toLower 42;')[0].code == _CODE
     assert check_argument_types_text('selectRandom "not an array";')[0].code == _CODE
+    assert check_argument_types_text('private _smokeMags = magazines _unit select { true }; selectRandom _smokeMags;') == []
+    assert check_argument_types_text('private _fnc_exit = { false; }; call _fnc_exit;') == []
+    assert check_argument_types_text('private _itemType = _x call BIS_fnc_itemType; _itemType select 0 == "Mine";') == []
+    assert check_argument_types_text('getPos [0, 0, 0];') == []
     assert check_argument_types_text('abs -2; toUpper "ok";') == []
     assert check_argument_types_text('parseSimpleArray "[1]"; toString [1, 2];') == []
     assert check_argument_types_text('parseSimpleArray 42;')[0].code == _CODE
