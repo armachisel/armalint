@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from .collect import collect_code_functions, collect_description_cfg_functions
 from .argument_types import check_argument_types
@@ -222,6 +223,35 @@ def build_symbol_index(
             source_cache[path] = source
         if ext in _CONFIG_EXTENSIONS:
             collect_description_cfg_functions(source, index)
+            # CBA's standard ``script_component.hpp`` defines the config tag
+            # as ``ADDON``.  When that external macro header is unavailable,
+            # the config parser quite correctly sees the literal tag
+            # ``addon``.  Recover the conventional fully-qualified tag from
+            # the addon directory so calls such as A3A_Logistics_fnc_getCargo
+            # remain discoverable in a source-tree scan.
+            if "addon" in index.tags:
+                normalized = os.path.normpath(path)
+                parts = normalized.replace("\\", "/").split("/")
+                try:
+                    addon_pos = next(i for i, part in enumerate(parts) if part.lower() == "addons")
+                    component = parts[addon_pos + 1]
+                except (StopIteration, IndexError):
+                    component = ""
+                if component and component.lower() != "addon":
+                    prefix = "A3A"
+                    for candidate in file_paths:
+                        if os.path.basename(candidate).lower() != "script_mod.hpp":
+                            continue
+                        try:
+                            with open(candidate, "r", encoding="utf-8", errors="replace") as fh:
+                                text = fh.read()
+                        except OSError:
+                            continue
+                        match = re.search(r"#define\s+PREFIX\s+([A-Za-z0-9_]+)", text)
+                        if match:
+                            prefix = match.group(1)
+                            break
+                    index.add_tag(f"{prefix}_{component}")
         else:
             tokens = tokenize(source)
             if token_cache is not None:
