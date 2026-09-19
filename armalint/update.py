@@ -42,6 +42,7 @@ from .mods import (
     discover_arma_install_dirs,
     find_game_addon,
     extract_mod_data_cached,
+    extract_mod_macros,
     load_mod_scan_cache,
     save_mod_scan_cache,
     list_addons,
@@ -49,8 +50,10 @@ from .mods import (
     resolve_workshop_mod,
     save_mod_cache,
     save_mod_type_cache,
+    save_mod_macro_cache,
     load_mod_type_cache,
     MOD_TYPE_CACHE_FILENAME,
+    MOD_MACRO_CACHE_FILENAME,
     MOD_SCAN_CACHE_FILENAME,
     MOD_METADATA_CACHE_FILENAME,
     save_mod_metadata_cache,
@@ -373,6 +376,7 @@ def run_update(args) -> int:
     # 5. Extract the exact CfgFunctions names from every resolved mod folder.
     functions: set[str] = set()
     function_types: dict[str, list[str | None]] = {}
+    macros: set[str] = set()
     scan_roots = [
         (path, "mod") for path in sorted(resolved, key=lambda p: os.path.normcase(p))
     ] + [(root, "game data") for root in game_addon_roots]
@@ -388,6 +392,7 @@ def run_update(args) -> int:
         )
         completed_addons += len(list_addons(path))
         functions |= names
+        macros |= extract_mod_macros(path)
         for name, types in types_by_name.items():
             function_types.setdefault(name, types)
     for addon in unresolved_required:
@@ -425,6 +430,7 @@ def run_update(args) -> int:
         save_mod_cache(out_path, functions)
         type_cache_path = os.path.join(os.path.dirname(out_path), MOD_TYPE_CACHE_FILENAME)
         save_mod_type_cache(type_cache_path, function_types)
+        save_mod_macro_cache(os.path.join(os.path.dirname(out_path), MOD_MACRO_CACHE_FILENAME), macros)
         save_mod_scan_cache(scan_cache_path, scan_cache)
         save_mod_metadata_cache(metadata_path, metadata)
 

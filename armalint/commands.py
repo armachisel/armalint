@@ -77,6 +77,8 @@ def check_commands(
         message = f"unknown command/function: {tok.value}"
         if tok.value.lower().startswith("cba_"):
             message += " (CBA dependency is not indexed; declare it and run update)" if index is None or not index.cba_declared else " (CBA is declared but not indexed; run update)"
+        elif tok.value.isupper() and tokens[j].type == "lparen":
+            message += " (external macro is not indexed; declare its dependency and run update)"
         diags.append(
             Diagnostic(
                 Severity.WARNING,

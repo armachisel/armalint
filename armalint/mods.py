@@ -36,6 +36,7 @@ from .symbols import SymbolIndex
 from .tokenizer import Token, tokenize
 
 MOD_TYPE_CACHE_FILENAME = "armalint_mods_types.json"
+MOD_MACRO_CACHE_FILENAME = "armalint_mods_macros.json"
 MOD_METADATA_CACHE_FILENAME = "armalint_mods_metadata.json"
 MOD_SCAN_CACHE_FILENAME = "armalint_scan_cache.json"
 MOD_SCAN_CACHE_VERSION = 3
@@ -941,6 +942,22 @@ def extract_mod_data(
     return functions, signatures
 
 
+def extract_mod_macros(mod_dir: str) -> set[str]:
+    """Extract preprocessor macro names from an installed mod's source headers."""
+    macros: set[str] = set()
+    for kind, path in list_addons(mod_dir):
+        try:
+            files = read_pbo(path) if kind == "pbo" else _directory_addon_files(path)
+        except Exception:
+            continue
+        for name, raw in files.items():
+            if not name.lower().endswith((".hpp", ".inc", ".cpp")):
+                continue
+            text = raw.decode("utf-8", "replace")
+            macros.update(re.findall(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.MULTILINE))
+    return {name.lower() for name in macros}
+
+
 def _mod_data_fingerprint(mod_dir: str) -> list[list[str | int]]:
     """Fast metadata fingerprint for addon files (no PBO contents are read)."""
     root = os.path.abspath(mod_dir)
@@ -1076,6 +1093,20 @@ def save_mod_type_cache(path: str, signatures: dict[str, list[str | None]]) -> N
     normalized = {name.lower(): types for name, types in sorted(signatures.items())}
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(normalized, fh, sort_keys=True)
+
+
+def load_mod_macro_cache(path: str) -> set[str]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return {item.lower() for item in data} if isinstance(data, list) else set()
+
+
+def save_mod_macro_cache(path: str, macros: set[str]) -> None:
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(sorted(macros), fh)
 
 
 def save_mod_metadata_cache(path: str, metadata: dict) -> None:

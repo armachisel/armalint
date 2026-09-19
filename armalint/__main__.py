@@ -30,6 +30,7 @@ from .config import (
     discover_configs,
     find_mod_cache,
     find_mod_type_cache,
+    find_mod_macro_cache,
     load_config_file,
     extract_dependencies,
 )
@@ -38,7 +39,7 @@ from .contracts import discover_external_locals
 from .diagnostic import Diagnostic, Severity, format_diagnostic
 from .linter import build_symbol_index, lint_file, lint_text
 from .mods import load_mod_cache
-from .mods import load_mod_type_cache
+from .mods import load_mod_type_cache, load_mod_macro_cache
 from .sqm import check_mission_sqm
 from .rules import metadata as rule_metadata
 from .rules import PRESETS, RULES, RULE_CATEGORIES
@@ -574,6 +575,13 @@ def _main(argv: list[str] | None = None) -> int:
     for cache_path in sorted(mod_type_cache_paths):
         for name, types in load_mod_type_cache(cache_path).items():
             function_signatures.setdefault(name, types)
+    mod_macro_cache_paths = {
+        path for path in (find_mod_macro_cache(target) for target in context_paths)
+        if path
+    }
+    for cache_path in sorted(mod_macro_cache_paths):
+        for name in load_mod_macro_cache(cache_path):
+            index.add_macro(name)
 
     # SQF scripts are linted directly. Config files (.hpp/.ext) are class-based,
     # so their structure must not be linted as SQF; only the SQF embedded in
