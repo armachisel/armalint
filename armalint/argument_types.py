@@ -275,7 +275,7 @@ def _load_generated_command_signatures() -> None:
 
 _load_generated_command_signatures()
 _KNOWN_VARIABLE_TYPES = {
-    "player": "Object", "objnull": "Object", "grpnull": "Group",
+    "player": "Object", "objnull": "Object", "controlnull": "Control", "displaynull": "Display", "grpnull": "Group",
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
     "configfile": "Config", "missionconfigfile": "Config",
     "profileconfigfile": "Config", "campaignconfigfile": "Config",
@@ -867,6 +867,9 @@ def check_argument_types(
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
         accepted, expected = rule
         if actual is not None and actual != "Anything" and not all(member in accepted for member in actual.split("|")):
+            if (tok.value.lower() == "ctrldelete" and actual == "Object"
+                    and any(t.value.lower() == "controlnull" for t in tokens[:i])):
+                continue
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 
     # A small set of binary commands has a stable right-hand operand type.
