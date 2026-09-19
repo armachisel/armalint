@@ -958,6 +958,26 @@ def extract_mod_macros(mod_dir: str) -> set[str]:
     return {name.lower() for name in macros}
 
 
+def extract_source_macros(source_root: str, include_roots: list[str] | None = None) -> set[str]:
+    """Extract macros from dependency source headers under configured roots."""
+    roots = [os.path.join(source_root, root) for root in (include_roots or [""])]
+    macros: set[str] = set()
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for current, _dirs, names in os.walk(root):
+            for name in names:
+                if not name.lower().endswith((".hpp", ".inc", ".cpp")):
+                    continue
+                try:
+                    with open(os.path.join(current, name), "r", encoding="utf-8", errors="replace") as fh:
+                        text = fh.read()
+                except OSError:
+                    continue
+                macros.update(re.findall(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.MULTILINE))
+    return {name.lower() for name in macros}
+
+
 def _mod_data_fingerprint(mod_dir: str) -> list[list[str | int]]:
     """Fast metadata fingerprint for addon files (no PBO contents are read)."""
     root = os.path.abspath(mod_dir)
