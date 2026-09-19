@@ -78,7 +78,7 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                     diagnostics.append(_diag(_PARAMS, "params contains an empty declaration", token))
                     continue
                 if first.type == "string":
-                    if not first.value.startswith("_"):
+                    if first.value and not first.value.startswith("_"):
                         diagnostics.append(_diag(_PARAMS, "params names must be local variables", first))
                     continue
                 if first.type != "lbracket":
@@ -92,10 +92,14 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                 name_token = _first(fields[0]) if fields else None
                 if name_token is None or name_token.type != "string" or not name_token.value.startswith("_"):
                     diagnostics.append(_diag(_PARAMS, "params declaration must start with a local variable name", first))
-                if len(fields) > 3:
+                if len(fields) > 4:
                     diagnostics.append(_diag(_PARAMS, "params declaration has too many fields", first))
                 if len(fields) == 3 and (_first(fields[2]) is None or _first(fields[2]).type != "lbracket"):
                     diagnostics.append(_diag(_PARAMS, "params validators must be an array", _first(fields[2]) or first))
+                if len(fields) == 4 and (_first(fields[2]) is None or _first(fields[2]).type != "lbracket"):
+                    diagnostics.append(_diag(_PARAMS, "params validators must be an array", _first(fields[2]) or first))
+                if len(fields) == 4 and (_first(fields[3]) is None or _first(fields[3]).type != "lbracket"):
+                    diagnostics.append(_diag(_PARAMS, "params constraints must be an array", _first(fields[3]) or first))
 
         if name in ("getvariable", "setvariable") and i > 0:
             previous = i - 1
@@ -103,7 +107,9 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                 previous -= 1
             if previous >= 0 and tokens[previous].value.lower() in _NAMESPACES:
                 argument = _next(tokens, i)
-                valid = argument < len(tokens) and tokens[argument].type in ("string", "lbracket")
+                # Names may be computed dynamically (usually a local string).
+                # Literal numbers and booleans are the unambiguous misuse cases.
+                valid = argument < len(tokens) and tokens[argument].type in ("string", "lbracket", "local", "ident")
                 if not valid:
                     diagnostics.append(_diag(_NAMESPACE, f"{tokens[previous].value} {name} expects a name or [name, value] array", token))
 
@@ -156,8 +162,11 @@ def check_sqf_contracts_text(source: str) -> list[Diagnostic]:
 
 if __name__ == "__main__":
     assert check_sqf_contracts_text('params ["_x", ["_y", 0, [0]]];') == []
+    assert check_sqf_contracts_text('params [["_x", [0, 0], [[]], [2]]];') == []
+    assert check_sqf_contracts_text('params ["", "", "_value"];') == []
     assert any(d.code == _PARAMS for d in check_sqf_contracts_text('params "_x";'))
     assert any(d.code == _NAMESPACE for d in check_sqf_contracts_text('missionNamespace setVariable 1;'))
+    assert check_sqf_contracts_text('missionNamespace getVariable _name;') == []
     assert check_sqf_contracts_text('player addEventHandler ["Killed", { hint "x"; }]; player removeEventHandler ["Killed", 0];') == []
     assert any(d.code == _EVENT for d in check_sqf_contracts_text('player removeEventHandler ["Killed", 0];'))
     assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, "yes"];'))

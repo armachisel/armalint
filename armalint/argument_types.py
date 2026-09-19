@@ -958,6 +958,33 @@ def check_argument_types(
         actual_left = _infer_operand(tokens, left, variables) if left >= 0 else None
         actual_right = _infer_operand(tokens, right, variables) if right < len(tokens) else None
         primitive = {"Number", "String", "Boolean"}
+        # Infix commands such as `find` return a number, but the immediate
+        # token before the comparison is their string argument. Do not compare
+        # that argument's type; the command expression is the left operand.
+        command_result_comparison = (
+            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count")
+        )
+        # A local may be reused by separate functions in one file. If an
+        # earlier assignment of that local is a `findIf` producer, do not let
+        # the stale type from another function make this numeric result look
+        # Boolean.
+        if left >= 0 and tokens[left].type == "local":
+            name = tokens[left].value.lower()
+            cursor = 0
+            while cursor < i:
+                if (tokens[cursor].type == "local"
+                        and tokens[cursor].value.lower() == name):
+                    assign = cursor + 1
+                    while assign < i and tokens[assign].type in _TRIVIA:
+                        assign += 1
+                    if assign < i and tokens[assign].value == "=":
+                        end = assign + 1
+                        while end < i and tokens[end].type != "semicolon":
+                            if tokens[end].value.lower() == "findif":
+                                command_result_comparison = True
+                                break
+                            end += 1
+                cursor += 1
         # typeName returns a string describing the operand, so comparing it
         # with a string literal is intentional even though the underlying
         # operand may have a different inferred type.
@@ -966,7 +993,7 @@ def check_argument_types(
             and tokens[left].type == "local"
             and tokens[left - 1].value.lower() == "typename"
         )
-        if (not type_name_comparison
+        if (not type_name_comparison and not command_result_comparison
                 and actual_left in primitive and actual_right in primitive
                 and actual_left != actual_right):
             diags.append(Diagnostic(Severity.WARNING, _COMPARISON_CODE, f"comparison cannot match {actual_left} with {actual_right}", tok.line, tok.column))
@@ -1042,6 +1069,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_delay = "soon"; sleep _delay;')[-1].code == _CODE
     assert check_argument_types_text('_value = 1; if (typeName _value == "SCALAR") then { sleep _value; };') == []
     assert any(item.code == _COMPARISON_CODE for item in check_argument_types_text('_n = 1; _n == "one";'))
+    assert check_argument_types_text('if ((toLower _x) find "auto" >= 0) then {};') == []
     assert check_argument_types_text('_d = findDisplay 46; _c = _d displayCtrl 1; isNull _c;') == []
     assert check_argument_types_text('_positions = [1]; private _remaining = +_positions; count _remaining;') == []
     assert check_argument_types_text(

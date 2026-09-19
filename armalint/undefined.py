@@ -387,7 +387,11 @@ def check_undefined(tokens: list[Token]) -> list[Diagnostic]:
                 names = (_collect_string_names(tokens, j, False)[0] if token.value.lower() == "private" else _collect_params_names(tokens, j)[0])
             for name in names:
                 key = name.lower()
-                if key in {item.lower() for item in scopes[-1]} or any(key in {item.lower() for item in scope} for scope in scopes[:-1]):
+                # Nested SQF code blocks commonly redeclare callback
+                # parameters (`params ["_display", ...]`). That is a valid
+                # lexical binding, so only duplicate declarations in the same
+                # scope are reported here.
+                if key in {item.lower() for item in scopes[-1]}:
                     declarations.append((name, token))
                 scopes[-1].add(name)
         i += 1
@@ -432,8 +436,9 @@ if __name__ == "__main__":
 
     diags = check_undefined_text("hint str _z; _z = 5;")
     assert len(diags) == 1 and diags[0].message == "possible undefined variable: _z", diags
-    shadowed = check_undefined_text('private _value; { private _value; hint str _value; };')
+    shadowed = check_undefined_text('private _value; private _value;')
     assert any(item.code == "W215" for item in shadowed), shadowed
+    assert not any(item.code == "W215" for item in check_undefined_text('private _value; { private _value; hint str _value; };'))
     use_before_assignment = check_undefined_text('_value = _value + 1;')
     assert any(item.code == _CODE and "_value" in item.message for item in use_before_assignment), use_before_assignment
 
