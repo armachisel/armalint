@@ -21,6 +21,7 @@ _CONFIG_FILENAMES = ("armalint.json", ".armalint.json")
 #: Filename of the mod function cache written by ``python -m armalint.update``.
 MOD_CACHE_FILENAME = "armalint_mods.json"
 MOD_TYPE_CACHE_FILENAME = "armalint_mods_types.json"
+MOD_MACRO_CACHE_FILENAME = "armalint_mods_macros.json"
 PROJECT_STATE_DIRNAME = ".armalint"
 
 # Matches ``?id=<digits>`` or ``&id=<digits>`` in a Workshop URL; group 1 is
@@ -129,6 +130,10 @@ def find_mod_cache(start_path: str) -> str | None:
 def find_mod_type_cache(start_path: str) -> str | None:
     """Walk upward for the cache of inferred mod function parameter types."""
     return _find_project_file(start_path, MOD_TYPE_CACHE_FILENAME)
+
+
+def find_mod_macro_cache(start_path: str) -> str | None:
+    return _find_project_file(start_path, MOD_MACRO_CACHE_FILENAME)
 
 
 def project_state_dir(project_path: str) -> str:
