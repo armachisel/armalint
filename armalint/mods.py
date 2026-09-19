@@ -108,7 +108,13 @@ def _steam_install_dirs() -> list[str]:
 
 
 def discover_steamcmd(search_roots: list[str] | None = None) -> str | None:
-    """Locate SteamCMD through PATH, environment variables, and common roots."""
+    """Locate SteamCMD on PATH or inside one of the supplied project roots.
+
+    Project-local discovery is deliberately scoped to the root itself.  In
+    particular, do not search sibling projects: a dependency download should
+    be reproducible from the project being updated, and an unrelated checkout
+    must not silently determine which executable is used.
+    """
     candidates: list[str] = []
     for name in ("STEAMCMD", "STEAMCMD_PATH"):
         value = os.environ.get(name)
@@ -116,15 +122,6 @@ def discover_steamcmd(search_roots: list[str] | None = None) -> str | None:
     for executable in ("steamcmd.exe", "steamcmd"):
         found = shutil.which(executable)
         if found: candidates.append(found)
-    user = os.path.expanduser("~")
-    candidates.extend([
-        os.path.join(user, "steamcmd", "steamcmd.exe"),
-        os.path.join(user, "tools", "steamcmd", "steamcmd.exe"),
-        os.path.join(os.environ.get("LOCALAPPDATA", user), "SteamCMD", "steamcmd.exe"),
-        r"C:\steamcmd\steamcmd.exe", r"C:\SteamCMD\steamcmd.exe",
-    ])
-    for steam in _steam_install_dirs():
-        candidates.append(os.path.join(steam, "steamcmd.exe"))
     for root in search_roots or []:
         root = os.path.abspath(os.path.expanduser(root))
         candidates.extend([
@@ -132,18 +129,8 @@ def discover_steamcmd(search_roots: list[str] | None = None) -> str | None:
             os.path.join(root, "steamcmd", "steamcmd.exe"),
             os.path.join(root, "tmp", "steamcmd", "steamcmd.exe"),
             os.path.join(root, "tools", "steamcmd", "steamcmd.exe"),
+            os.path.join(root, ".armalint", "bin", "steamcmd.exe"),
         ])
-        parent = os.path.dirname(root)
-        if parent != root:
-            candidates.extend([
-                os.path.join(parent, "steamcmd", "steamcmd.exe"),
-                os.path.join(parent, "tmp", "steamcmd", "steamcmd.exe"),
-            ])
-            try:
-                for sibling in os.listdir(parent):
-                    candidates.append(os.path.join(parent, sibling, "tmp", "steamcmd", "steamcmd.exe"))
-            except OSError:
-                pass
     seen: set[str] = set()
     for candidate in candidates:
         candidate = os.path.abspath(os.path.expanduser(candidate))

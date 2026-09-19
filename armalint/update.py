@@ -236,7 +236,7 @@ def run_update(args) -> int:
     workshop_roots = list(getattr(args, "workshop", None) or discover_workshop_roots())
     if getattr(args, "download_dependencies", False):
         steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd(
-            [mission_dir, os.getcwd()]
+            [mission_dir]
         )
         steamcmd = _ensure_steamcmd(os.path.dirname(out_path), steamcmd)
         dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
