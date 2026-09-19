@@ -569,7 +569,7 @@ def _main(argv: list[str] | None = None) -> int:
 
     # Build a mission-wide symbol index so mission-defined functions are not
     # reported as unknown (W201) before linting each file.
-    show_phase("Building symbol index...")
+    show_phase("Checking symbol index cache...")
     index_files = list(files)
     if args.mission:
         index_files.extend(_collect_files(args.mission, collection_ignores))
@@ -600,8 +600,10 @@ def _main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError, TypeError, AttributeError):
             pass
     if cached_index is not None:
+        show_phase(f"Using cached symbol index ({len(index_files)} files)")
         index = cached_index
     else:
+        show_phase(f"Building symbol index ({len(index_files)} files)...")
         spinner_stop = threading.Event()
         spinner_frames = "|/-\\"
 
