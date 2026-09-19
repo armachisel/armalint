@@ -209,7 +209,7 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
             i += 1
         return False
 
-    def collect_tag(tag: str, start: int, end: int) -> None:
+    def collect_tag(tag: str, start: int, end: int, inherited_file: bool = False) -> None:
         # Walk classes nested under a tag and register the function classes.
         # Build a direct-sibling table first so ``class Derived: Base`` can
         # inherit a function marker from a local base class.
@@ -232,6 +232,16 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
         by_name = {name.lower(): (base, body_start, body_end) for name, base, body_start, body_end in entries}
         memo: dict[str, bool] = {}
 
+        def has_nested_class(start: int, end: int) -> bool:
+            i = start + 1
+            while i < end - 1:
+                if tokens[i].type == "ident" and tokens[i].value.lower() == "class":
+                    _name, _base, lbrace = class_head(i, end)
+                    if lbrace >= 0:
+                        return True
+                i += 1
+            return False
+
         def is_entry_function(name: str, base: str, body_start: int, body_end: int, seen: set[str] | None = None) -> bool:
             key = name.lower()
             if key in memo:
@@ -251,9 +261,17 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
             return result
 
         for name, base, lbrace, body_end in entries:
-            if is_entry_function(name, base, lbrace, body_end):
+            direct_file = is_entry_function(name, base, lbrace, body_end)
+            # Many CfgFunctions definitions put ``file = ...`` on a category
+            # class and leave the actual function classes empty:
+            #   class Garrison { file = "..."; class checkGroupType {}; }.
+            # In that form the file marker belongs to the children, not to a
+            # function named ``Garrison``.
+            has_children = has_nested_class(lbrace, body_end)
+            is_function = inherited_file or (direct_file and not has_children)
+            if is_function:
                 index.add_function(f"{tag}{_FNC}{name}")
-            collect_tag(tag, lbrace + 1, body_end - 1)
+            collect_tag(tag, lbrace + 1, body_end - 1, inherited_file or direct_file)
 
     i = 0
     while i < n:
@@ -362,6 +380,15 @@ if __name__ == "__main__":
     )
     assert "ace_hearing" in idx_cat.tags, idx_cat.tags
     assert idx_cat.functions == {"ace_hearing_fnc_putinearplugs"}, idx_cat.functions
+
+    # Antistasi-style categories place the file marker on the category and
+    # declare empty function classes beneath it.
+    idx_file_category = SymbolIndex()
+    collect_description_cfg_functions(
+        'class CfgFunctions { class A3A { class Garrison { file = "functions\\Garrison"; class checkGroupType {}; }; }; };',
+        idx_file_category,
+    )
+    assert idx_file_category.functions == {"a3a_fnc_checkgrouptype"}, idx_file_category.functions
 
     # Missing CfgFunctions: no-op.
     idx4 = SymbolIndex()
