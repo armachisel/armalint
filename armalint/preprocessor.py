@@ -219,7 +219,15 @@ def _expand_macros(
                         output.append(_expand_macros(replacement, defines, function_defines, depth + 1))
                         index = call_end
                         continue
-            output.append(defines.get(key, word))
+            replacement = defines.get(key)
+            if replacement is not None and replacement != word:
+                # Object-like macros can contain calls to function-like
+                # macros (for example an Antistasi ``lightVeh`` macro using
+                # ``FactionGet(...)``). Expand the replacement recursively so
+                # nested project macros do not leak into semantic analysis.
+                output.append(_expand_macros(replacement, defines, function_defines, depth + 1))
+            else:
+                output.append(word)
             index = end
             continue
         output.append(char)
@@ -526,6 +534,10 @@ if __name__ == "__main__":
         function_expanded, _ = preprocess(function_macro, main_path, tmpdir)
         assert 'hint "hello";' in function_expanded
         assert "private _path = foobar;" in function_expanded
+
+        nested_macro = '#define GET(name) (name get "value")\n#define WRAP GET(foo)\nprivate _value = WRAP;\n'
+        nested_expanded, _ = preprocess(nested_macro, main_path, tmpdir)
+        assert 'private _value = (foo get "value");' in nested_expanded
 
         windows_path_macro = '#define PATH(value) value\nprivate _path = PATH("A:\\Mission\\scripts\\fn.sqf");\n'
         windows_path_expanded, _ = preprocess(windows_path_macro, main_path, tmpdir)
