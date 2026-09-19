@@ -15,6 +15,7 @@ import re
 # ``#include "..."`` or ``#include <...>``, with optional surrounding whitespace.
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s+(?:"([^"]*)"|<([^>]*)>)\s*$')
 _DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(.*?))?\s*$')
+_FUNCTION_DEFINE_RE = re.compile(r'^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)\s*(.*?)\s*$')
 _UNDEF_RE = re.compile(r'^\s*#\s*undef\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IFDEF_RE = re.compile(r'^\s*#\s*(ifdef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)')
 _IF_DEFINED_RE = re.compile(r'^\s*#\s*if\s+(!\s*)?defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$')
@@ -109,10 +110,49 @@ def _normalized(path: str) -> str:
     return os.path.normcase(os.path.abspath(path))
 
 
-def _expand_macros(line: str, defines: dict[str, str]) -> str:
-    """Expand object-like macros outside strings and ``//`` comments."""
-    if not defines:
+def _macro_arguments(text: str, start: int) -> tuple[list[str], int] | None:
+    """Parse a function-like macro call beginning at ``start`` (the `(`)."""
+    depth = 0
+    quote = ""
+    argument_start = start + 1
+    arguments: list[str] = []
+    index = start
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == quote:
+                if index + 1 < len(text) and text[index + 1] == quote:
+                    index += 2
+                    continue
+                quote = ""
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                value = text[argument_start:index].strip()
+                if value or arguments:
+                    arguments.append(value)
+                return arguments, index + 1
+        elif char == "," and depth == 1:
+            arguments.append(text[argument_start:index].strip())
+            argument_start = index + 1
+        index += 1
+    return None
+
+
+def _expand_macros(
+    line: str, defines: dict[str, str], function_defines: dict[str, tuple[list[str], str]] | None = None,
+    depth: int = 0,
+) -> str:
+    """Expand object/function-like macros outside strings and comments."""
+    if (not defines and not function_defines) or depth >= 32:
         return line
+    function_defines = function_defines or {}
     output: list[str] = []
     index = 0
     quote = ""
@@ -141,7 +181,25 @@ def _expand_macros(line: str, defines: dict[str, str]) -> str:
             while end < len(line) and (line[end].isalnum() or line[end] == "_"):
                 end += 1
             word = line[index:end]
-            output.append(defines.get(word.lower(), word))
+            key = word.lower()
+            macro = function_defines.get(key)
+            call_start = end
+            while call_start < len(line) and line[call_start] in " \t":
+                call_start += 1
+            if macro is not None and call_start < len(line) and line[call_start] == "(":
+                parsed = _macro_arguments(line, call_start)
+                if parsed is not None:
+                    arguments, call_end = parsed
+                    names, body = macro
+                    if len(arguments) == len(names):
+                        replacement = body
+                        for name, value in zip(names, arguments):
+                            replacement = re.sub(r"\b" + re.escape(name) + r"\b", value, replacement)
+                        replacement = re.sub(r"\s*##\s*", "", replacement)
+                        output.append(_expand_macros(replacement, defines, function_defines, depth + 1))
+                        index = call_end
+                        continue
+            output.append(defines.get(key, word))
             index = end
             continue
         output.append(char)
@@ -157,6 +215,7 @@ def _preprocess_lines(
     _defines: dict[str, str],
     _conditions: list[bool],
     _source_cache: dict[str, str] | None = None,
+    _function_defines: dict[str, tuple[list[str], str]] | None = None,
 ) -> tuple[list[str], list[tuple[str, int]]]:
     """Split out the line-by-line work; returns ``(lines, line_map)``."""
     lines: list[str] = []
@@ -166,12 +225,25 @@ def _preprocess_lines(
         return lines, line_map
 
     macro_continuation = False
+    continuation_name: str | None = None
+    continuation_params: list[str] | None = None
+    continuation_body: list[str] = []
     for orig_line, line in enumerate(source.split("\n"), start=1):
         if macro_continuation:
             # The continuation belongs to a ``#define`` body, not to the SQF
             # program. Keep its physical line in the map while removing the
             # macro text from downstream syntax and semantic analysis.
-            macro_continuation = line.rstrip().endswith("\\")
+            fragment = line.rstrip()
+            macro_continuation = fragment.endswith("\\")
+            continuation_body.append(fragment[:-1].rstrip() if macro_continuation else fragment)
+            if not macro_continuation and continuation_name:
+                if continuation_params is None:
+                    _defines[continuation_name] = " ".join(continuation_body).strip()
+                elif _function_defines is not None:
+                    _function_defines[continuation_name] = (continuation_params, " ".join(continuation_body).strip())
+                continuation_name = None
+                continuation_params = None
+                continuation_body = []
             lines.append("")
             line_map.append((filename, orig_line))
             continue
@@ -234,6 +306,25 @@ def _preprocess_lines(
         if match and all(_conditions):
             _defines[match.group(1).lower()] = match.group(2) or "1"
             macro_continuation = line.rstrip().endswith("\\")
+            if macro_continuation:
+                continuation_name = match.group(1).lower()
+                continuation_params = None
+                continuation_body = [(match.group(2) or "").rstrip()[:-1].rstrip()]
+            lines.append("")
+            line_map.append((filename, orig_line))
+            continue
+        function_match = _FUNCTION_DEFINE_RE.match(line)
+        if function_match and all(_conditions):
+            name = function_match.group(1).lower()
+            params = [item.strip().lower() for item in function_match.group(2).split(",") if item.strip()]
+            body = function_match.group(3)
+            if _function_defines is not None:
+                _function_defines[name] = (params, body.rstrip("\\").rstrip())
+            macro_continuation = line.rstrip().endswith("\\")
+            if macro_continuation:
+                continuation_name = name
+                continuation_params = params
+                continuation_body = [body.rstrip()[:-1].rstrip()]
             lines.append("")
             line_map.append((filename, orig_line))
             continue
@@ -267,12 +358,13 @@ def _preprocess_lines(
                     _defines=_defines,
                     _conditions=_conditions,
                     _source_cache=_source_cache,
+                    _function_defines=_function_defines,
                 )
                 lines.extend(sub_lines)
                 line_map.extend(sub_map)
                 continue
         # Not an include (or missing/cyclic): keep the line as-is.
-        lines.append(_expand_macros(line, _defines))
+        lines.append(_expand_macros(line, _defines, _function_defines))
         line_map.append((filename, orig_line))
 
     return lines, line_map
@@ -297,7 +389,7 @@ def preprocess(
     if "#" not in source:
         lines = source.split("\n")
         return source, [(filename, line) for line in range(1, len(lines) + 1)]
-    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, {}, [], source_cache)
+    lines, line_map = _preprocess_lines(source, filename, base_dir, _include_stack, {}, [], source_cache, {})
     return "\n".join(lines), line_map
 
 
@@ -404,6 +496,15 @@ if __name__ == "__main__":
         assert "private _value = 42;" in macro_expanded
         assert 'hint "LIMIT";' in macro_expanded
         assert "// LIMIT" in macro_expanded
+
+        function_macro = '#define QUOTE(value) "value"\n#define DOUBLES(a,b) a##b\nhint QUOTE(hello);\nprivate _path = DOUBLES(foo,bar);\n'
+        function_expanded, _ = preprocess(function_macro, main_path, tmpdir)
+        assert 'hint "hello";' in function_expanded
+        assert "private _path = foobar;" in function_expanded
+
+        multiline_macro = '#define WRAP(value) { \\\n+    hint value; \\\n+}\nWRAP("ok");\n'
+        multiline_expanded, _ = preprocess(multiline_macro, main_path, tmpdir)
+        assert 'hint "ok";' in multiline_expanded
 
         literals, _ = preprocess('#if 0\nhint "no";\n#elif 1\nhint "yes";\n#endif\n', main_path, tmpdir)
         assert 'hint "yes";' in literals and 'hint "no";' not in literals

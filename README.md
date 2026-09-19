@@ -224,9 +224,10 @@ Error (`E*`) diagnostics make the CLI exit non-zero; warnings (`W*`) do not.
 - **Function metadata depends on indexing.** Built-in and mod signatures that
   are not present in the selected game/mod data cannot be checked until the
   mission is indexed again.
-- **Preprocessor support is deliberately limited.** Local includes, object-like
-  macros, and simple literal/defined conditionals are handled. Arbitrary
-  preprocessor expressions and engine-specific build steps are not evaluated.
+- **Preprocessor support is deliberately bounded.** Local includes, object-like
+  and function-like macros, nested expansion, token pasting, and simple
+  literal/defined conditionals are handled. Arbitrary preprocessor expressions
+  and engine-specific build steps are not evaluated.
 - **Runtime behavior is outside the linter's scope.** It does not execute SQF,
   evaluate dynamic control flow, or know values created only in the game.
 

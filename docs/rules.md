@@ -89,8 +89,9 @@ unrelated to the problem you are trying to find.
 
 Config files are handled as config files. SQF embedded in code-valued config
 properties is linted, while the class hierarchy itself is not treated as SQF.
-Local includes, object-like macros, and simple literal/defined conditional
-directives are supported; arbitrary preprocessor expressions are not executed.
+Local includes, object-like and function-like macros, nested expansion, token
+pasting, and simple literal/defined conditional directives are supported;
+arbitrary preprocessor expressions are not executed.
 
 The parser builds source-spanned nodes for `if`/`else`, `for`, `while`,
 `waitUntil`, `try`/`catch`, `switch`, `exitWith`, `forEach`, and direct `call`/`spawn` code
