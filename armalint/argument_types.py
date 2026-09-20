@@ -141,7 +141,7 @@ _COMMAND_RETURN_TYPES = {
     "getdir": "Number", "getnumber": "Number", "gettext": "String",
     "getpos": "Array", "getposasl": "Array", "getposatl": "Array",
     "getposworld": "Array", "getposvisual": "Array",
-    "velocity": "Array", "vectorup": "Array", "vectordir": "Array",
+    "velocity": "Array", "velocitymodelspace": "Array", "vectorup": "Array", "vectordir": "Array",
     "weapondirection": "Array", "vectorfromto": "Array", "vectorcos": "Number",
     "vectoradd": "Array", "vectordiff": "Array", "vectormultiply": "Array",
     "vectornormalized": "Array", "vectordotproduct": "Number",
@@ -193,6 +193,7 @@ _ARRAY_ELEMENT_TYPES = {
     "nearobjects": "Object", "nearentities": "Object",
     "crew": "Object", "units": "Object", "allair": "Object", "allland": "Object",
     "allman": "Object", "allstaticobjects": "Object", "allstaticweapons": "Object",
+    "velocitymodelspace": "Number",
     "lineintersectswith": "Array", "lineintersectssurfaces": "Array", "fullcrew": "Array",
     "weapons": "String", "magazines": "String", "items": "String", "assigneditems": "String",
     # configClasses/configProperties enumerate Config entries.  Treating the
@@ -322,6 +323,12 @@ for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
         accepted, label = _SIGNATURES[_handle_command]
         _SIGNATURES[_handle_command] = (accepted | frozenset(("Group",)), label + " or Group")
 _SIGNATURES["units"] = (frozenset(("Group", "Object", "Array")), "Group, Object or Array")
+# The engine's setName command uses the three-element identity form
+# ``[fullName, firstName, lastName] setName`` in addition to its string form.
+if "setname" in _SIGNATURES:
+    _SIGNATURES["setname"] = (frozenset(("String", "Array")), "String or Array")
+if "setname" in _BINARY_SIGNATURES:
+    _BINARY_SIGNATURES["setname"] = (frozenset(("String", "Array")), "String or Array")
 # Group handles passed through opaque helper/parameter boundaries are often
 # conservatively inferred as Object.  `waypoints` operates on that same
 # engine handle family, so accept the runtime Object representation here.
@@ -339,6 +346,8 @@ _KNOWN_VARIABLE_TYPES = {
     "west": "Side", "east": "Side", "resistance": "Side", "civilian": "Side",
     "configfile": "Config", "missionconfigfile": "Config",
     "profileconfigfile": "Config", "campaignconfigfile": "Config",
+    # Nular date returns the five-component date array.
+    "date": "Array",
 }
 
 
@@ -484,6 +493,45 @@ def _infer_expression(
     rhs_end = start
     while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
         rhs_end += 1
+    # A plain array literal is always an Array.  Check this before inspecting
+    # commands embedded in its elements (for example ``[cos 1, -sin 1, 0]``)
+    # so an operator inside an element cannot turn the container into Number.
+    if start < len(tokens) and tokens[start].type == "lbracket":
+        literal_split = _array_items(tokens, start)
+        literal_close = literal_split[1] if literal_split else None
+        if literal_close is not None:
+            after_literal = literal_close + 1
+            while after_literal < rhs_end and tokens[after_literal].type in _TRIVIA:
+                after_literal += 1
+            if after_literal < rhs_end and tokens[after_literal].value.lower() in {"call", "spawn"}:
+                return None
+            if (after_literal >= rhs_end
+                    or tokens[after_literal].value.lower() != "select"):
+                return "Array"
+    # Parenthesized vector producers commonly have a scalar component
+    # selected immediately afterward, e.g. ``(velocityModelSpace _plane)
+    # select 1``.  Recognize this shape before the generic grouped-expression
+    # fallback so the scalar can be used by vectorMultiply and arithmetic.
+    if start < len(tokens) and tokens[start].type == "lparen":
+        close_probe = next((idx for idx in range(start + 1, min(rhs_end, len(tokens)))
+                            if tokens[idx].type == "rparen"), None)
+        if close_probe is not None:
+            after = close_probe + 1
+            while after < rhs_end and tokens[after].type in _TRIVIA:
+                after += 1
+            if (after < rhs_end and tokens[after].value.lower() == "select"):
+                producer = next((t.value.lower() for t in tokens[start + 1:close_probe]
+                                 if t.value.lower() in _ARRAY_ELEMENT_TYPES), None)
+                probe = after + 1
+                while probe < rhs_end and tokens[probe].type in _TRIVIA:
+                    probe += 1
+                if producer is not None and probe < rhs_end and tokens[probe].type != "lbrace":
+                    return _ARRAY_ELEMENT_TYPES[producer]
+            if (after < rhs_end and tokens[after].value.lower() == "select"
+                    and after + 1 < rhs_end and tokens[after + 1].type == "number"
+                    and any(t.value.lower() in {"velocitymodelspace", "getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}
+                            for t in tokens[start + 1:close_probe])):
+                return "Number"
     # A code block on the left of ``count`` is the filter form and the
     # command still returns a numeric count.
     if (start < rhs_end and tokens[start].type == "lbrace"
@@ -579,7 +627,22 @@ def _infer_expression(
                     return "Number"
     if (start < len(tokens) and tokens[start].value.lower() in _ARRAY_ELEMENT_TYPES
             and any(t.value.lower() == "select" for t in tokens[start + 1:rhs_end])):
-        return "Array"
+        # Selecting an element from a known collection producer yields the
+        # producer's element type.  The old Array result made expressions
+        # such as ``units _group select 0`` look like an array when passed to
+        # object commands, and likewise lost the scalar component selected
+        # from velocityModelSpace.
+        select_at = next((idx for idx in range(start + 1, rhs_end)
+                          if tokens[idx].value.lower() == "select"), None)
+        if select_at is not None:
+            probe = select_at + 1
+            while probe < rhs_end and tokens[probe].type in _TRIVIA:
+                probe += 1
+            # ``select { code }`` is the filter form and retains the
+            # collection type; only an indexed/element select narrows it.
+            if probe < rhs_end and tokens[probe].type == "lbrace":
+                return "Array"
+        return _ARRAY_ELEMENT_TYPES[tokens[start].value.lower()]
     if any(t.value.lower() in ("createvehicle", "createvehiclelocal") for t in tokens[start:rhs_end]):
         return "Object"
     if any(t.value.lower() in ("weaponcargo", "magazinecargo", "itemcargo") for t in tokens[start:rhs_end]):
@@ -602,6 +665,12 @@ def _infer_expression(
     # multiplier contains arithmetic (for example ``vectorAdd (_v vectorMultiply
     # (_speed * diag_deltaTime))``).  Recognize the producer before the
     # generic arithmetic fallback below.
+    # Dot products are scalar reductions; keep them ahead of the vector
+    # producer family so a nested ``abs ((a vectorDiff b) vectorDotProduct
+    # n)`` is inferred as Number rather than inheriting Array from its left
+    # vector operand.
+    if any(t.value.lower() == "vectordotproduct" for t in expression_tokens):
+        return "Number"
     vector_commands = {"vectoradd", "vectordiff", "vectormultiply", "vectornormalized", "vectorcrossproduct"}
     if any(t.value.lower() in vector_commands for t in expression_tokens):
         return "Array"
@@ -621,11 +690,22 @@ def _infer_expression(
                     j = close + 1
                     while j < len(tokens) and tokens[j].type in _TRIVIA:
                         j += 1
+                    inner_tokens = [t for t in tokens[start + 1:close] if t.type not in _TRIVIA]
+                    if (j < len(tokens) and tokens[j].value.lower() == "select"
+                            and j + 1 < len(tokens) and tokens[j + 1].type == "number"):
+                        producer = next((t.value.lower() for t in inner_tokens
+                                         if t.value.lower() in _ARRAY_ELEMENT_TYPES), None)
+                        if producer is not None:
+                            return _ARRAY_ELEMENT_TYPES[producer]
                     if (inner == "Array" and j < len(tokens)
                             and tokens[j].value.lower() == "select"):
-                        inner_tokens = [t for t in tokens[start + 1:close] if t.type not in _TRIVIA]
-                        if inner_tokens and inner_tokens[0].type == "lbracket":
-                            return "Number" if j + 1 < len(tokens) and tokens[j + 1].type == "number" else None
+                        if inner_tokens and (inner_tokens[0].type == "lbracket"
+                                or any(t.value.lower() in (_ARRAY_ELEMENT_TYPES | {"velocitymodelspace", "getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}) for t in inner_tokens)):
+                            if j + 1 < len(tokens) and tokens[j + 1].type == "number":
+                                producer = next((t.value.lower() for t in inner_tokens
+                                                 if t.value.lower() in _ARRAY_ELEMENT_TYPES), None)
+                                return _ARRAY_ELEMENT_TYPES.get(producer, "Number")
+                            return None
                         return None
                     if j < len(tokens) and tokens[j].value.lower() in _COMMAND_RETURN_TYPES:
                         return _COMMAND_RETURN_TYPES[tokens[j].value.lower()]
@@ -1194,12 +1274,29 @@ def check_argument_types(
             continue
         if (tok.value.lower() == "deletevehicle" and tokens[j].type == "local"):
             name = tokens[j].value.lower()
+            # A vehicle handle initialized with objNull and then assigned from
+            # one or more ``createVehicle`` branches remains an Object even
+            # when the branch merge sees the producer's class-name string.
+            if any(tokens[k].type == "local" and tokens[k].value.lower() == name
+                   and k + 2 < i and tokens[k + 1].value == "="
+                   and any(t.value.lower() in ("createvehicle", "createvehiclelocal")
+                           for t in tokens[k + 2:i])
+                   for k in range(i)):
+                continue
             if any(tokens[k].type == "local" and tokens[k].value.lower() == name
                    and k + 2 < i and tokens[k + 1].value.lower() == "isequaltype"
                    and tokens[k + 2].value.lower() == "locationnull"
                    for k in range(i)):
                 # The location branch is removed with deleteLocation; this
                 # deleteVehicle call is the guarded object fallback.
+                continue
+        if tok.value.lower() == "alive" and tokens[j].type == "local":
+            name = tokens[j].value.lower()
+            if any(tokens[k].type == "local" and tokens[k].value.lower() == name
+                   and k + 2 < i and tokens[k + 1].value == "="
+                   and any(t.value.lower() in ("createvehicle", "createvehiclelocal")
+                           for t in tokens[k + 2:i])
+                   for k in range(i)):
                 continue
         if (tok.value.lower() == "assert" and tokens[j].type == "lparen"
                 and any(t.type == "operator" and t.value in ("==", "!=", "<", ">", "<=", ">=")

@@ -498,6 +498,23 @@ def _types_support_namespace_overloads() -> bool:
     return all(not any(item.code in {"W203", "W205", "W218", "W228"} for item in check_argument_types_text(source)) for source in snippets)
 
 
+def _types_typed_select_and_vector_reductions() -> bool:
+    snippets = (
+        # Typed engine collections narrow on indexed select, while filter
+        # select keeps the collection type.
+        'private _unit = units group player select 0; getPosATL _unit;'
+        ' private _mags = magazines player select { true }; count _mags;',
+        # A scalar reduction nested in a vector expression remains numeric.
+        'private _d = abs (([1,2,3] vectorDiff [0,1,0]) vectorDotProduct [1,0,0]); acos _d;',
+        # velocityModelSpace returns a vector, and selecting a component is a
+        # number accepted by vectorMultiply.
+        'private _speed = (velocityModelSpace player) select 1; [1,0,0] vectorMultiply _speed;',
+        # setName supports the full identity array form.
+        'player setName ["Full Name", "Full", "Name"];',
+    )
+    return all(not any(item.code == "W203" for item in check_argument_types_text(source)) for source in snippets)
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -599,6 +616,7 @@ CASES = (
     ("nested type scope isolated", _types_nested_scope_isolated),
     ("Antistasi producer boundary inference", _types_antistasi_producer_boundaries),
     ("support and namespace overload inference", _types_support_namespace_overloads),
+    ("typed selects and vector reductions", _types_typed_select_and_vector_reductions),
     ("multi-code suppression", _suppression_multi_code),
     ("suppression quality", _suppression_quality),
     ("malformed suppression", _malformed_suppression),
