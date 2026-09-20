@@ -635,6 +635,21 @@ def _main(argv: list[str] | None = None) -> int:
         except OSError:
             pass
     index.cba_declared |= any(dep.startswith("cba_") for dep in declared_dependencies)
+    # Macro headers are cheap to read and must remain visible even when the
+    # symbol index itself came from an older cache or a targeted scan.  This
+    # prevents project-defined helpers such as FIX_LINE_NUMBERS and
+    # Verbose_2 from being reported solely because the cached index predates
+    # the header collection pass.
+    macro_roots = ([args.mission] if args.mission else
+                   [path for path in input_paths if os.path.isdir(path)])
+    for macro_root in macro_roots:
+        for macro_path in _collect_macro_files(macro_root):
+            try:
+                with open(macro_path, "r", encoding="utf-8", errors="replace") as macro_fh:
+                    for macro_name in re.findall(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)", macro_fh.read(), re.MULTILINE):
+                        index.add_macro(macro_name)
+            except OSError:
+                continue
     timings["index_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]), 2)
     timings["index_files"] = len(index_files)
     timings["token_cache_entries"] = len(token_cache)

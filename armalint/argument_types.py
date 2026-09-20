@@ -1318,7 +1318,8 @@ def check_argument_types(
             # artifact from an untyped callback/array boundary.
             continue
         if (tok.value.lower() == "configname" and tokens[j].type == "local"
-                and _config_loop_element(tokens, j)):
+                and (_config_loop_element(tokens, j)
+                     or any(t.value.lower() == "configclasses" for t in tokens[max(0, j - 140):j]))):
             actual = "Config"
         # Antistasi (and other mission frameworks) commonly provide a
         # side-based Faction(side) HashMap helper, which intentionally
