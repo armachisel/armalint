@@ -26,6 +26,8 @@ I/O.
 
 from __future__ import annotations
 
+import re
+
 from .rapified import ConfigClass
 
 #: Property names that mark a ``CfgFunctions`` child class as a function
@@ -147,6 +149,29 @@ def extract_cfg_function_metadata(config: ConfigClass) -> dict[str, dict]:
             for tag in node.children:
                 for child in tag.children:
                     collect(child, tag.name.lower(), tag.children)
+        for child in node.children:
+            visit(child)
+
+    visit(config)
+    return result
+
+
+def extract_config_function_references(config: ConfigClass) -> set[str]:
+    """Return functions referenced by generic config ``function =`` properties.
+
+    Arma modules can register a script through a config property instead of a
+    ``CfgFunctions`` class.  Those registrations are still public SQF
+    functions (for example, module classes commonly use
+    ``function = "TAG_fnc_createThing"``), so they belong in the symbol index.
+    """
+    result: set[str] = set()
+
+    def visit(node: ConfigClass) -> None:
+        for key, value in node.properties.items():
+            if str(key).lower() == "function" and isinstance(value, str):
+                name = value.strip().lower()
+                if name and re.fullmatch(r"[a-z0-9_]+", name):
+                    result.add(name)
         for child in node.children:
             visit(child)
 
@@ -282,6 +307,20 @@ if __name__ == "__main__":
         ],
     )
     assert extract_cfg_functions(multi) == {"one_fnc_f", "two_fnc_g"}
+
+    module_config = ConfigClass(
+        name="",
+        children=[ConfigClass(
+            name="CfgVehicles",
+            children=[ConfigClass(
+                name="ModuleElectra",
+                properties={"function": "diwako_anomalies_main_fnc_createElectra"},
+            )],
+        )],
+    )
+    assert extract_config_function_references(module_config) == {
+        "diwako_anomalies_main_fnc_createelectra"
+    }
 
     # A local derived class inherits the function marker and file path from a
     # sibling base class.  External bases remain unresolved conservatively.

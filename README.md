@@ -215,6 +215,13 @@ structured loop producers. Unknown expressions are left alone. `W204` checks
 excess arguments against known indexed signatures; shorter calls remain valid
 because extracted `params` declarations can contain optional arguments.
 
+The built-in command metadata includes common SQF overloads and command-chain
+results. Position arrays are valid for `lookAt`, inventory pairs such as
+`["magazine_class", 1]` are valid for `addMagazine`, collection commands such
+as `units` and `groupSelectedUnits` produce arrays, and `displayCtrl` produces
+a `Control`. These are generic command rules, not mission-specific name
+heuristics.
+
 Error (`E*`) diagnostics make the CLI exit non-zero; warnings (`W*`) do not.
 
 ## Known limitations
@@ -372,6 +379,15 @@ available, `ace_medical_fnc_setUnconscious` is recognized by exact name (so a
 typo like `ace_medical_fnc_setUnconsious` is *not* suppressed), while any other
 `<tag>_fnc_*` name is still covered by its tag. When several lint paths resolve
 to different cache files, their function names are unioned.
+
+CfgFunctions headers do not have to contain a complete `class CfgFunctions`
+wrapper. Armalint also recognizes reusable fragments that declare a class with
+`tag = "..."` and nested function classes, which is how several addon helper
+libraries publish their symbols.
+
+The updater also indexes generic module registrations such as
+`function = "TAG_fnc_createThing"` in rapified addon configs. This covers mods
+that expose module callbacks without declaring them under `CfgFunctions`.
 
 ## Updating the command database
 

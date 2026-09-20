@@ -15,7 +15,7 @@ from .argument_types import _COMMAND_ARITIES, _COMMAND_RETURN_TYPES
 from .config import extract_dependencies, find_config, find_mod_cache, find_mod_type_cache, load_config_file
 from .known import KNOWN_COMMANDS, KNOWN_FUNCTIONS
 from .linter import build_symbol_index, lint_file, lint_text
-from .mods import load_mod_cache, load_mod_type_cache, load_mod_metadata_cache, MOD_METADATA_CACHE_FILENAME
+from .mods import load_mod_cache, load_mod_type_cache, load_mod_metadata_cache, expand_core_function_aliases, MOD_METADATA_CACHE_FILENAME
 from .rules import metadata as rule_metadata
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -54,7 +54,7 @@ def _context(mission: str | None):
     if cache:
         from .symbols import SymbolIndex
         index = index or SymbolIndex()
-        for name in load_mod_cache(cache): index.add_function(name)
+        for name in expand_core_function_aliases(load_mod_cache(cache)): index.add_function(name)
     signatures = load_mod_type_cache(type_cache) if type_cache else {}
     metadata_path = os.path.join(os.path.dirname(type_cache), MOD_METADATA_CACHE_FILENAME) if type_cache else None
     metadata = load_mod_metadata_cache(metadata_path) if metadata_path else {}

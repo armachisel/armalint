@@ -38,10 +38,11 @@ from .config import (
 )
 from .config_lint import lint_config
 from .contracts import discover_external_locals
+from .collect import collect_code_functions
 from .diagnostic import Diagnostic, Severity, format_diagnostic
 from .linter import build_symbol_index, lint_file, lint_text
 from .symbols import SymbolIndex
-from .mods import load_mod_cache
+from .mods import load_mod_cache, expand_core_function_aliases
 from .mods import load_mod_type_cache, load_mod_macro_cache
 from .sqm import check_mission_sqm
 from .rules import metadata as rule_metadata
@@ -49,7 +50,7 @@ from .rules import PRESETS, RULES, RULE_CATEGORIES
 from .plugins import load_plugins
 from .style import apply_safe_fix_edits, safe_fix_edits
 
-_SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".hpp", ".ext", ".sqm")
+_SCRIPT_EXTENSIONS = (".sqf", ".sqs", ".inc", ".cpp", ".hpp", ".ext", ".sqm")
 _CONFIG_EXTENSIONS = (".hpp", ".ext")
 
 
@@ -121,7 +122,7 @@ def _collect_macro_files(path: str) -> list[str]:
             result.extend(
                 os.path.join(root, name)
                 for name in names
-                if name.lower().endswith((".inc", ".hpp"))
+                if name.lower().endswith((".inc", ".hpp", ".cpp"))
             )
     return result
 
@@ -574,6 +575,14 @@ def _main(argv: list[str] | None = None) -> int:
     if args.mission:
         index_files.extend(_collect_files(args.mission, collection_ignores))
         index_files.extend(_collect_macro_files(args.mission))
+    else:
+        # Positional directory scans need the same config/include fragments
+        # as explicit ``--mission`` scans. Without this, split CfgFunctions
+        # declarations in standalone .cpp files are omitted from W201's
+        # symbol index.
+        for input_path in input_paths:
+            if os.path.isdir(input_path):
+                index_files.extend(_collect_macro_files(input_path))
     index_files = sorted(set(index_files))
     token_cache = {}
     cache_anchor = next(iter(file_configs.values()), None) or args.mission or (input_paths[0] if input_paths else os.getcwd())
@@ -602,7 +611,16 @@ def _main(argv: list[str] | None = None) -> int:
             # Bump this when the index contents or macro collection rules
             # change; otherwise an older cache can preserve stale unknown-
             # macro diagnostics even though all source fingerprints match.
-            if payload.get("version") == 2 and payload.get("fingerprints") == fingerprints:
+            # Version 7 includes standalone ``tag =`` CfgFunctions
+            # fragments, so cached indexes must be rebuilt for those symbols.
+            # Version 6 includes config fragments for positional directory
+            # scans; version 5 adds standalone .cpp function fragments, while
+            # version 4 adds callback aliases passed through params, while
+            # version 3 added executable callback assignments from ``.inc``
+            # fragments to the collected symbol set.  Force one rebuild of
+            # older project caches so dynamically configured APIs become
+            # visible to W201.
+            if payload.get("version") == 7 and payload.get("fingerprints") == fingerprints:
                 cached_index = SymbolIndex.from_json(payload.get("index", {}))
         except (OSError, ValueError, TypeError, AttributeError):
             pass
@@ -631,7 +649,7 @@ def _main(argv: list[str] | None = None) -> int:
             os.makedirs(os.path.dirname(symbol_cache_path), exist_ok=True)
             if persist_symbol_cache:
                 with open(symbol_cache_path, "w", encoding="utf-8") as fh:
-                    json.dump({"version": 2, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
+                    json.dump({"version": 7, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
         except OSError:
             pass
     index.cba_declared |= any(dep.startswith("cba_") for dep in declared_dependencies)
@@ -646,8 +664,14 @@ def _main(argv: list[str] | None = None) -> int:
         for macro_path in _collect_macro_files(macro_root):
             try:
                 with open(macro_path, "r", encoding="utf-8", errors="replace") as macro_fh:
-                    for macro_name in re.findall(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)", macro_fh.read(), re.MULTILINE):
+                    macro_source = macro_fh.read()
+                    for macro_name in re.findall(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)", macro_source, re.MULTILINE):
                         index.add_macro(macro_name)
+                    # Also merge executable callback assignments from include
+                    # fragments into cached indexes. This keeps dynamic APIs
+                    # such as Antistasi's HR_GRG callbacks visible even when
+                    # the cache was created before .inc collection existed.
+                    collect_code_functions(macro_source, index)
             except OSError:
                 continue
     timings["index_ms"] = round((time.perf_counter() - started_at) * 1000 - float(timings["collection_ms"]), 2)
@@ -672,7 +696,7 @@ def _main(argv: list[str] | None = None) -> int:
         if cache_path:
             mod_cache_paths.add(cache_path)
     for cache_path in sorted(mod_cache_paths):
-        for name in load_mod_cache(cache_path):
+        for name in expand_core_function_aliases(load_mod_cache(cache_path)):
             index.add_function(name)
     mod_type_cache_paths = {
         path for path in (find_mod_type_cache(target) for target in context_paths)
@@ -767,6 +791,25 @@ def _main(argv: list[str] | None = None) -> int:
                     print(format_diagnostic(diagnostic), flush=True)
                 streamed_count += emit_count
         elif _is_mission_file(f):
+            # A project scan can contain addon/test ``mission.sqm`` fragments
+            # below the root (for example map templates).  They are not the
+            # mission being linted and often intentionally omit ``class
+            # Mission`` and addon arrays.  Validate mission structure only
+            # for an explicitly selected SQM or the root SQM of a directory
+            # argument; nested fragments remain collected source files.
+            normalized_file = os.path.normcase(os.path.abspath(f))
+            explicit_sqm = any(
+                os.path.isfile(path)
+                and os.path.normcase(os.path.abspath(path)) == normalized_file
+                for path in input_paths
+            )
+            root_sqm = any(
+                os.path.isdir(path)
+                and os.path.normcase(os.path.abspath(os.path.join(path, os.path.basename(f)))) == normalized_file
+                for path in input_paths
+            )
+            if not (explicit_sqm or root_sqm):
+                continue
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
                     source = fh.read()

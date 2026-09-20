@@ -103,6 +103,16 @@ The duplicate-definition checks use the conventional Arma function marker
 `call` or `spawn` target. They report repeated definitions and overwrites for
 names such as `ALT_fnc_buildRoute`, while leaving unrelated global state alone.
 
+The built-in type database covers unary, binary, and nular command forms where
+the engine contract is stable. It includes common overloads such as position
+arrays for `lookAt`, `[classname, count]` inventory arguments, arrays returned
+by `units`, `groupSelectedUnits`, and `hcSelected`, and `Control` values
+returned by `displayCtrl`. These facts are combined with expression inference:
+known command chains, array element selection, loop producers, and project
+function return declarations can carry a type into a later command check.
+When an expression crosses an unknown function or a dynamic namespace lookup,
+Armalint leaves the type unknown instead of guessing.
+
 ## Suppressing rules
 
 Use `--ignore-rule W206` to suppress a rule for one command invocation. A

@@ -104,8 +104,10 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                     diagnostics.append(_diag(_PARAMS, "params validators must be an array", _first(fields[2]) or first))
                 if len(fields) == 4 and (_first(fields[2]) is None or _first(fields[2]).type != "lbracket"):
                     diagnostics.append(_diag(_PARAMS, "params validators must be an array", _first(fields[2]) or first))
-                if len(fields) == 4 and (_first(fields[3]) is None or _first(fields[3]).type != "lbracket"):
-                    diagnostics.append(_diag(_PARAMS, "params constraints must be an array", _first(fields[3]) or first))
+                # The optional fourth field is the maximum array/string
+                # length and is numeric in valid SQF forms such as
+                # ``["_offset", [0,0,0], [[]], 3]``.  Only the third field
+                # contains type constraints.
 
         if name in ("getvariable", "setvariable") and i > 0:
             previous = i - 1
@@ -129,7 +131,7 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
                 continue
             event = _first(parsed[0][0])
             handler = _first(parsed[0][1])
-            if event is None or event.type != "string" or handler is None or handler.type not in ("lbrace", "string", "ident", "local"):
+            if event is None or event.type != "string" or handler is None or handler.type not in ("lbrace", "string", "ident", "keyword", "local"):
                 diagnostics.append(_diag(_EVENT, f"{token.value} has an invalid event-handler declaration", token))
             target = tokens[i - 1].value.lower() if i else "<unknown>"
             registrations.add((target, event.value.lower() if event and event.type == "string" else "<unknown>", "*"))

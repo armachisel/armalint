@@ -112,6 +112,10 @@ _BINARY_SIGNATURES.update({
     # the object/location/string form and otherwise reports valid position
     # checks as type errors.
     "inarea": (frozenset(("Location", "Object", "String", "Array")), "Location, Object, String or Array"),
+    # SQF accepts position arrays for lookAt and the array-encoded inventory
+    # form for addMagazine.
+    "lookat": (frozenset(("Object", "Array")), "Object or Array"),
+    "addmagazine": (frozenset(("String", "Array")), "String or Array"),
 })
 
 _RETURN_TYPES = {
@@ -181,6 +185,10 @@ _COMMAND_RETURN_TYPES = {
     "allland": "Array", "allman": "Array",
     "configname": "String", "configfile": "Config", "configclasses": "Array",
     "configproperties": "Array", "configsourcemod": "String",
+    # These commands return arrays of source names.  Older XML snapshots
+    # describe them as scalar strings, which causes bogus count/select
+    # diagnostics in config-driven code.
+    "configsourceaddonlist": "Array", "configsourcemodlist": "Array",
 }
 _COMMAND_ARITIES: dict[str, frozenset[int]] = {}
 _GENERATED_BINARY_SKIP = frozenset(("getvariable", "configclasses", "configproperties"))
@@ -192,6 +200,7 @@ _ARRAY_ELEMENT_TYPES = {
     "nearestobjects": "Object", "nearestterrainobjects": "Object", "roadsconnectedto": "Object",
     "nearobjects": "Object", "nearentities": "Object",
     "crew": "Object", "units": "Object", "allair": "Object", "allland": "Object",
+    "groupselectedunits": "Object", "hcselected": "Group",
     "allman": "Object", "allstaticobjects": "Object", "allstaticweapons": "Object",
     "velocitymodelspace": "Number",
     "lineintersectswith": "Array", "lineintersectssurfaces": "Array", "fullcrew": "Array",
@@ -307,6 +316,10 @@ _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array
 if "vectormultiply" in _BINARY_SIGNATURES:
     _BINARY_SIGNATURES["vectormultiply"] = (frozenset(("Number", "Array")), "Number or Array")
 _BINARY_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
+# Arrays use a numeric index; HashMaps accept their key type (commonly a
+# String or position Array).  The receiver determines which form applies at
+# runtime, so retain the documented key variants here.
+_BINARY_SIGNATURES["deleteat"] = (frozenset(("Number", "String", "Array")), "Number, String or Array")
 _BINARY_SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
 _SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
 _SIGNATURES["roadsconnectedto"] = (frozenset(("Object", "Array")), "Object or Array")
@@ -325,6 +338,26 @@ for _handle_command in ("typeof", "driver", "deletevehicle", "leavevehicle"):
         accepted, label = _SIGNATURES[_handle_command]
         _SIGNATURES[_handle_command] = (accepted | frozenset(("Group",)), label + " or Group")
 _SIGNATURES["units"] = (frozenset(("Group", "Object", "Array")), "Group, Object or Array")
+_SIGNATURES["units"] = (frozenset(("Group", "Object", "Array", "Side")), "Group, Object, Array or Side")
+# ``canAdd`` has two equivalent unary forms: a classname string, or the
+# documented ``[classname, amount]`` pair used by inventory code.
+_SIGNATURES["canadd"] = (frozenset(("String", "Array")), "String or Array")
+_BINARY_SIGNATURES["canadd"] = (frozenset(("String", "Array")), "String or Array")
+for _inventory_command in ("canadditemtobackpack", "canadditemtouniform", "canadditemtovest"):
+    _BINARY_SIGNATURES[_inventory_command] = (frozenset(("String", "Array")), "String or Array")
+_BINARY_SIGNATURES["lockcargo"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
+# These metadata entries are incomplete in older command snapshots: targets
+# and nearestLocations return arrays, and nearestBuilding accepts a position
+# array in addition to an object handle.
+_COMMAND_RETURN_TYPES["targets"] = "Array"
+_COMMAND_RETURN_TYPES["nearestlocations"] = "Array"
+_COMMAND_RETURN_TYPES["buildingpos"] = "Array"
+_COMMAND_RETURN_TYPES["units"] = "Array"
+_COMMAND_RETURN_TYPES["displayctrl"] = "Control"
+_COMMAND_RETURN_TYPES["groupselectedunits"] = "Array"
+_COMMAND_RETURN_TYPES["hcselected"] = "Array"
+_SIGNATURES["dogetout"] = (frozenset(("Object", "Array")), "Object or Array")
+_SIGNATURES["nearestbuilding"] = (frozenset(("Object", "Array")), "Object or Array")
 # The engine's setName command uses the three-element identity form
 # ``[fullName, firstName, lastName] setName`` in addition to its string form.
 if "setname" in _SIGNATURES:
@@ -416,14 +449,19 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
     # infer the indexed form as Number (for example ``getPosATL _unit # 2``).
     if tok.value.lower() in {"getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}:
         j = i + 1
+        depth = 0
         while j < len(tokens) and tokens[j].type in _TRIVIA:
             j += 1
         while j < len(tokens) and tokens[j].type not in ("semicolon", "rparen", "rbracket"):
+            if tokens[j].type == "lparen":
+                depth += 1
+            elif tokens[j].type == "rparen" and depth:
+                depth -= 1
             if tokens[j].value == "#":
                 k = j + 1
                 while k < len(tokens) and tokens[k].type in _TRIVIA:
                     k += 1
-                if k < len(tokens) and tokens[k].type == "number":
+                if depth == 0 and k < len(tokens) and tokens[k].type == "number":
                     return "Number"
                 break
             j += 1
@@ -445,6 +483,18 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
     if tok.type == "string":
         return "String"
     if tok.type == "lbracket":
+        # SQF's hash index operator selects an element from a literal array,
+        # so ``["left", "right"]#_button`` is a String rather than an Array.
+        split = _array_items(tokens, i)
+        if split:
+            items, close = split
+            probe = close + 1
+            while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                probe += 1
+            if probe < len(tokens) and tokens[probe].value == "#" and items:
+                item_types = [_simple_item_type(item, variables) for item in items]
+                if item_types and item_types[0] and all(item_type == item_types[0] for item_type in item_types):
+                    return item_types[0]
         return "Array"
     if tok.type == "lbrace":
         return "Code"
@@ -507,6 +557,16 @@ def _infer_expression(
                 after_literal += 1
             if after_literal < rhs_end and tokens[after_literal].value.lower() in {"call", "spawn"}:
                 return None
+            if after_literal < rhs_end and tokens[after_literal].value == "#":
+                items, _close = literal_split
+                # A dynamic index still has the homogeneous element type.
+                item_types = [_simple_item_type(item, variables) for item in items]
+                if item_types and item_types[0] and all(item_type == item_types[0] for item_type in item_types):
+                    return item_types[0]
+                if (after_literal + 1 < rhs_end and tokens[after_literal + 1].type == "number"):
+                    index = int(float(tokens[after_literal + 1].value))
+                    if 0 <= index < len(items):
+                        return _simple_item_type(items[index], variables)
             if (after_literal >= rhs_end
                     or tokens[after_literal].value.lower() != "select"):
                 return "Array"
@@ -518,6 +578,26 @@ def _infer_expression(
         close_probe = next((idx for idx in range(start + 1, min(rhs_end, len(tokens)))
                             if tokens[idx].type == "rparen"), None)
         if close_probe is not None:
+            inner_tokens = [t for t in tokens[start + 1:close_probe] if t.type not in _TRIVIA]
+            # A producer followed by an indexed ``select`` inside the
+            # parentheses is an element expression, for example
+            # ``(hcSelected player select 0)``.  The grouped-expression
+            # fallback must preserve the producer's element type instead of
+            # collapsing the whole expression back to Array.
+            producer = next((t.value.lower() for t in inner_tokens
+                             if t.value.lower() in _ARRAY_ELEMENT_TYPES), None)
+            if producer is not None:
+                select_index = next((idx for idx, tok in enumerate(inner_tokens)
+                                     if tok.value.lower() == "select"), None)
+                if (select_index is not None and select_index + 1 < len(inner_tokens)
+                        and inner_tokens[select_index + 1].type != "lbrace"):
+                    return _ARRAY_ELEMENT_TYPES[producer]
+            if inner_tokens and inner_tokens[0].type == "lbracket":
+                split = _array_items(inner_tokens, 0)
+                if split and any(t.value == "#" for t in inner_tokens[split[1] + 1:]):
+                    item_types = [_simple_item_type(item, variables) for item in split[0]]
+                    if item_types and item_types[0] and all(item_type == item_types[0] for item_type in item_types):
+                        return item_types[0]
             after = close_probe + 1
             while after < rhs_end and tokens[after].type in _TRIVIA:
                 after += 1
@@ -534,6 +614,13 @@ def _infer_expression(
                     and any(t.value.lower() in {"velocitymodelspace", "getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}
                             for t in tokens[start + 1:close_probe])):
                 return "Number"
+            # Parenthesized UI command chains are common in assignments:
+            # ``private _ctrl = (findDisplay 1) displayCtrl 42``.
+            # The receiver parentheses otherwise hide the stable Control
+            # return type from the lightweight expression walker.
+            if (any(t.value.lower() == "finddisplay" for t in inner_tokens)
+                    and any(t.value.lower() == "displayctrl" for t in tokens[close_probe + 1:rhs_end])):
+                return "Control"
     # A code block on the left of ``count`` is the filter form and the
     # command still returns a numeric count.
     if (start < rhs_end and tokens[start].type == "lbrace"
@@ -555,6 +642,17 @@ def _infer_expression(
     # Binary command chains such as ``_unit getPos [...]`` and
     # ``_position vectorAdd [...]`` produce the command's return type.  The
     # receiver's type alone is not the result of the expression.
+    # Collection commands retain their own result type when their operand is
+    # another command (``units group player``).  The generic chain rule below
+    # would otherwise see ``group`` first and incorrectly return Group.
+    if (start < rhs_end and tokens[start].value.lower() in {
+            "units", "crew", "allplayers", "allunits", "allvehicles",
+            "allgroups", "allmissionobjects", "alldead", "alldeadmen",
+            "allturrets", "allsimpleobjects", "allstaticobjects",
+            "allstaticweapons", "allair", "allland", "allman",
+            "nearobjects", "nearentities", "nearestobjects",
+            "nearestterrainobjects", "nearroads"}):
+        return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
     if (start + 1 < rhs_end
             and tokens[start + 1].value.lower() in _COMMAND_RETURN_TYPES
             and tokens[start + 1].value.lower() not in _KNOWN_VARIABLE_TYPES):
@@ -620,12 +718,17 @@ def _infer_expression(
     if start < len(tokens) and tokens[start].value.lower() in {"getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}:
         # A coordinate selected from a position command is scalar even when
         # the whole expression is wrapped in parentheses.
+        depth = 0
         for index in range(start + 1, rhs_end - 1):
+            if tokens[index].type == "lparen":
+                depth += 1
+            elif tokens[index].type == "rparen" and depth:
+                depth -= 1
             if tokens[index].value == "#":
                 probe = index + 1
                 while probe < rhs_end and tokens[probe].type in _TRIVIA:
                     probe += 1
-                if probe < rhs_end and tokens[probe].type == "number":
+                if depth == 0 and probe < rhs_end and tokens[probe].type == "number":
                     return "Number"
     if (start < len(tokens) and tokens[start].value.lower() in _ARRAY_ELEMENT_TYPES
             and any(t.value.lower() == "select" for t in tokens[start + 1:rhs_end])):
@@ -1145,6 +1248,40 @@ def _narrowed_type(tokens: list[Token], index: int, variables: dict[str, str]) -
     return None
 
 
+def _has_type_recovery_guard(tokens: list[Token], index: int) -> bool:
+    """Whether a local was checked for a scalar before a later use.
+
+    SQF commonly uses ``if (_value isEqualType 0) then {_value = []};`` or
+    an ``exitWith`` scalar fast path before calling ``count _value``.  The
+    remaining path is deliberately non-scalar, even though the file-wide
+    assignment pass cannot model that branch mutation.
+    """
+    if index >= len(tokens) or tokens[index].type != "local":
+        return False
+    name = tokens[index].value.lower()
+    start = max(0, index - 220)
+    for i in range(start, index - 2):
+        if (tokens[i].type == "local" and tokens[i].value.lower() == name
+                and tokens[i + 1].value.lower() == "isequaltype"
+                and tokens[i + 2].type == "number"
+                and float(tokens[i + 2].value) == 0):
+            return True
+    return False
+
+
+def _has_array_recovery_guard(tokens: list[Token], index: int) -> bool:
+    """Whether a local array is normalized before a string-only command."""
+    if index >= len(tokens) or tokens[index].type != "local":
+        return False
+    name = tokens[index].value.lower()
+    for i in range(max(0, index - 220), index - 2):
+        if (tokens[i].type == "local" and tokens[i].value.lower() == name
+                and tokens[i + 1].value.lower() == "isequaltype"
+                and tokens[i + 2].type == "lbracket"):
+            return True
+    return False
+
+
 def _collect_type_guards(tokens: list[Token], variables: dict[str, str]) -> None:
     """Collect explicit ``isEqualType`` guards for flow-sensitive narrowing."""
     for i in range(len(tokens) - 2):
@@ -1250,6 +1387,11 @@ def check_argument_types(
     variables.pop("_x", None)
     _collect_type_guards(tokens, variables)
     _seed_ast_assignments(ast_nodes, variables, function_return_types)
+    # AST assignment seeding can reintroduce a broad producer type after the
+    # lexical guard pass. Reapply explicit isEqualType facts so guarded array
+    # branches (for example ``if (_nodes isEqualType []) then {...}``) retain
+    # their narrowed type.
+    _collect_type_guards(tokens, variables)
     # Infer local parameter types from unambiguous unary command uses before
     # checking binary commands such as HashMap get.
     for i, tok in enumerate(tokens):
@@ -1267,6 +1409,16 @@ def check_argument_types(
         rule = _SIGNATURES.get(tok.value.lower())
         if rule is None:
             continue
+        # ``deleteAt`` is a binary array/HashMap command.  The generated
+        # command metadata also exposes its numeric index as a unary-looking
+        # signature, which would incorrectly validate the left container as
+        # the index (for example ``_bucket deleteAt (_bucket find _pos)``).
+        if tok.value.lower() == "deleteat" and i > 0:
+            previous = i - 1
+            while previous >= 0 and tokens[previous].type in _TRIVIA:
+                previous -= 1
+            if previous >= 0 and tokens[previous].type in ("local", "ident", "rbracket", "rparen"):
+                continue
         # ``{ ... } count ARRAY`` is SQF's filter form.  The code block is
         # the left operand, so the array/group on the right must not be
         # checked against count's unary container contract.
@@ -1305,6 +1457,22 @@ def check_argument_types(
                 and _is_opaque_object_candidate(tokens, j)):
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if (tok.value.lower() == "count" and actual == "Number"
+                and _has_type_recovery_guard(tokens, j)):
+            continue
+        if (tok.value.lower() in {"systemchat", "hintsilent", "hint"}
+                and actual == "Array" and _has_array_recovery_guard(tokens, j)):
+            continue
+        if tok.value.lower() == "setdamage" and tokens[j].type == "lparen":
+            # A common scalar fast path uses ``([_damage, 0] # _index)``.
+            # The indexed array is numeric even when the parenthesized
+            # expression is too nested for the lightweight operand walker.
+            probe = j
+            while probe < len(tokens) and tokens[probe].type != "rparen":
+                probe += 1
+            inner = tokens[j:probe]
+            if any(t.value == "#" for t in inner) and any(t.type == "number" for t in inner):
+                continue
         if (tok.value.lower() == "isplayer" and actual == "Group"
                 and tokens[j].type == "local"
                 and not any(tokens[k].type == "local" and tokens[k].value.lower() == tokens[j].value.lower()
@@ -1319,7 +1487,15 @@ def check_argument_types(
             continue
         if (tok.value.lower() == "configname" and tokens[j].type == "local"
                 and (_config_loop_element(tokens, j)
-                     or any(t.value.lower() == "configclasses" for t in tokens[max(0, j - 140):j]))):
+                     # SQF's ``forEach`` suffix follows the loop body, so a
+                     # configName call inside that body can occur before the
+                     # configClasses producer in token order.
+                     or any(
+                         t.value.lower() == "foreach"
+                         and any(u.value.lower() == "configclasses"
+                                 for u in tokens[j + offset:min(len(tokens), j + offset + 80)])
+                         for offset, t in enumerate(tokens[j:min(len(tokens), j + 260)])
+                     ))):
             actual = "Config"
         # Antistasi (and other mission frameworks) commonly provide a
         # side-based Faction(side) HashMap helper, which intentionally
@@ -1409,6 +1585,13 @@ def check_argument_types(
                    and any(t.value.lower() in ("getpos", "getposasl", "getposatl", "getposworld", "getposvisual")
                            for t in tokens[k + 2:i])
                    for k in range(i)):
+                continue
+        if tok.value.lower() == "setdamage" and tokens[j].type == "lparen":
+            probe = j
+            while probe < len(tokens) and tokens[probe].type != "rparen":
+                probe += 1
+            inner = tokens[j:probe]
+            if any(t.value == "#" for t in inner) and any(t.type == "number" for t in inner):
                 continue
         if (tok.value.lower() == "distance2d" and tokens[j].type == "local"):
             name = tokens[j].value.lower()
@@ -1612,6 +1795,25 @@ def check_argument_types(
                     # stale Boolean/Number here creates false comparisons in
                     # code that receives strings from dialog/config state.
                     actual_left = None
+                break
+        # Indexed record/loop fields are intentionally unknown: the same
+        # helper can store strings, numbers, or objects in a field.  Do not
+        # let a stale file-wide fact turn ``_amountAdded < _amount`` into a
+        # Number/String impossible-comparison warning.
+        if right < len(tokens) and tokens[right].type == "local":
+            name = tokens[right].value.lower()
+            for cursor in range(right - 1, max(-1, right - 160), -1):
+                if tokens[cursor].type != "local" or tokens[cursor].value.lower() != name:
+                    continue
+                assign = cursor + 1
+                while assign < right and tokens[assign].type in _TRIVIA:
+                    assign += 1
+                if assign < right and tokens[assign].value == "=":
+                    end = assign + 1
+                    while end < right and tokens[end].type != "semicolon":
+                        if tokens[end].value.lower() in ("select", "#"):
+                            actual_right = None
+                        end += 1
                 break
         # typeName returns a string describing the operand, so comparing it
         # with a string literal is intentional even though the underlying

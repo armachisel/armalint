@@ -59,6 +59,16 @@ def check_functions(tokens: list[Token], index: SymbolIndex | None = None) -> li
     """
     diags: list[Diagnostic] = []
     n = len(tokens)
+    # Optional callback hooks are commonly guarded with ``isNil
+    # "HookName"`` before being invoked. They are intentionally supplied by
+    # an integrating mission/mod and should not be treated as unresolved
+    # calls when no implementation is present.
+    optional_hooks = {
+        tokens[k + 1].value.lower()
+        for k, token in enumerate(tokens[:-2])
+        if token.value.lower() == "isnil"
+        and tokens[k + 1].type == "string"
+    }
 
     for i in range(n):
         tok = tokens[i]
@@ -94,6 +104,8 @@ def check_functions(tokens: list[Token], index: SymbolIndex | None = None) -> li
 
         if ttype == "ident":
             name = nxt.value
+            if name.lower() in optional_hooks:
+                continue
             if not _is_known(name, index):
                 message = f"unknown function/command: {name}"
                 if name.lower().startswith("cba_"):
