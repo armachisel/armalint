@@ -88,6 +88,15 @@ def collect_code_functions(source: str, index: SymbolIndex, tokens: list | None 
             index.add_function(tok.value)
             if _FNC in tok.value:
                 index.add_tag(tok.value.split(_FNC, 1)[0])
+        elif (nxt.type in ("ident", "local")
+              and "callback" in tok.value.lower()
+              and "callback" in nxt.value.lower()):
+            # Some APIs pass callback code through params and publish it into
+            # a global before invoking it (for example
+            # ``HR_GRG_CP_callbackPlace = _callBackPlace``). The assignment
+            # is a code contract even though the RHS is a local variable, so
+            # register the global for unknown-function checking.
+            index.add_function(tok.value)
 
     # Namespace callback registration, for example:
     #   missionNamespace setVariable ["myCallback", { ... }];
@@ -273,12 +282,14 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
                 index.add_function(f"{tag}{_FNC}{name}")
             collect_tag(tag, lbrace + 1, body_end - 1, inherited_file or direct_file)
 
+    found_cfgfunctions = False
     i = 0
     while i < n:
         tok = tokens[i]
         if tok.type == "ident" and tok.value.lower() == "class":
             name, _base, lbrace = class_head(i, n)
             if name is not None and name.lower() == "cfgfunctions" and lbrace >= 0:
+                found_cfgfunctions = True
                 end = matching(lbrace, n)
                 # Direct children of CfgFunctions are tags.
                 t = lbrace + 1
@@ -299,6 +310,46 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
                 i = end
                 continue
         i += 1
+
+    # Many addon projects keep a reusable CfgFunctions fragment in a separate
+    # header.  It is included from the real ``class CfgFunctions`` elsewhere,
+    # so the fragment itself has no wrapper for the parser to find:
+    # ``class Collections { tag = \"Col\"; class ... { ... }; };``.  The
+    # tag property is the same declarative contract, so index these fragments
+    # directly while retaining the normal wrapped-config behavior above.
+    if not found_cfgfunctions:
+        i = 0
+        while i < n:
+            if tokens[i].type != "ident" or tokens[i].value.lower() != "class":
+                i += 1
+                continue
+            _name, _base, lbrace = class_head(i, n)
+            if lbrace < 0:
+                i += 1
+                continue
+            end = matching(lbrace, n)
+            j = lbrace + 1
+            tag_value: str | None = None
+            while j < end - 1:
+                if tokens[j].type == "ident" and tokens[j].value.lower() == "class":
+                    _child, _child_base, child_lbrace = class_head(j, end)
+                    if child_lbrace >= 0:
+                        j = matching(child_lbrace, end)
+                        continue
+                if tokens[j].type == "ident" and tokens[j].value.lower() == "tag":
+                    k = skip(j + 1, end)
+                    if k < end and tokens[k].type == "operator" and tokens[k].value == "=":
+                        k = skip(k + 1, end)
+                        if k < end and tokens[k].type == "string":
+                            tag_value = tokens[k].value
+                            break
+                j += 1
+            if tag_value:
+                index.add_tag(tag_value)
+                collect_tag(tag_value.lower(), lbrace + 1, end - 1)
+                i = end
+            else:
+                i += 1
 
 
 if __name__ == "__main__":

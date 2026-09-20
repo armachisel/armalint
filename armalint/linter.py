@@ -242,6 +242,24 @@ def build_symbol_index(
             if re.search(r"requiredAddons\s*\[\]\s*=\s*\{[^}]*\bcba_[A-Za-z0-9_]+", source, re.IGNORECASE | re.DOTALL):
                 index.cba_declared = True
             collect_description_cfg_functions(source, index)
+            # Addon projects often keep a tag's function classes in an
+            # included ``functions.cpp`` fragment rather than repeating the
+            # outer ``class CfgFunctions`` wrapper. Parse that fragment as a
+            # synthetic CfgFunctions body so included HALs-style APIs remain
+            # discoverable during source-tree scans.
+            if ext == ".cpp" and "class" in source and "file" in source:
+                collect_description_cfg_functions(
+                    "class CfgFunctions {\n" + source + "\n};", index
+                )
+            # Include fragments can contain executable SQF assignments as
+            # well as preprocessor definitions.  A common pattern is a
+            # configurable callback in a ``.inc`` file, for example
+            # ``HR_GRG_canSell = { ... };``.  Register those code-valued
+            # globals so callers of the included API are not reported as
+            # unknown functions.  Restrict this to ``.inc``: config files
+            # may contain string snippets that merely resemble SQF.
+            if ext == ".inc":
+                collect_code_functions(source, index)
             # CBA's standard ``script_component.hpp`` defines the config tag
             # as ``ADDON``.  When that external macro header is unavailable,
             # the config parser quite correctly sees the literal tag

@@ -150,7 +150,15 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                 # `isNil {...} exitWith {...}`, etc.).  A missing terminator
                 # is unambiguous only when another identifier/local starts a
                 # new statement.
-                if nxt.type in ("ident", "local") and nxt.value.lower() not in ("isequalto", "isnotequalto"):
+                # A known command immediately following the block is usually
+                # the next leg of a postfix command chain, e.g.
+                # ``items apply { str _x } joinString ","``.  Treating that
+                # command as a new statement produces a false E008 at the
+                # closing brace.  Unknown identifiers remain conservative:
+                # they still indicate a likely missing terminator.
+                if (nxt.type in ("ident", "local")
+                        and nxt.value.lower() not in ("isequalto", "isnotequalto")
+                        and not is_known(nxt.value)):
                     diags.append(Diagnostic(
                         Severity.ERROR, _MISSING_SEMICOLON,
                         "missing semicolon after command with code block",

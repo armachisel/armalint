@@ -38,6 +38,11 @@ def check_preprocessor(source: str) -> list[Diagnostic]:
             continue
         if directive == "define":
             name = rest.split(None, 1)[0] if rest else ""
+            # Arma permits a multiline object-like macro to put the line
+            # continuation marker immediately after the macro name:
+            # ``#define GETDLC\``. The backslash belongs to the directive,
+            # not to the identifier.
+            name = name.rstrip("\\")
             function_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)", rest)
             if function_match:
                 name = function_match.group(1)

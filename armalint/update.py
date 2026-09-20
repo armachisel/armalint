@@ -59,6 +59,7 @@ from .mods import (
     MOD_SCAN_CACHE_FILENAME,
     MOD_METADATA_CACHE_FILENAME,
     save_mod_metadata_cache,
+    expand_core_function_aliases,
 )
 from .sqm import extract_addons
 
@@ -77,17 +78,34 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
     process = None
     stop = threading.Event()
     spinner = None
+    output_thread = None
     try:
         login = steam_user or "anonymous"
+        interactive_login = bool(steam_user and not steam_password)
         process = subprocess.Popen(
             [steamcmd, "+force_install_dir", install_dir, "+login", login,
              "+workshop_download_item", "107410", workshop_id, "+quit"],
             # Authentication prompts and Steam Guard challenges must remain
             # visible; anonymous downloads can stay quiet behind the spinner.
             stdin=subprocess.PIPE if steam_password else None,
-            stdout=None if steam_user and not steam_password else subprocess.DEVNULL,
+            stdout=subprocess.PIPE if interactive_login else subprocess.DEVNULL,
             stderr=None if steam_user and not steam_password else subprocess.STDOUT,
+            text=True if interactive_login else False,
+            bufsize=1 if interactive_login else 0,
         )
+        if interactive_login and process.stdout is not None:
+            # SteamCMD prints its own numeric-only success line. Forward its
+            # interactive output, but replace that line with our named result
+            # below so logs identify which dependency was downloaded.
+            def forward_output() -> None:
+                for line in process.stdout:
+                    if re.search(r"Success\. Downloaded item \d+ to", line):
+                        continue
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+
+            output_thread = threading.Thread(target=forward_output, daemon=True)
+            output_thread.start()
         if stream and not steam_user:
             frames = "|/-\\"
             width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
@@ -111,6 +129,8 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
             returncode = process.returncode
         else:
             returncode = process.wait()
+        if output_thread:
+            output_thread.join(timeout=1)
     except OSError as exc:
         _warn(f"could not run SteamCMD for Workshop item {workshop_id}: {exc}")
         return False
@@ -298,10 +318,11 @@ def _is_mod_dir_name(name: str) -> bool:
 
 
 def _read_mission_sqm(mission_dir: str) -> tuple[str | None, list[str]]:
-    """Read ``mission_dir/mission.sqm`` and return ``(path, required_addons)``.
+    """Read the root and nested SQMs and return ``(root, required_addons)``.
 
-    ``path`` is ``None`` when the file is missing. A missing or unreadable file
-    warns (stderr) and yields an empty addon list rather than failing.
+    The root file controls the usual missing-file warning. Nested SQMs are
+    scanned only for addon declarations; they may be templates or map
+    fragments and are not required to contain a complete ``class Mission``.
     """
     sqm_path = os.path.join(mission_dir, "mission.sqm")
     if not os.path.isfile(sqm_path):
@@ -313,7 +334,33 @@ def _read_mission_sqm(mission_dir: str) -> tuple[str | None, list[str]]:
     except OSError as exc:
         _warn(f"could not read {sqm_path}: {exc}; no required addons")
         return sqm_path, []
-    return sqm_path, extract_addons(text)
+    addons: list[str] = []
+    seen: set[str] = set()
+
+    def add_from(source: str) -> None:
+        for addon in extract_addons(source):
+            key = addon.lower()
+            if key not in seen:
+                seen.add(key)
+                addons.append(addon)
+
+    add_from(text)
+    # Nested mission files occur in addon/map templates.  They can carry
+    # dependencies even when they are not standalone missions.
+    for root, dirs, names in os.walk(mission_dir):
+        dirs[:] = [name for name in dirs if name.lower() != ".armalint"]
+        for name in names:
+            if not name.lower().endswith(".sqm"):
+                continue
+            nested = os.path.join(root, name)
+            if os.path.normcase(os.path.abspath(nested)) == os.path.normcase(os.path.abspath(sqm_path)):
+                continue
+            try:
+                with open(nested, "r", encoding="utf-8", errors="replace") as fh:
+                    add_from(fh.read())
+            except OSError as exc:
+                _warn(f"could not read nested mission file {nested}: {exc}")
+    return sqm_path, addons
 
 
 def run_update(args) -> int:
@@ -518,6 +565,14 @@ def run_update(args) -> int:
         if addon.lower() not in resolved_required and addon.lower() not in installed_addon_names:
             _warn(f"could not resolve required addon {addon}")
 
+    # Preserve public compatibility names such as TFAR_fnc_* alongside their
+    # component-qualified CfgFunctions implementations.
+    functions = expand_core_function_aliases(functions)
+    for name, types in list(function_types.items()):
+        match = re.match(r"^([a-z0-9]+)_core_fnc_(.+)$", name.lower())
+        if match:
+            function_types.setdefault(f"{match.group(1)}_fnc_{match.group(2)}", types)
+
     arma_version = getattr(args, "arma_version", None) or os.environ.get("ARMALINT_ARMA_VERSION")
     metadata_path = os.path.join(os.path.dirname(out_path), MOD_METADATA_CACHE_FILENAME)
     metadata = {
@@ -720,6 +775,12 @@ def _run_self_test() -> int:
                 '        "A3_Characters_F",\n        "A3_Air_F_Heli_Light_01"\n    };\n'
                 "};\n"
             )
+        nested_sqm_dir = os.path.join(mission_dir, "templates")
+        os.makedirs(nested_sqm_dir)
+        with open(os.path.join(nested_sqm_dir, "template.sqm"), "w", encoding="utf-8") as fh:
+            fh.write('addOns[] = {"nested_template_dependency"};\n')
+        _root_sqm, discovered_addons = _read_mission_sqm(mission_dir)
+        assert "nested_template_dependency" in discovered_addons
         config_path = os.path.join(mission_dir, "armalint.json")
         with open(config_path, "w", encoding="utf-8") as fh:
             fh.write(

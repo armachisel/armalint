@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 from armalint.argument_types import check_argument_types_text
@@ -19,6 +20,11 @@ from armalint.locals import check_unused_locals_text
 from armalint.sqf_contracts import check_sqf_contracts_text
 from armalint.value_flow import check_value_flow_text
 from armalint.preprocessor_checks import check_preprocessor
+from armalint.linter import build_symbol_index
+from armalint.collect import collect_description_cfg_functions
+from armalint.symbols import SymbolIndex
+from armalint.mods import expand_core_function_aliases
+from armalint.__main__ import _collect_files
 from armalint.diagnostic import Diagnostic, Severity
 
 
@@ -40,9 +46,9 @@ def _unused_locals() -> bool:
 
 def _sqf_contracts() -> bool:
     valid = check_sqf_contracts_text(
-        'params ["_x", ["_delay", 0, [0]]]; '
+        'params ["_x", ["_delay", 0, [0]], ["_offset", [0,0,0], [[]], 3]]; '
         'missionNamespace setVariable ["ready", true]; '
-        'player addEventHandler ["Killed", { hint "x"; }]; '
+        'player addEventHandler ["Killed", compile "hint \\\"x\\\";"]; '
         '[] remoteExec ["TAG_fnc_update", 2, true]; publicVariable "ready";'
     )
     invalid = check_sqf_contracts_text(
@@ -57,7 +63,10 @@ def _sqf_contracts() -> bool:
 def _semantic_and_preprocessor_diagnostics() -> bool:
     value_codes = {item.code for item in check_value_flow_text('_x = 1; _x = 2; _x = 2; {} ; [] select 0;')}
     macro_codes = {item.code for item in check_preprocessor('#define X 1\n#define X 2\n#if UNKNOWN\n#endif\n#endif\n#pragma bad\n')}
-    return {"W222", "W223", "W224"} <= value_codes and {"W225", "W226", "W227", "W228"} <= macro_codes
+    multiline_codes = {item.code for item in check_preprocessor('#define GETDLC\\\n#define IDCS_LEFT\\\n')}
+    return ({"W222", "W223", "W224"} <= value_codes
+            and {"W225", "W226", "W227", "W228"} <= macro_codes
+            and "W228" not in multiline_codes)
 
 
 def _ast_try_catch() -> bool:
@@ -235,7 +244,10 @@ def _missing_semicolon_after_apply() -> bool:
     from armalint.syntax import check_syntax_text
     missing = check_syntax_text('_nodeIds apply { _x } _next = 1;')
     valid = check_syntax_text('_nodeIds apply { _x }\n};')
-    return any(item.code == "E008" for item in missing) and not any(item.code == "E008" for item in valid)
+    chained = check_syntax_text('_nodeIds apply { str _x } joinString ",";')
+    return (any(item.code == "E008" for item in missing)
+            and not any(item.code == "E008" for item in valid)
+            and not any(item.code == "E008" for item in chained))
 
 
 def _generated_signature_forms() -> bool:
@@ -271,7 +283,7 @@ def _location_and_distance_overloads() -> bool:
 
 
 def _config_iteration_and_conditional_values() -> bool:
-    source = 'private _a = [0, 0, 0]; private _b = [10, 10, 0]; private _p = if (true) then {_a} else {_b}; _p doMove _b; { private _tag = getText (_x/"tag"); private _deps = getArray (_x/"requiredAddons"); private _ok = isClass (configFile/"CfgPatches"/_tag); } forEach ("true" configClasses (configFile/"CfgFunctions"));'
+    source = 'private _a = [0, 0, 0]; private _b = [10, 10, 0]; private _p = if (true) then {_a} else {_b}; _p doMove _b; { private _tag = getText (_x/"tag"); private _name = configName _x; private _deps = getArray (_x/"requiredAddons"); private _ok = isClass (configFile/"CfgPatches"/_tag); } forEach ("true" configClasses (configFile/"CfgFunctions"));'
     diagnostics = check_argument_types_text(source)
     return not any(d.code == "W203" for d in diagnostics)
 
@@ -498,6 +510,21 @@ def _types_support_namespace_overloads() -> bool:
     return all(not any(item.code in {"W203", "W205", "W218", "W228"} for item in check_argument_types_text(source)) for source in snippets)
 
 
+def _types_canadd_array_form() -> bool:
+    source = ('private _container = player; private _name = "acc_flashlight"; '
+              '_container canAdd [_name, 1]; _container canAddItemToUniform [_name, 1]; '
+              '_container canAddItemToBackpack [_name, 1]; _container canAddItemToVest [_name, 1];')
+    return not any(item.code == "W203" and "canAdd" in item.message for item in check_argument_types_text(source))
+
+
+def _types_patcom_overloads() -> bool:
+    source = ('private _side = civilian; count units _side; '
+              'private _locations = nearestLocations [[0,0,0], ["NameCity"], 100]; count _locations; '
+              'private _building = nearestBuilding [0,0,0]; '
+              'private _known = []; _known append (player targets [true, 100, [], 0]);')
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
+
+
 def _types_typed_select_and_vector_reductions() -> bool:
     snippets = (
         # Typed engine collections narrow on indexed select, while filter
@@ -513,6 +540,32 @@ def _types_typed_select_and_vector_reductions() -> bool:
         'player setName ["Full Name", "Full", "Name"];',
     )
     return all(not any(item.code == "W203" for item in check_argument_types_text(source)) for source in snippets)
+
+
+def _types_scrt_command_overloads() -> bool:
+    source = (
+        'private _pos = [0,0,0]; player lookAt _pos; '
+        'player addMagazine ["item", 1]; '
+        'doGetOut (units group player); '
+        'private _building = nearestBuilding [0,0,0]; '
+        'private _positions = _building buildingPos -1; count _positions; '
+        'private _ctrl = (findDisplay 1) displayCtrl 1; ctrlSetFocus _ctrl;'
+        ' count groupSelectedUnits player; count (hcSelected player);'
+        'private _group = hcSelected player select 0; groupID _group; leader _group;'
+        'private _groupParen = (hcSelected player select 0); groupID _groupParen; leader _groupParen;'
+        'private _roadPos = getPosATL (_nearRoads#0); player distance2D _roadPos;'
+        'private _key = ["mbt0", "mbt1"]#0; createHashMap deleteAt _key;'
+        'private _bucket = []; private _pos = [0,0,0]; _bucket deleteAt (_bucket find _pos);'
+        '["ColorOrange", "ColorYellow"]#0 setMarkerColor;'
+    )
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
+
+
+def _cfgfunctions_fragment_tag() -> bool:
+    source = 'class Collections { tag = "Col"; class NestLoc { file = "Collections\\NestLoc"; class nestLoc_get {}; }; };'
+    index = SymbolIndex()
+    collect_description_cfg_functions(source, index)
+    return index.is_known_function("Col_fnc_nestLoc_get")
 
 
 def _suppression_multi_code() -> bool:
@@ -534,6 +587,33 @@ def _suppression_quality() -> bool:
 def _malformed_suppression() -> bool:
     quality = check_suppression_quality("// armalint: disble W206\n// armalint: disable-next-line W999 -- temporary\n", [], False)
     return sum(item.code == "W231" for item in quality) == 2
+
+
+def _inc_code_callback_symbols() -> bool:
+    """Executable include fragments should publish callback symbols."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "config.inc"
+        path.write_text("HR_GRG_canSell = { _this isEqualTo theBoss };\nHR_GRG_CP_callbackPlace = _callBackPlace;\n", encoding="utf8")
+        index = build_symbol_index([str(path)])
+    return index.is_known_function("HR_GRG_canSell") and index.is_known_function("HR_GRG_CP_callbackPlace")
+
+
+def _directory_and_explicit_collection_match() -> bool:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        inc = root / "macros.inc"
+        cpp = root / "functions.cpp"
+        ignored = root / "notes.txt"
+        for path in (inc, cpp, ignored):
+            path.write_text("", encoding="utf8")
+        directory_files = {Path(path).name for path in _collect_files(str(root), [])}
+        explicit_files = {Path(path).name for path in (_collect_files(str(inc), []) + _collect_files(str(cpp), []))}
+    return directory_files == {"macros.inc", "functions.cpp"} and explicit_files == directory_files
+
+
+def _core_function_aliases() -> bool:
+    names = expand_core_function_aliases({"tfar_core_fnc_backpacklr", "ace_medical_fnc_setunconscious"})
+    return "tfar_fnc_backpacklr" in names and "ace_fnc_setunconscious" not in names
 
 
 CASES = (
@@ -616,10 +696,17 @@ CASES = (
     ("nested type scope isolated", _types_nested_scope_isolated),
     ("Antistasi producer boundary inference", _types_antistasi_producer_boundaries),
     ("support and namespace overload inference", _types_support_namespace_overloads),
+    ("canAdd array overload", _types_canadd_array_form),
+    ("PatCom command overloads", _types_patcom_overloads),
     ("typed selects and vector reductions", _types_typed_select_and_vector_reductions),
+    ("SQF command overloads and returns", _types_scrt_command_overloads),
+    ("CfgFunctions fragment tags", _cfgfunctions_fragment_tag),
     ("multi-code suppression", _suppression_multi_code),
     ("suppression quality", _suppression_quality),
     ("malformed suppression", _malformed_suppression),
+    ("include callback symbols", _inc_code_callback_symbols),
+    ("directory and explicit collection parity", _directory_and_explicit_collection_match),
+    ("component-qualified function aliases", _core_function_aliases),
 )
 
 

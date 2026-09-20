@@ -62,6 +62,18 @@ The updater writes four files:
 | `.armalint/armalint_scan_cache.json` | Hashes and scan results used to skip unchanged PBOs and files. |
 | `.armalint/armalint_mods_metadata.json` | Versioned descriptions, lifecycle flags, source PBOs, confidence, and scan errors. |
 
+The exact-name index also understands standalone `CfgFunctions` fragments. Some
+addons keep a header such as `class Collections { tag = "Col"; ... };` and
+include it from a larger `CfgFunctions` block. Armalint indexes the declared
+tag and its function classes directly, so helper calls in source and examples
+can be checked without adding a broad tag manually.
+
+Some Arma modules register public functions directly in a config class with a
+property such as `function = "TAG_fnc_createThing"`, rather than under
+`CfgFunctions`. The updater reads those generic config registrations from
+rapified addon configs too, so module functions from downloaded mods are
+available to unknown-function checks after the next update.
+
 The first scan may take a while. That is the price of looking inside the game
 and mod data. Later scans reuse unchanged results. Use `--clear-cache` when
 you want to force the scan:
@@ -108,6 +120,11 @@ armalint-update --mission C:\path\to\MyMission.Altis --arma-version 2.18.152
 The metadata cache records which addon/PBO supplied each function and notes
 unreadable or unsupported PBOs. This makes an apparently valid partial scan
 visible to editors and MCP clients.
+
+The linter also maintains a symbol-index cache for the files it is about to
+check. When symbol collection changes, the cache schema is advanced and the
+next run rebuilds it automatically. Use `--clear-cache` when you want to force
+the updater's incremental scan and local symbol index to be reconsidered.
 
 ## Broad tags and exact names
 

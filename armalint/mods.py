@@ -28,7 +28,12 @@ import os
 import shutil
 import re
 
-from .cfgfunctions import extract_cfg_functions, extract_cfg_function_files, extract_cfg_function_metadata
+from .cfgfunctions import (
+    extract_cfg_functions,
+    extract_cfg_function_files,
+    extract_cfg_function_metadata,
+    extract_config_function_references,
+)
 from .collect import collect_description_cfg_functions
 from .pbo import read_pbo
 from .rapified import parse_config_bin
@@ -39,7 +44,9 @@ MOD_TYPE_CACHE_FILENAME = "armalint_mods_types.json"
 MOD_MACRO_CACHE_FILENAME = "armalint_mods_macros.json"
 MOD_METADATA_CACHE_FILENAME = "armalint_mods_metadata.json"
 MOD_SCAN_CACHE_FILENAME = "armalint_scan_cache.json"
-MOD_SCAN_CACHE_VERSION = 3
+# Bump when extraction rules change so an unchanged PBO is rescanned with the
+# new symbol discovery logic (for example addon-tag fallbacks).
+MOD_SCAN_CACHE_VERSION = 5
 
 #: Steam app id for Arma 3 (the numeric folder under ``workshop/content``).
 _ARMA_APP_ID = "107410"
@@ -525,6 +532,9 @@ def _dir_function_files(addon_dir: str, mod_prefix: str | None = None) -> set[st
     """
     tag = _addon_tag(addon_dir)
     hatg_tag = _read_prefix_from_dir(addon_dir) or mod_prefix or tag
+    hatg_tags = {hatg_tag}
+    if tag.lower().endswith("_main"):
+        hatg_tags.add(tag)
     result: set[str] = set()
     for _dirpath, _dirnames, filenames in os.walk(addon_dir):
         for filename in filenames:
@@ -534,7 +544,8 @@ def _dir_function_files(addon_dir: str, mod_prefix: str | None = None) -> set[st
                 result.add(f"{tag}_fnc_{name}".lower())
             elif lower.startswith("fn_") and lower.endswith(".sqf"):
                 name = filename[3:-4]  # strip the leading "fn_" and trailing ".sqf"
-                result.add(f"{hatg_tag}_fnc_{name}".lower())
+                for function_tag in hatg_tags:
+                    result.add(f"{function_tag}_fnc_{name}".lower())
     return result
 
 
@@ -562,17 +573,43 @@ def _extract_pbo_functions(pbo_path: str, mod_prefix: str | None = None) -> set[
         try:
             config = parse_config_bin(config_bin)
             functions |= extract_cfg_functions(config)
+            functions |= extract_config_function_references(config)
         except Exception:
             pass
 
     tag = _addon_tag(pbo_path)
     hatg_tag = _read_prefix_from_files(files) or mod_prefix or tag
+    # Some packed addons publish their API under the full addon tag (for
+    # example ``*_main_fnc_*``) while their shared header defines a shorter
+    # PREFIX.  Keep the PREFIX as the primary convention, but retain the
+    # ``*_main`` addon-tag form as a generic fallback when CfgFunctions is
+    # unavailable or rapified metadata cannot be decoded.
+    hatg_tags = {hatg_tag}
+    if tag.lower().endswith("_main"):
+        hatg_tags.add(tag)
     for name in files:
         if _is_prep_function_path(name):
             functions.add(_prep_function_name(tag, name))
         elif _is_hatg_function_path(name):
-            functions.add(_hatg_function_name(hatg_tag, name))
+            for function_tag in hatg_tags:
+                functions.add(_hatg_function_name(function_tag, name))
     return functions
+
+
+def expand_core_function_aliases(functions: set[str]) -> set[str]:
+    """Add public ``TAG_fnc_*`` aliases for ``TAG_core_fnc_*`` APIs.
+
+    Several established mods, including TFAR, register implementation
+    functions under a ``core`` CfgFunctions component while exposing the
+    shorter legacy API name to mission code.  This derives that compatibility
+    alias from the indexed names rather than hard-coding a particular mod.
+    """
+    aliases = set(functions)
+    for name in functions:
+        match = re.match(r"^([a-z0-9]+)_core_fnc_(.+)$", name.lower())
+        if match:
+            aliases.add(f"{match.group(1)}_fnc_{match.group(2)}")
+    return aliases
 
 
 def _extract_dir_functions(addon_dir: str, mod_prefix: str | None = None) -> set[str]:
@@ -846,6 +883,7 @@ def extract_mod_data(
                     try:
                         config = parse_config_bin(data)
                         cfg_names = extract_cfg_functions(config)
+                        cfg_names |= extract_config_function_references(config)
                         cfg_files = extract_cfg_function_files(config)
                         cfg_metadata = extract_cfg_function_metadata(config)
                         if addon_names is not None:
