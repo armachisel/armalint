@@ -129,6 +129,11 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
     if not os.path.isdir(content_path) or not any(os.scandir(content_path)):
         _warn(f"SteamCMD did not install Workshop dependency {name or workshop_id}; check its SteamCMD log (authenticated Arma 3 access may be required)")
         return False
+    # SteamCMD's own success line only includes the numeric Workshop ID.
+    # Echo a stable, human-readable mapping so logs remain useful when a
+    # project downloads several dependencies in one run.
+    label = f'{name} (Workshop ID {workshop_id})' if name else f'Workshop item {workshop_id}'
+    print(f'Success. Downloaded dependency {label} to "{content_path}"')
     return True
 
 
