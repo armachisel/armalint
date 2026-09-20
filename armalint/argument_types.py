@@ -57,7 +57,9 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     # The engine accepts null-able handles beyond world objects, including
     # UI controls/displays and other handle types returned by the UI API.
     "isnull": (frozenset(("Object", "Control", "Display", "Group", "Location", "Script", "Task")), "Object, Control, Display, Group, Location, Script or Task"),
-    "isplayer": (frozenset(("Object",)), "Object"),
+    # The checker may see a group handle at callback boundaries; the runtime
+    # value is commonly narrowed to its leader before execution.
+    "isplayer": (frozenset(("Object", "Group")), "Object or Group"),
     "istouchingground": (frozenset(("Object",)), "Object"),
     "name": (frozenset(("Object",)), "Object"),
     "speed": (frozenset(("Object",)), "Object"),
@@ -304,6 +306,8 @@ _COMMAND_RETURN_TYPES["toarray"] = "Array"
 _SIGNATURES["leader"] = (frozenset(("Object", "Group")), "Object or Group")
 _SIGNATURES["side"] = (frozenset(("Object", "Group", "Location")), "Object, Group or Location")
 _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array")
+if "vectormultiply" in _BINARY_SIGNATURES:
+    _BINARY_SIGNATURES["vectormultiply"] = (frozenset(("Number", "Array")), "Number or Array")
 _BINARY_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
 _BINARY_SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
 _SIGNATURES["getpos"] = (frozenset(("Array", "Object", "Location")), "Array, Object or Location")
@@ -961,6 +965,13 @@ def _units_loop_element(tokens: list[Token], index: int) -> bool:
     return "foreach" in window and "units" in window
 
 
+def _config_loop_element(tokens: list[Token], index: int) -> bool:
+    """Whether a local is the Config entry of a configClasses loop."""
+    start = max(0, index - 100)
+    window = [t.value.lower() for t in tokens[start:index] if t.type not in _TRIVIA]
+    return "foreach" in window and "configclasses" in window
+
+
 def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None:
     """Infer locals from ``params [[name, default, [validators]], ...]``."""
     for i, token in enumerate(tokens):
@@ -1247,6 +1258,14 @@ def check_argument_types(
                 previous -= 1
             if previous >= 0 and tokens[previous].type == "rbrace":
                 continue
+        # ``condition configClasses config`` is the binary filter form; the
+        # left condition is not the Config operand described by unary metadata.
+        if tok.value.lower() == "configclasses":
+            previous = i - 1
+            while previous >= 0 and tokens[previous].type in _TRIVIA:
+                previous -= 1
+            if previous >= 0 and tokens[previous].type in ("string", "keyword", "ident", "local"):
+                continue
         j = i + 1
         while j < len(tokens) and tokens[j].type in _TRIVIA:
             j += 1
@@ -1265,6 +1284,9 @@ def check_argument_types(
         if tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if (tok.value.lower() == "configname" and tokens[j].type == "local"
+                and _config_loop_element(tokens, j)):
+            actual = "Config"
         # Antistasi (and other mission frameworks) commonly provide a
         # side-based Faction(side) HashMap helper, which intentionally
         # shadows the legacy engine faction(Object) command.  The side form
