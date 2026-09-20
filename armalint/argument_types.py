@@ -700,7 +700,7 @@ def _infer_expression(
                     if (inner == "Array" and j < len(tokens)
                             and tokens[j].value.lower() == "select"):
                         if inner_tokens and (inner_tokens[0].type == "lbracket"
-                                or any(t.value.lower() in (_ARRAY_ELEMENT_TYPES | {"velocitymodelspace", "getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}) for t in inner_tokens)):
+                                or any(t.value.lower() in (_ARRAY_ELEMENT_TYPES.keys() | {"velocitymodelspace", "getpos", "getposasl", "getposatl", "getposworld", "getposvisual"}) for t in inner_tokens)):
                             if j + 1 < len(tokens) and tokens[j + 1].type == "number":
                                 producer = next((t.value.lower() for t in inner_tokens
                                                  if t.value.lower() in _ARRAY_ELEMENT_TYPES), None)
