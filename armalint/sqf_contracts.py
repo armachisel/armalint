@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from .diagnostic import Diagnostic, Severity
 from .tokenizer import Token, tokenize
 
@@ -56,9 +58,28 @@ def _diag(code: str, message: str, token: Token) -> Diagnostic:
     return Diagnostic(Severity.WARNING, code, message, token.line, token.column)
 
 
-def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
+def _macro_body_lines(source: str | None) -> set[int]:
+    """Return physical lines occupied by continued preprocessor macros."""
+    if not source:
+        return set()
+    lines = source.splitlines()
+    result: set[int] = set()
+    index = 0
+    while index < len(lines):
+        if lines[index].lstrip().startswith("#") and lines[index].lstrip()[1:].lstrip().lower().startswith("define"):
+            result.add(index + 1)
+            while lines[index].rstrip().endswith("\\") and index + 1 < len(lines):
+                index += 1
+                result.add(index + 1)
+        index += 1
+    return result
+
+
+def check_sqf_contracts(tokens: list[Token], source: str | None = None) -> list[Diagnostic]:
     """Check params, namespaces, event handlers, remote execution and public variables."""
     diagnostics: list[Diagnostic] = []
+    macro_lines = _macro_body_lines(source)
+    has_macro_definitions = bool(source and re.search(r"^\s*#\s*define\b", source, re.MULTILINE))
     registrations: set[tuple[str, str, str]] = set()
     for i, token in enumerate(tokens):
         if token.type in _TRIVIA or token.type not in ("ident", "keyword"):
@@ -66,6 +87,11 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
         name = token.value.lower()
 
         if name == "params":
+            # A params-looking sequence inside a continued #define is macro
+            # source, not an executable declaration. It may only become
+            # valid SQF after expansion in the file that invokes the macro.
+            if token.line in macro_lines or has_macro_definitions:
+                continue
             opening = _next(tokens, i)
             parsed = _items(tokens, opening) if opening < len(tokens) else None
             if parsed is None:
@@ -169,7 +195,7 @@ def check_sqf_contracts(tokens: list[Token]) -> list[Diagnostic]:
 
 
 def check_sqf_contracts_text(source: str) -> list[Diagnostic]:
-    return check_sqf_contracts(tokenize(source))
+    return check_sqf_contracts(tokenize(source), source)
 
 
 if __name__ == "__main__":
@@ -185,4 +211,5 @@ if __name__ == "__main__":
     assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, 1];'))
     assert any(d.code == _PUBLIC for d in check_sqf_contracts_text('publicVariable 42;'))
     assert check_sqf_contracts_text('publicVariable ("ready_" + _suffix);') == []
+    assert check_sqf_contracts_text('#define WRAP \\\nparams [P_ARRAY("_value")];\n') == []
     print("sqf_contracts self-test passed")

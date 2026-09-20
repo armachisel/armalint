@@ -13,7 +13,7 @@ from .definitions import check_definitions
 from .diagnostic import Diagnostic, Severity
 from .functions import check_functions
 from .locals import check_unused_locals
-from .preprocessor import find_include_cycles, find_include_guard_issues, find_include_origins, preprocess
+from .preprocessor import collect_macro_locals, find_include_cycles, find_include_guard_issues, find_include_origins, preprocess
 from .symbols import SymbolIndex
 from .suppression import apply_rule_severities, filter_suppressed, check_suppression_quality
 from .syntax import check_syntax
@@ -26,7 +26,7 @@ from .preprocessor_checks import check_preprocessor
 from .plugins import PluginRule, run_plugin_checks
 
 # Extensions treated as config files for symbol collection.
-_CONFIG_EXTENSIONS = (".hpp", ".ext", ".cpp", ".cfg", ".inc")
+_CONFIG_EXTENSIONS = (".h", ".hpp", ".ext", ".cpp", ".cfg", ".inc")
 
 
 def _deduplicate(diags: list[Diagnostic]) -> list[Diagnostic]:
@@ -83,10 +83,12 @@ def lint_text(
     # undefined-variable analysis, but carrying inferred locals across included
     # files creates false positives when common names are reused.
     diags.extend(check_argument_types(tokens, function_signatures, function_return_types, tree.statements))
-    diags.extend(check_undefined(tokens, tree, external_locals))
+    macro_external_locals = set(external_locals or ()) | collect_macro_locals(source, filename)
+    diags.extend(check_undefined(tokens, tree, macro_external_locals))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
-    diags.extend(check_sqf_contracts(tokens))
+    if not filename.lower().endswith(_CONFIG_EXTENSIONS):
+        diags.extend(check_sqf_contracts(tokens, source))
     diags.extend(check_value_flow(tokens))
     if style:
         diags.extend(check_style(source))
@@ -130,6 +132,16 @@ def lint_file(
     else:
         source = source_text
 
+    # The source cache may contain preprocessed text. Keep a raw copy for
+    # macro-local discovery so wrapper declarations are still visible.
+    raw_source = source
+    if source_text is not None:
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                raw_source = fh.read()
+        except OSError:
+            pass
+
     combined, line_map = preprocess(
         source, path, os.path.dirname(os.path.abspath(path)), source_cache=source_cache,
     )
@@ -163,10 +175,19 @@ def lint_file(
     if check_unused_locals_enabled:
         diags.extend(check_unused_locals(source_tokens))
     diags.extend(check_argument_types(source_tokens, function_signatures, function_return_types, source_nodes))
-    diags.extend(check_undefined(tokens, tree, external_locals))
+    macro_external_locals = (
+        set(external_locals or ())
+        | collect_macro_locals(raw_source, path)
+        | collect_macro_locals(combined, path)
+    )
+    diags.extend(check_undefined(tokens, tree, macro_external_locals))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
-    diags.extend(check_sqf_contracts(source_tokens))
+    # Header/config files contain macro bodies and fragments rather than
+    # executable SQF statements. Contract checks such as ``params`` would
+    # interpret those fragments as real code and report false positives.
+    if not path.lower().endswith(_CONFIG_EXTENSIONS):
+        diags.extend(check_sqf_contracts(source_tokens, source))
     diags.extend(check_value_flow(source_tokens))
     if style:
         diags.extend(check_style(source))

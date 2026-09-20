@@ -24,6 +24,7 @@ Only the standard library is used.
 from __future__ import annotations
 
 import argparse
+import getpass
 import os
 import re
 import shutil
@@ -74,7 +75,15 @@ def _warn(message: str) -> None:
 
 def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, name: str | None = None, steam_user: str | None = None, steam_password: str | None = None, steam_guard: str | None = None) -> bool:
     os.makedirs(install_dir, exist_ok=True)
-    stream = sys.stderr if sys.stderr.isatty() else None
+    # PowerShell and some IDE terminals expose the interactive console on
+    # stdout but report stderr as non-interactive.  Prefer stderr so progress
+    # does not mix with SteamCMD prompts, then fall back to stdout.
+    stream = (
+        sys.stderr if sys.stderr.isatty()
+        else sys.stdout if sys.stdout.isatty()
+        else sys.stdout
+    )
+    dynamic = bool(stream.isatty())
     process = None
     stop = threading.Event()
     spinner = None
@@ -82,51 +91,98 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
     try:
         login = steam_user or "anonymous"
         interactive_login = bool(steam_user and not steam_password)
+        label = name or workshop_id
+        if stream:
+            print(
+                f"SteamCMD starting {'authenticated' if steam_user else 'anonymous'} download for {label}",
+                file=stream,
+                flush=True,
+            )
+            if interactive_login:
+                print(
+                    "SteamCMD is waiting for the Steam password and, if enabled, a Steam Guard code.",
+                    file=stream,
+                    flush=True,
+                )
+        credential_login = bool(steam_user and steam_password)
+        native_auth_console = bool(
+            credential_login and not steam_guard
+            and sys.stdin.isatty() and sys.stdout.isatty()
+        )
+        command = [steamcmd, "+force_install_dir", install_dir, "+login", login]
+        if steam_password:
+            # SteamCMD accepts the password as the second login argument. Its
+            # console stdin is a command stream, so writing a bare password
+            # there leaves authenticated downloads waiting indefinitely.
+            command.append(steam_password)
+        command.extend(["+workshop_download_item", "107410", workshop_id, "+quit"])
         process = subprocess.Popen(
-            [steamcmd, "+force_install_dir", install_dir, "+login", login,
-             "+workshop_download_item", "107410", workshop_id, "+quit"],
+            command,
             # Authentication prompts and Steam Guard challenges must remain
             # visible; anonymous downloads can stay quiet behind the spinner.
-            stdin=subprocess.PIPE if steam_password else None,
-            stdout=subprocess.PIPE if interactive_login else subprocess.DEVNULL,
-            stderr=None if steam_user and not steam_password else subprocess.STDOUT,
-            text=True if interactive_login else False,
-            bufsize=1 if interactive_login else 0,
+            stdin=None if native_auth_console else (subprocess.PIPE if steam_password else None),
+            stdout=None if native_auth_console else (subprocess.PIPE if (interactive_login or credential_login) else subprocess.DEVNULL),
+            stderr=None if (interactive_login or native_auth_console) else subprocess.STDOUT,
+            text=True if (interactive_login or credential_login) else False,
+            bufsize=1 if (interactive_login or credential_login) else 0,
         )
-        if interactive_login and process.stdout is not None:
+        if (interactive_login or credential_login) and process.stdout is not None:
             # SteamCMD prints its own numeric-only success line. Forward its
             # interactive output, but replace that line with our named result
             # below so logs identify which dependency was downloaded.
             def forward_output() -> None:
-                for line in process.stdout:
-                    if re.search(r"Success\. Downloaded item \d+ to", line):
-                        continue
-                    sys.stdout.write(line)
+                buffer = ""
+                guard_sent = bool(steam_guard)
+                while True:
+                    char = process.stdout.read(1)
+                    if not char:
+                        break
+                    sys.stdout.write(char)
                     sys.stdout.flush()
+                    buffer = (buffer + char)[-240:]
+                    if (
+                        credential_login
+                        and not guard_sent
+                        and re.search(r"(?:steam\s+guard|guard\s+code|two[- ]factor|enter\s+(?:the\s+)?code|code\s*:)", buffer, re.IGNORECASE)
+                    ):
+                        code = input("\nSteam Guard code: ").strip()
+                        if process.stdin is not None:
+                            process.stdin.write(code + "\n")
+                            process.stdin.flush()
+                        guard_sent = True
 
             output_thread = threading.Thread(target=forward_output, daemon=True)
             output_thread.start()
-        if stream and not steam_user:
+        # Do not draw over an interactive SteamCMD prompt.  Its own output is
+        # forwarded below and the inherited stdin must remain usable for the
+        # password/Steam Guard exchange.
+        if stream and not interactive_login and not credential_login and not native_auth_console:
             frames = "|/-\\"
             width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
 
             def show_progress() -> None:
                 index = 0
-                while not stop.wait(0.15):
-                    label = name or workshop_id
-                    message = f"SteamCMD preparing dependency {label} {frames[index % len(frames)]}"
-                    stream.write("\r" + message[:width].ljust(width))
+                interval = 0.15 if dynamic else 1.0
+                while not stop.wait(interval):
+                    phase = "authenticating/downloading" if steam_user else "preparing/downloading"
+                    message = f"SteamCMD {phase} {label} {frames[index % len(frames)]}"
+                    if dynamic:
+                        stream.write("\r" + message[:width].ljust(width))
+                    else:
+                        stream.write(message + "\n")
                     stream.flush()
                     index += 1
 
             spinner = threading.Thread(target=show_progress, daemon=True)
             spinner.start()
         if steam_password:
-            credentials = steam_password + "\n"
-            if steam_guard:
-                credentials += steam_guard + "\n"
-            _output, _ = process.communicate(credentials)
-            returncode = process.returncode
+            if process.stdin is not None:
+                if steam_guard:
+                    process.stdin.write(steam_guard + "\n")
+                process.stdin.flush()
+            returncode = process.wait()
+            if process.stdin is not None:
+                process.stdin.close()
         else:
             returncode = process.wait()
         if output_thread:
@@ -138,7 +194,7 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
         stop.set()
         if spinner:
             spinner.join(timeout=1)
-        if stream and not steam_user:
+        if stream and dynamic:
             width = max(32, shutil.get_terminal_size((80, 24)).columns - 1)
             stream.write("\r" + (" " * width) + "\r")
             stream.flush()
@@ -185,8 +241,13 @@ def _download_steamcmd_archive(destination: str) -> None:
         stream.flush()
 
 
-def _acquire_dependency_source(spec: dict, source_root: str) -> str | None:
-    """Clone a declared dependency source into the project cache."""
+def _acquire_dependency_source(spec: dict, source_root: str, base_dir: str | None = None) -> str | None:
+    """Resolve a local source or clone a declared remote dependency source.
+
+    A dependency source may be a checkout that already lives beside the
+    project (for example an addon source tree), or a git URL.  Local sources
+    are deliberately returned in place and are never copied into the cache.
+    """
     source = spec.get("source")
     if isinstance(source, dict):
         url = source.get("url")
@@ -196,6 +257,11 @@ def _acquire_dependency_source(spec: dict, source_root: str) -> str | None:
         ref = spec.get("ref")
     if not isinstance(url, str) or not url.strip():
         return None
+    candidate = os.path.expanduser(url.strip())
+    if base_dir and not os.path.isabs(candidate):
+        candidate = os.path.join(base_dir, candidate)
+    if os.path.isdir(candidate):
+        return os.path.abspath(candidate)
     destination = os.path.join(source_root, re.sub(r"[^A-Za-z0-9_.-]+", "_", str(spec.get("name", "dependency"))))
     if os.path.isdir(os.path.join(destination, ".git")):
         try:
@@ -250,7 +316,8 @@ def _ensure_steamcmd(project_state: str, detected: str | None) -> str | None:
 
 def _extract_with_progress(path: str, label: str, root_number: int, root_total: int,
                            completed: int, overall_total: int,
-                           addon_names: set[str], scan_cache: dict,
+                           addon_names: set[str], addon_sources: dict[str, str], scan_cache: dict,
+                           wanted_addons: set[str],
                            cache_stats: dict[str, int] | None = None):
     """Scan a root and display aggregate addon progress on interactive terminals."""
     stream = (
@@ -259,7 +326,7 @@ def _extract_with_progress(path: str, label: str, root_number: int, root_total: 
         else None
     )
     if stream is None:
-        return extract_mod_data_cached(path, scan_cache, None, addon_names, cache_stats)
+        return extract_mod_data_cached(path, scan_cache, None, addon_names, addon_sources, wanted_addons, cache_stats)
 
     stop = threading.Event()
     state = {"done": completed, "item": "starting"}
@@ -297,7 +364,7 @@ def _extract_with_progress(path: str, label: str, root_number: int, root_total: 
     draw(f"{status()} |")
     thread.start()
     try:
-        return extract_mod_data_cached(path, scan_cache, progress, addon_names, cache_stats)
+        return extract_mod_data_cached(path, scan_cache, progress, addon_names, addon_sources, wanted_addons, cache_stats)
     finally:
         stop.set()
         thread.join()
@@ -325,15 +392,6 @@ def _read_mission_sqm(mission_dir: str) -> tuple[str | None, list[str]]:
     fragments and are not required to contain a complete ``class Mission``.
     """
     sqm_path = os.path.join(mission_dir, "mission.sqm")
-    if not os.path.isfile(sqm_path):
-        _warn(f"mission.sqm not found in {mission_dir}; no required addons")
-        return None, []
-    try:
-        with open(sqm_path, "r", encoding="utf-8", errors="replace") as fh:
-            text = fh.read()
-    except OSError as exc:
-        _warn(f"could not read {sqm_path}: {exc}; no required addons")
-        return sqm_path, []
     addons: list[str] = []
     seen: set[str] = set()
 
@@ -344,7 +402,12 @@ def _read_mission_sqm(mission_dir: str) -> tuple[str | None, list[str]]:
                 seen.add(key)
                 addons.append(addon)
 
-    add_from(text)
+    if os.path.isfile(sqm_path):
+        try:
+            with open(sqm_path, "r", encoding="utf-8", errors="replace") as fh:
+                add_from(fh.read())
+        except OSError as exc:
+            _warn(f"could not read {sqm_path}: {exc}; continuing with nested mission files")
     # Nested mission files occur in addon/map templates.  They can carry
     # dependencies even when they are not standalone missions.
     for root, dirs, names in os.walk(mission_dir):
@@ -360,7 +423,10 @@ def _read_mission_sqm(mission_dir: str) -> tuple[str | None, list[str]]:
                     add_from(fh.read())
             except OSError as exc:
                 _warn(f"could not read nested mission file {nested}: {exc}")
-    return sqm_path, addons
+    if not os.path.isfile(sqm_path) and not addons:
+        _warn(f"mission.sqm not found in {mission_dir}; no required addons")
+        return None, []
+    return sqm_path if os.path.isfile(sqm_path) else None, addons
 
 
 def run_update(args) -> int:
@@ -375,7 +441,7 @@ def run_update(args) -> int:
     mission_dir = os.path.abspath(getattr(args, "mission", None) or os.getcwd())
 
     # 1. Required addons from mission.sqm.
-    _sqm_path, required_addons = _read_mission_sqm(mission_dir)
+    sqm_path, required_addons = _read_mission_sqm(mission_dir)
 
     # 2. Optional mods from armalint.json (explicit --config or discovery).
     config_path = getattr(args, "config", None) or find_config(mission_dir)
@@ -407,11 +473,22 @@ def run_update(args) -> int:
         if not source:
             continue
         source_path = None
+        source_base = os.path.dirname(os.path.abspath(config_path)) if config_path else mission_dir
         if getattr(args, "download_dependencies", False):
-            source_path = _acquire_dependency_source(spec, source_cache_root)
+            source_path = _acquire_dependency_source(spec, source_cache_root, source_base)
         else:
+            # Local source checkouts are usable without a download.  Remote
+            # sources remain cache-only unless --download-dependencies is set.
+            source_value = source if isinstance(source, str) else source.get("url") if isinstance(source, dict) else None
+            local_candidate = os.path.expanduser(source_value) if isinstance(source_value, str) else None
+            if local_candidate and not os.path.isabs(local_candidate):
+                local_candidate = os.path.join(source_base, local_candidate)
+            if local_candidate and os.path.isdir(local_candidate):
+                source_path = os.path.abspath(local_candidate)
+            else:
+                source_path = None
             candidate = os.path.join(source_cache_root, re.sub(r"[^A-Za-z0-9_.-]+", "_", str(spec.get("name", "dependency"))))
-            if os.path.isdir(candidate):
+            if source_path is None and os.path.isdir(candidate):
                 source_path = candidate
         if source_path:
             source_dependency_roots.append((source_path, spec))
@@ -438,8 +515,37 @@ def run_update(args) -> int:
             answer = input("Use an authenticated Steam account for Workshop downloads? [y/N] ").strip().lower()
             if answer in ("y", "yes"):
                 steam_user = input("Steam username: ").strip() or None
+                if steam_user:
+                    print("SteamCMD authentication setup started; checking Workshop dependencies...", flush=True)
+        if steam_user and not steam_password and sys.stdin.isatty() and sys.stdout.isatty():
+            # SteamCMD's Windows console prompt is not reliably forwarded when
+            # its stdout is captured.  Collect credentials here and provide
+            # them through its stdin instead of waiting on an invisible prompt.
+            steam_password = getpass.getpass("Steam password: ") or None
         dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
+        # ``mods`` and ``dependencies`` are both explicit project inputs.  A
+        # download run must make both available; previously only dependency
+        # objects were sent to SteamCMD, leaving declared optional mods
+        # reported as unresolved on the following scan.
         specs_to_download = list(dependency_specs)
+        specs_to_download.extend(
+            {
+                "name": mod.get("name") or mod.get("url") or mod.get("workshop_id"),
+                "workshopId": mod.get("workshop_id"),
+            }
+            for mod in optional_mods
+            if mod.get("workshop_id")
+        )
+        deduped_specs: list[dict] = []
+        seen_workshop_ids: set[str] = set()
+        for spec in specs_to_download:
+            workshop_id = str(spec.get("workshopId") or spec.get("workshop_id") or "")
+            if workshop_id and workshop_id in seen_workshop_ids:
+                continue
+            if workshop_id:
+                seen_workshop_ids.add(workshop_id)
+            deduped_specs.append(spec)
+        specs_to_download = deduped_specs
         cba_specs = [spec for spec in specs_to_download if spec.get("name", "").startswith("cba_")]
         if cba_specs:
             # CBA_MAIN, CBA_EVENTS, CBA_XEH, etc. are addon components from
@@ -549,11 +655,12 @@ def run_update(args) -> int:
     overall_total = sum(len(list_addons(path)) for path, _label in scan_roots)
     completed_addons = 0
     installed_addon_names: set[str] = set()
+    addon_sources: dict[str, str] = {}
     cache_stats = {"reused": 0, "rescanned": 0}
     for current, (path, label) in enumerate(scan_roots, start=1):
         names, types_by_name = _extract_with_progress(
             path, label, current, len(scan_roots), completed_addons, overall_total,
-            installed_addon_names, scan_cache,
+            installed_addon_names, addon_sources, scan_cache, set(required_addons),
             cache_stats,
         )
         completed_addons += len(list_addons(path))
@@ -561,9 +668,27 @@ def run_update(args) -> int:
         macros |= extract_mod_macros(path)
         for name, types in types_by_name.items():
             function_types.setdefault(name, types)
+    resolved_late: list[tuple[str, str]] = []
     for addon in unresolved_required:
         if addon.lower() not in resolved_required and addon.lower() not in installed_addon_names:
-            _warn(f"could not resolve required addon {addon}")
+            owner = addon_sources.get(addon.lower())
+            if owner:
+                # The patch is declared in config.bin, even when its class
+                # name differs from the containing PBO filename.
+                resolved_required.add(addon.lower())
+                resolved_late.append((addon, owner))
+                continue
+            context = "not found in scanned Arma/DLC or dependency PBOs"
+            if sqm_path is None:
+                context += "; this may come from an optional nested mission"
+            _warn(f"could not resolve required addon {addon} ({context})")
+    if resolved_late:
+        examples = ", ".join(name for name, _owner in resolved_late[:5])
+        suffix = "" if len(resolved_late) <= 5 else ", ..."
+        print(
+            f"resolved {len(resolved_late)} addon declaration(s) from scanned PBO config"
+            f" ({examples}{suffix})"
+        )
 
     # Preserve public compatibility names such as TFAR_fnc_* alongside their
     # component-qualified CfgFunctions implementations.
@@ -781,6 +906,15 @@ def _run_self_test() -> int:
             fh.write('addOns[] = {"nested_template_dependency"};\n')
         _root_sqm, discovered_addons = _read_mission_sqm(mission_dir)
         assert "nested_template_dependency" in discovered_addons
+        # A repository checkout may contain several nested missions without a
+        # root mission.sqm.  Dependency discovery must still inspect them.
+        project_dir = os.path.join(tmp, "project")
+        os.makedirs(os.path.join(project_dir, "Vindicta.Malden"))
+        with open(os.path.join(project_dir, "Vindicta.Malden", "mission.sqm"), "w", encoding="utf-8") as fh:
+            fh.write('addOns[] = {"nested_project_dependency"};')
+        rootless_sqm, rootless_addons = _read_mission_sqm(project_dir)
+        assert rootless_sqm is None
+        assert "nested_project_dependency" in rootless_addons
         config_path = os.path.join(mission_dir, "armalint.json")
         with open(config_path, "w", encoding="utf-8") as fh:
             fh.write(

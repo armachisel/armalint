@@ -16,6 +16,10 @@ _ALWAYS_DEFINED = frozenset(
         "_this", "_x", "_forEachIndex", "_index", "_exception",
         "_thisScript", "_fnc_scriptName",
         "_thisArgs", "_thisEventHandler", "_thisFSM", "_fnc_scriptNameParent",
+        # Common OOP/macro wrapper bindings. These are introduced by the
+        # wrapper before the method body is evaluated and therefore do not
+        # appear as declarations in the source file being linted.
+        "_thisClass", "_thisObject", "_oop_logScope",
     )
 )
 _ALWAYS_DEFINED_LOWER = frozenset(name.lower() for name in _ALWAYS_DEFINED)
@@ -381,14 +385,20 @@ def check_undefined(
     # approximation that works for nested SQF code blocks without guessing at
     # runtime namespace behavior.
     scopes: list[set[str]] = [set()]
+    scope_methods: list[dict[str, int]] = [{}]
     declarations: list[tuple[str, Token]] = []
+    method_serial = 0
     i = 0
     while i < len(tokens):
         token = tokens[i]
+        if token.type in ("ident", "keyword") and token.value.lower() == "method":
+            method_serial += 1
         if token.type == "lbrace":
             scopes.append(set())
+            scope_methods.append({})
         elif token.type == "rbrace" and len(scopes) > 1:
             scopes.pop()
+            scope_methods.pop()
         elif token.type == "keyword" and token.value.lower() in ("private", "params"):
             j = _next_significant(tokens, i)
             names: list[str] = []
@@ -402,9 +412,15 @@ def check_undefined(
                 # parameters (`params ["_display", ...]`). That is a valid
                 # lexical binding, so only duplicate declarations in the same
                 # scope are reported here.
-                if key in {item.lower() for item in scopes[-1]}:
+                prior_method = scope_methods[-1].get(key)
+                if (
+                    key in {item.lower() for item in scopes[-1]}
+                    and key not in external_names
+                    and prior_method == method_serial
+                ):
                     declarations.append((name, token))
                 scopes[-1].add(name)
+                scope_methods[-1].setdefault(key, method_serial)
         i += 1
     for name, token in declarations:
         diags.append(Diagnostic(Severity.WARNING, _SCOPE_CODE, f"local declaration shadows or duplicates {name}", token.line, token.column))

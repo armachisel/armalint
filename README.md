@@ -365,6 +365,10 @@ The updater also writes `.armalint/armalint_scan_cache.json` beside these caches
 updates it compares addon file sizes and modification times and reuses scan
 results for unchanged roots, avoiding PBO parsing. Roots with changed, added, or
 removed addon files are rescanned. Delete this file to force a complete rescan.
+The first scan can take several minutes when the Arma installation, mod list, or
+declared dependency set is large: Armalint opens each selected PBO to build its
+function, signature, macro, and addon index. Progress is shown during the scan;
+later updates reuse unchanged roots and are normally much faster.
 You can also clear it from the command line with
 `python -m armalint.update --mission <dir> --clear-cache`; this preserves the
 function-name and type caches and exits, so the next normal update performs a

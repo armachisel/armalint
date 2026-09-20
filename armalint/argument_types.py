@@ -107,6 +107,8 @@ _BINARY_SIGNATURES.update({
     # addition to the older unary road-object form.
     "roadsconnectedto": (frozenset(("Object", "Array")), "Object or Array"),
     "nearentities": (frozenset(("Number", "Array")), "Number or Array"),
+    # Object-target form accepts either a radius or [class name, radius].
+    "nearobjects": (frozenset(("Number", "Array")), "Number or Array"),
     # ``inArea`` accepts the positional area form on the right, for example
     # ``_position inArea [center, a, b]``.  The XML metadata only describes
     # the object/location/string form and otherwise reports valid position
@@ -1918,6 +1920,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('_allPlayers = ["a"]; { _item = _x; } forEach _allPlayers; count _item;') == []
     assert check_argument_types_text('_thing = 0; { _thing = _x; } forEach (nearestObjects [player, ["Car"], 50]); count _thing;')[0].code == _CODE
     assert check_argument_types_text('_thing = 0; { _thing = _x; } forEach (player nearObjects 50); count _thing;')[0].code == _CODE
+    assert check_argument_types_text('private _range = 500; player nearObjects ["Sign_Pointer_Cyan_F", _range];') == []
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []
     assert check_argument_types_text('[1] arrayIntersect 2;')[0].code == _CODE

@@ -124,6 +124,80 @@ def _normalized(path: str) -> str:
     return os.path.normcase(os.path.abspath(path))
 
 
+def collect_macro_locals(source: str, filename: str = "", _seen: set[str] | None = None) -> set[str]:
+    """Collect locals introduced by project macro bodies.
+
+    Macro-generated declarations are otherwise invisible to standalone
+    undefined-variable analysis (for example Vindicta's ``METHOD`` and
+    ``LOG_SCOPE`` helpers). This deliberately collects only underscore locals
+    declared inside ``#define`` bodies and the built-in file/line symbols.
+    """
+    result = {"__file__", "__line__"}
+    _seen = set() if _seen is None else _seen
+    current_key = _normalized(filename) if filename else "<inline>"
+    if current_key in _seen:
+        return result
+    _seen.add(current_key)
+    # Vindicta/OOP-style method wrappers create these bindings around every
+    # METHOD body even though the declaration is hidden behind the wrapper.
+    # Detect the convention from the source rather than enabling the names for
+    # unrelated SQF files.
+    if re.search(r"\bMETHOD\s*\(", source):
+        result.update(("_thisclass", "_thisobject", "_oop_logscope"))
+    # Parameter helper macros are commonly nested inside params arrays, so a
+    # simple bracket scan can stop too early. Capture their quoted local name
+    # arguments directly.
+    result.update(name.lower() for name in re.findall(r"\bP_[A-Za-z0-9_]+\s*\(\s*\"(_[A-Za-z0-9_]+)\"", source))
+    # Macroized parameter declarations (for example Vindicta's
+    # ``params [P_ARRAY("_stimulus")]``) are not visible to the normal
+    # params parser until the project's macro environment is expanded. The
+    # quoted local names are still an unambiguous declaration boundary, so
+    # collect them conservatively from params statements.
+    for params_match in re.finditer(r"\bparams\s*\[([^\]]*)\]", source, re.IGNORECASE | re.DOTALL):
+        result.update(name.lower() for name in re.findall(r'"(_[A-Za-z0-9_]+)"', params_match.group(1)))
+
+    continuation = False
+    body: list[str] = []
+    for line in source.splitlines():
+        if continuation:
+            fragment = line.rstrip()
+            continuation = fragment.endswith("\\")
+            body.append(fragment[:-1] if continuation else fragment)
+            if not continuation:
+                text = " ".join(body)
+                # Macro expansion can introduce locals through token pasting
+                # or helper aliases, so declarations are not always written
+                # as a literal ``private _name`` in the body. Treat local
+                # identifiers appearing in a macro body as macro-provided
+                # scope names; this is limited to #define bodies and does not
+                # weaken ordinary SQF undefined-variable checks.
+                result.update(name.lower() for name in re.findall(r"\b(_[A-Za-z][A-Za-z0-9_]*)\b", text))
+                result.update(m.group(1).lower() for m in re.finditer(r"\bprivate\s+(?:\[\s*)?(_[A-Za-z0-9_]+)", text, re.IGNORECASE))
+                result.update(name.lower() for name in re.findall(r'"(_[A-Za-z0-9_]+)"', text))
+                body = []
+            continue
+        match = re.match(r"^\s*#\s*define\s+[^\s]+(?:\([^)]*\))?\s*(.*)$", line)
+        if match:
+            fragment = match.group(1).rstrip()
+            continuation = fragment.endswith("\\")
+            body = [fragment[:-1] if continuation else fragment]
+            if not continuation:
+                result.update(name.lower() for name in re.findall(r"\b(_[A-Za-z][A-Za-z0-9_]*)\b", fragment))
+                result.update(m.group(1).lower() for m in re.finditer(r"\bprivate\s+(?:\[\s*)?(_[A-Za-z0-9_]+)", fragment, re.IGNORECASE))
+                result.update(name.lower() for name in re.findall(r'"(_[A-Za-z0-9_]+)"', fragment))
+    if filename:
+        base_dir = os.path.dirname(os.path.abspath(filename))
+        for include in re.finditer(r'^\s*#\s*include\s+(?:"([^"]+)"|<([^>]+)>)', source, re.MULTILINE):
+            target = os.path.normpath(os.path.join(base_dir, include.group(1) or include.group(2)))
+            if os.path.isfile(target) and os.path.normcase(os.path.abspath(target)) != os.path.normcase(os.path.abspath(filename)):
+                try:
+                    with open(target, "r", encoding="utf-8", errors="replace") as fh:
+                        result |= collect_macro_locals(fh.read(), target, _seen)
+                except OSError:
+                    pass
+    return result
+
+
 def _macro_arguments(text: str, start: int) -> tuple[list[str], int] | None:
     """Parse a function-like macro call beginning at ``start`` (the `(`)."""
     depth = 0

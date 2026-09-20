@@ -46,7 +46,7 @@ MOD_METADATA_CACHE_FILENAME = "armalint_mods_metadata.json"
 MOD_SCAN_CACHE_FILENAME = "armalint_scan_cache.json"
 # Bump when extraction rules change so an unchanged PBO is rescanned with the
 # new symbol discovery logic (for example addon-tag fallbacks).
-MOD_SCAN_CACHE_VERSION = 5
+MOD_SCAN_CACHE_VERSION = 8
 
 #: Steam app id for Arma 3 (the numeric folder under ``workshop/content``).
 _ARMA_APP_ID = "107410"
@@ -307,7 +307,7 @@ def discover_game_addon_roots(game_dir: str) -> list[str]:
         if not addon_dir or not os.path.isdir(addon_dir):
             continue
         try:
-            if any(name.lower().endswith(".pbo") for name in os.listdir(addon_dir)):
+            if any(name.lower().endswith((".pbo", ".ebo")) for name in os.listdir(addon_dir)):
                 roots.add(root)
         except OSError:
             continue
@@ -316,7 +316,7 @@ def discover_game_addon_roots(game_dir: str) -> list[str]:
 
 def find_game_addon(addon_name: str, game_addon_roots: list[str]) -> str | None:
     """Return the installation root containing a base-game/DLC addon PBO."""
-    target = (addon_name + ".pbo").lower()
+    targets = {(addon_name + suffix).lower() for suffix in (".pbo", ".ebo")}
     for root in game_addon_roots:
         addons_dir = _child_path_case_insensitive(root, "Addons")
         if not addons_dir:
@@ -324,7 +324,7 @@ def find_game_addon(addon_name: str, game_addon_roots: list[str]) -> str | None:
         try:
             for entry in os.listdir(addons_dir):
                 full = os.path.join(addons_dir, entry)
-                if entry.lower() == target and os.path.isfile(full):
+                if entry.lower() in targets and os.path.isfile(full):
                     return root
         except OSError:
             continue
@@ -381,7 +381,7 @@ def list_addons(mod_dir: str) -> list[tuple[str, str]]:
     result: list[tuple[str, str]] = []
     for entry in entries:
         full = os.path.join(addons_dir, entry)
-        if entry.lower().endswith(".pbo") and os.path.isfile(full):
+        if entry.lower().endswith((".pbo", ".ebo")) and os.path.isfile(full):
             result.append(("pbo", full))
         elif os.path.isdir(full) and _contains_case_insensitive(full, "config.cpp"):
             result.append(("dir", full))
@@ -453,8 +453,10 @@ def _hatg_function_name(tag: str, path: str) -> str:
 def _addon_tag(addon_path: str) -> str:
     """Return an addon's function tag: its basename without a ``.pbo`` suffix."""
     base = os.path.basename(os.path.normpath(addon_path))
-    if base.lower().endswith(".pbo"):
-        base = base[:-4]
+    for suffix in (".pbo", ".ebo"):
+        if base.lower().endswith(suffix):
+            base = base[: -len(suffix)]
+            break
     return base
 
 
@@ -512,7 +514,7 @@ def _mod_prefix(mod_dir: str) -> str | None:
     for kind, path in list_addons(mod_dir):
         if kind == "pbo":
             try:
-                files = read_pbo(path)
+                files = read_pbo(path, include=lambda entry: entry.lower().endswith((".hpp", ".inc", ".cpp")))
             except Exception:
                 continue
             prefix = _read_prefix_from_files(files)
@@ -559,7 +561,12 @@ def _extract_pbo_functions(pbo_path: str, mod_prefix: str | None = None) -> set[
     the PBO basename).
     """
     try:
-        files = read_pbo(pbo_path)
+        files = read_pbo(
+            pbo_path,
+            include=lambda entry: entry.lower().endswith(
+                (".sqf", ".sqs", ".hpp", ".inc", ".cpp", "config.bin")
+            ),
+        )
     except Exception:
         return set()
 
@@ -635,6 +642,46 @@ def _extract_dir_functions(addon_dir: str, mod_prefix: str | None = None) -> set
     functions = set(index.functions)
     functions |= _dir_function_files(addon_dir, mod_prefix)
     return functions
+
+
+def _extract_text_cfg_patch_names(files: dict[str, bytes], addon_dir: str | None = None) -> set[str]:
+    """Extract CfgPatches names from an unpacked addon source tree.
+
+    Build systems commonly write ``class ADDON`` and derive that name from
+    ``PREFIX`` and ``COMPONENT`` macros in ``script_component.hpp``.  Resolve
+    that conventional form while retaining literal patch class names.  This
+    keeps local source checkouts useful before they are packed into a PBO.
+    """
+    text = "\n".join(
+        raw.decode("utf-8", "replace")
+        for name, raw in files.items()
+        if name.lower().endswith((".hpp", ".inc", ".cpp"))
+    )
+    macros: dict[str, str] = {}
+    for match in re.finditer(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.MULTILINE):
+        macros[match.group(1).lower()] = match.group(2)
+    prefix = macros.get("prefix")
+    component = macros.get("component")
+    if not prefix and addon_dir:
+        main_header = os.path.join(os.path.dirname(addon_dir), "main", "script_mod.hpp")
+        try:
+            with open(main_header, "r", encoding="utf-8", errors="replace") as fh:
+                main_text = fh.read()
+            match = re.search(r"^\s*#\s*define\s+PREFIX\s+([A-Za-z_][A-Za-z0-9_]*)", main_text, re.MULTILINE)
+            if match:
+                prefix = match.group(1)
+        except OSError:
+            pass
+    names: set[str] = set()
+    patch_match = re.search(r"\bclass\s+CfgPatches\s*\{(?P<body>.*?)\n?\s*\};", text, re.IGNORECASE | re.DOTALL)
+    if not patch_match:
+        return names
+    for match in re.finditer(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^\{]+)?\{", patch_match.group("body")):
+        name = match.group(1)
+        if name.lower() == "addon" and prefix and component:
+            name = f"{prefix}_{component}"
+        names.add(name.lower())
+    return names
 
 
 def extract_mod_functions(mod_dir: str) -> set[str]:
@@ -846,6 +893,8 @@ def extract_mod_data(
     progress=None,
     addon_names: set[str] | None = None,
     metadata: dict | None = None,
+    addon_sources: dict[str, str] | None = None,
+    wanted_addons: set[str] | None = None,
 ) -> tuple[set[str], dict[str, list[str | None]]]:
     """Extract function names and explicit argument types in one addon pass.
 
@@ -867,7 +916,12 @@ def extract_mod_data(
             try:
                 files = read_pbo(
                     path,
-                    (lambda entry: progress(f"{path} [{entry}]", False)) if progress else None,
+                    (lambda entry: progress(f"{path} [{entry}]", False)
+                     if entry.lower().endswith((".sqf", ".sqs", ".hpp", ".inc", ".cpp", "config.bin"))
+                     else None) if progress else None,
+                    include=lambda entry: entry.lower().endswith(
+                        (".sqf", ".sqs", ".hpp", ".inc", ".cpp", "config.bin")
+                    ),
                 )
             except Exception as exc:
                 if metadata is not None:
@@ -875,6 +929,12 @@ def extract_mod_data(
                 if progress:
                     progress(path, True)
                 continue
+            if addon_sources is not None and wanted_addons:
+                wanted = {name.lower(): name.encode("ascii", "ignore") for name in wanted_addons}
+                blob = b"\0".join(files.values())
+                for name, needle in wanted.items():
+                    if needle and needle in blob:
+                        addon_sources.setdefault(name, path)
             cfg_names: set[str] = set()
             cfg_files: dict[str, str] = {}
             cfg_metadata: dict[str, dict] = {}
@@ -893,6 +953,15 @@ def extract_mod_data(
                                 if node.name.lower() == "cfgpatches"
                                 for child in node.children
                             )
+                        if addon_sources is not None:
+                            # Mission ``addOns[]`` entries are usually
+                            # CfgPatches names, but editor-generated missions
+                            # also contain package/config class names that are
+                            # not themselves patches. Index every config class
+                            # so those names can still be traced to their PBO.
+                            for node in _walk_config(config):
+                                if node.name:
+                                    addon_sources.setdefault(node.name.lower(), path)
                     except Exception:
                         pass
                     break
@@ -911,6 +980,7 @@ def extract_mod_data(
                     collect_description_cfg_functions(text, cfg_index)
                     cfg_sources.append(text)
             cfg_names = set(cfg_index.functions)
+            patch_names = _extract_text_cfg_patch_names(files, path)
             cfg_files = {}
             cfg_metadata = {}
             for text in cfg_sources:
@@ -918,6 +988,14 @@ def extract_mod_data(
             tag = _addon_tag(path)
             prefix = _read_prefix_from_files(files)
             sources = {name: data for name, data in files.items() if name.lower().endswith(".sqf")}
+            if addon_sources is not None:
+                # Textual configs expose the same class namespace as packed
+                # configs.  The function index is narrower, so walk the
+                # source config names when available.
+                for name in patch_names:
+                    addon_sources.setdefault(name.lower(), path)
+            if addon_names is not None:
+                addon_names.update(patch_names)
         if prefix and mod_prefix is None:
             mod_prefix = prefix
         records.append((kind, tag, prefix, cfg_names, cfg_files, cfg_metadata, sources, path))
@@ -990,7 +1068,10 @@ def extract_mod_macros(mod_dir: str) -> set[str]:
     macros: set[str] = set()
     for kind, path in list_addons(mod_dir):
         try:
-            files = read_pbo(path) if kind == "pbo" else _directory_addon_files(path)
+            files = (
+                read_pbo(path, include=lambda entry: entry.lower().endswith((".hpp", ".inc", ".cpp", "config.bin")))
+                if kind == "pbo" else _directory_addon_files(path)
+            )
         except Exception:
             continue
         for name, raw in files.items():
@@ -1073,6 +1154,8 @@ def extract_mod_data_cached(
     cache: dict,
     progress=None,
     addon_names: set[str] | None = None,
+    addon_sources: dict[str, str] | None = None,
+    wanted_addons: set[str] | None = None,
     stats: dict[str, int] | None = None,
 ) -> tuple[set[str], dict[str, list[str | None]]]:
     """Reuse a root's prior extraction when its file metadata is unchanged."""
@@ -1085,6 +1168,8 @@ def extract_mod_data_cached(
             stats["reused"] = stats.get("reused", 0) + 1
         if addon_names is not None and isinstance(entry.get("addon_names"), list):
             addon_names.update(x for x in entry["addon_names"] if isinstance(x, str))
+        if addon_sources is not None and isinstance(entry.get("addon_sources"), dict):
+            addon_sources.update({str(k).lower(): str(v) for k, v in entry["addon_sources"].items()})
         if progress:
             for _kind, path in addons:
                 progress(path, False)
@@ -1097,17 +1182,25 @@ def extract_mod_data_cached(
         )
 
     extracted_addon_names: set[str] = set()
+    extracted_addon_sources: dict[str, str] = {}
     if stats is not None:
         stats["rescanned"] = stats.get("rescanned", 0) + 1
     metadata: dict = {}
-    functions, signatures = extract_mod_data(mod_dir, progress, extracted_addon_names, metadata)
+    functions, signatures = extract_mod_data(
+        mod_dir, progress, extracted_addon_names, metadata,
+        addon_sources=extracted_addon_sources,
+        wanted_addons=wanted_addons,
+    )
     if addon_names is not None:
         addon_names.update(extracted_addon_names)
+    if addon_sources is not None:
+        addon_sources.update(extracted_addon_sources)
     cache[key] = {
         "fingerprint": fingerprint,
         "functions": sorted(functions),
         "signatures": signatures,
         "addon_names": sorted(extracted_addon_names),
+        "addon_sources": extracted_addon_sources,
         "source_root": os.path.abspath(mod_dir),
         "metadata": metadata,
     }

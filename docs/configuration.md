@@ -33,6 +33,19 @@ especially useful for preprocessor providers such as CBA: Armalint only treats
 CBA macros as available when a `cba_*` dependency is declared. `requiredAddons`
 is accepted as an equivalent name for projects that mirror Arma config syntax.
 
+Dependencies may also point at an unpacked addon checkout. The path is relative
+to `armalint.json`; Armalint scans its `addons/` directories and resolves their
+`CfgPatches` names just as it would for packed PBOs. This is useful for a project
+that builds its own optional addons:
+
+```json
+{
+  "dependencies": [
+    {"name": "vindicta-addon", "source": "Vindicta-Addon"}
+  ]
+}
+```
+
 `functionTags` is a broad fallback. Prefer an updater-generated exact index
 when possible, because a tag also accepts misspelled names. `functionTypes`
 and `functionReturns` document project contracts that cannot be extracted from

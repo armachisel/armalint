@@ -53,8 +53,17 @@ data, and writes a cache for the linter to use:
 armalint-update --mission C:\path\to\MyMission.Altis
 ```
 
-The first scan can take a while. The updater hashes and records the files it
-has examined, so later scans can reuse unchanged results. It writes
+With `--download-dependencies`, the updater downloads every declared Workshop
+entry from both `mods` and `dependencies` into the project's
+`.armalint/dependencies` directory. Without that flag, those entries must
+already be present in a discovered Steam Workshop library.
+
+The first scan can take a while. With a large Arma installation, a large mod
+list, or many declared source and Workshop dependencies, it may take several
+minutes because Armalint has to open and inspect each selected PBO. The updater
+shows scan progress while it works. It hashes and records the files it has
+examined, so later scans can reuse unchanged results and are usually much
+faster. It writes
 `.armalint/armalint_mods.json`, `.armalint/armalint_mods_types.json`, and
 `.armalint/armalint_scan_cache.json` under the mission directory.
 The updater also writes `.armalint/armalint_mods_metadata.json`, which records the

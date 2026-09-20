@@ -74,9 +74,11 @@ property such as `function = "TAG_fnc_createThing"`, rather than under
 rapified addon configs too, so module functions from downloaded mods are
 available to unknown-function checks after the next update.
 
-The first scan may take a while. That is the price of looking inside the game
-and mod data. Later scans reuse unchanged results. Use `--clear-cache` when
-you want to force the scan:
+The first scan may take several minutes for a large installation, mod list, or
+dependency set. Armalint opens each selected PBO to find functions, command
+metadata, macros, and addon provenance. Progress is shown while this work is
+running. Later scans reuse unchanged results and should be much faster. Use
+`--clear-cache` when you want to force the scan:
 
 ```powershell
 armalint-update --mission C:\path\to\MyMission.Altis --clear-cache

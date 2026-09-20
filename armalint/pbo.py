@@ -141,12 +141,14 @@ def _decode_name(raw: bytes) -> str:
         return raw.decode("latin-1")
 
 
-def read_pbo(path: str, progress=None) -> dict[str, bytes]:
+def read_pbo(path: str, progress=None, include=None) -> dict[str, bytes]:
     """Read ``path`` and return ``{filename: content_bytes}``.
 
     Stored (``packingMethod == 0``) entries are returned verbatim; ``Cprs``
-    entries are decompressed. Unknown packing methods are returned as their raw
-    stored block so callers can decide how to handle them.
+    entries are decompressed. When ``include`` is supplied, it is called with
+    each filename and entries it rejects are skipped without decompression.
+    Unknown packing methods are returned as their raw stored block so callers
+    can decide how to handle them.
     """
     with open(path, "rb") as fh:
         buf = fh.read()
@@ -185,12 +187,15 @@ def read_pbo(path: str, progress=None) -> dict[str, bytes]:
         # entries after the addon-level progress callback has fired.  Expose
         # entry progress so callers can keep a live status line during that
         # work without changing the returned data or the default API.
-        if progress is not None:
+        selected = include is None or include(name)
+        if progress is not None and selected:
             progress(name)
         if pos + data_size > n:
             raise ValueError(f"truncated data block for {name!r}")
         block = buf[pos:pos + data_size]
         pos += data_size
+        if not selected:
+            continue
         if method == PACKING_STORED:
             files[name] = block
         elif method == PACKING_LZSS:
