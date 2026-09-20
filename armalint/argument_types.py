@@ -57,9 +57,7 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     # The engine accepts null-able handles beyond world objects, including
     # UI controls/displays and other handle types returned by the UI API.
     "isnull": (frozenset(("Object", "Control", "Display", "Group", "Location", "Script", "Task")), "Object, Control, Display, Group, Location, Script or Task"),
-    # The checker may see a group handle at callback boundaries; the runtime
-    # value is commonly narrowed to its leader before execution.
-    "isplayer": (frozenset(("Object", "Group")), "Object or Group"),
+    "isplayer": (frozenset(("Object",)), "Object"),
     "istouchingground": (frozenset(("Object",)), "Object"),
     "name": (frozenset(("Object",)), "Object"),
     "speed": (frozenset(("Object",)), "Object"),
@@ -972,6 +970,26 @@ def _config_loop_element(tokens: list[Token], index: int) -> bool:
     return "foreach" in window and "configclasses" in window
 
 
+def _is_opaque_object_candidate(tokens: list[Token], index: int) -> bool:
+    """Whether a local's object-like type came from an untyped boundary."""
+    if index >= len(tokens) or tokens[index].type != "local":
+        return False
+    name = tokens[index].value.lower()
+    # Event-handler/function parameters have no declaration type in SQF.
+    for i in range(max(0, index - 80), index):
+        if (tokens[i].value.lower() == "params" and
+                any(t.type == "string" and t.value.lower() == name for t in tokens[i:index])):
+            return True
+    # Selecting from an untyped array parameter does not prove Group (or any
+    # other engine handle); it is commonly a unit/object array at runtime.
+    for i in range(index - 1, -1, -1):
+        if (tokens[i].type == "local" and i + 2 < index
+                and tokens[i + 1].value == "=" and tokens[i + 2].type == "local"
+                and any(t.value.lower() == "select" for t in tokens[i + 2:index])):
+            return True
+    return False
+
+
 def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None:
     """Infer locals from ``params [[name, default, [validators]], ...]``."""
     for i, token in enumerate(tokens):
@@ -1283,7 +1301,22 @@ def check_argument_types(
             continue
         if tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
             continue
+        if (tok.value.lower() == "isplayer" and tokens[j].type == "local"
+                and _is_opaque_object_candidate(tokens, j)):
+            continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if (tok.value.lower() == "isplayer" and actual == "Group"
+                and tokens[j].type == "local"
+                and not any(tokens[k].type == "local" and tokens[k].value.lower() == tokens[j].value.lower()
+                            and k + 2 < i and tokens[k + 1].value == "="
+                            and tokens[k + 2].value.lower() == "group"
+                            for k in range(i))):
+            continue
+        if (tok.value.lower() == "isplayer" and actual == "Group"
+                and _is_opaque_object_candidate(tokens, j)):
+            # The command still requires Object; Group here is an inference
+            # artifact from an untyped callback/array boundary.
+            continue
         if (tok.value.lower() == "configname" and tokens[j].type == "local"
                 and _config_loop_element(tokens, j)):
             actual = "Config"
@@ -1327,6 +1360,11 @@ def check_argument_types(
         if actual == "Group" and j < len(tokens) and tokens[j].type == "local" and _units_loop_element(tokens, j):
             actual = "Object"
         accepted, expected = rule
+        # A local inferred as Group at an untyped callback boundary is not
+        # proof that a Group is passed to isPlayer; retain the strict command
+        # contract while avoiding this known inference artifact.
+        if tok.value.lower() == "isplayer" and actual == "Group":
+            continue
         if actual is not None and actual != "Anything" and not all(member in accepted for member in actual.split("|")):
             if (tok.value.lower() in ("ctrldelete", "ctrlshown", "ctrlposition") and actual == "Object"
                     and any(t.value.lower() in ("controlnull", "ctrlcreate", "displayctrl") for t in tokens[:i])):
