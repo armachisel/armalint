@@ -599,7 +599,10 @@ def _main(argv: list[str] | None = None) -> int:
         try:
             with open(symbol_cache_path, "r", encoding="utf-8") as fh:
                 payload = json.load(fh)
-            if payload.get("fingerprints") == fingerprints:
+            # Bump this when the index contents or macro collection rules
+            # change; otherwise an older cache can preserve stale unknown-
+            # macro diagnostics even though all source fingerprints match.
+            if payload.get("version") == 2 and payload.get("fingerprints") == fingerprints:
                 cached_index = SymbolIndex.from_json(payload.get("index", {}))
         except (OSError, ValueError, TypeError, AttributeError):
             pass
@@ -628,7 +631,7 @@ def _main(argv: list[str] | None = None) -> int:
             os.makedirs(os.path.dirname(symbol_cache_path), exist_ok=True)
             if persist_symbol_cache:
                 with open(symbol_cache_path, "w", encoding="utf-8") as fh:
-                    json.dump({"version": 1, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
+                    json.dump({"version": 2, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
         except OSError:
             pass
     index.cba_declared |= any(dep.startswith("cba_") for dep in declared_dependencies)
