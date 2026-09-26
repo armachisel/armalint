@@ -181,8 +181,18 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     token_values = {token.value.lower() for token in tokens}
     if "bis_fnc_sortby" in token_values:
         defined.add("_input0")
-    if any(token.type == "string" and token.value.lower() == "onmapsingleclick" for token in tokens):
+    # ``onMapSingleClick { ... }`` is a command followed by a callback block,
+    # so the command token is not a string.  The engine supplies ``_pos`` to
+    # that block; accept both the command form and quoted references used by
+    # older mission code.
+    if any(token.value.lower() == "onmapsingleclick" for token in tokens):
         defined.add("_pos")
+    # BIS_fnc_holdActionAdd supplies ``_target`` and ``_caller`` to each of
+    # its progress, completion, interruption, and start callback blocks.  The
+    # callbacks are commonly assembled in an array, so lexical analysis sees
+    # no params declaration for these engine-provided locals.
+    if any(token.value.lower() == "bis_fnc_holdactionadd" for token in tokens):
+        defined.update(("_target", "_caller"))
     diags: list[Diagnostic] = []
     n = len(tokens)
     i = 0

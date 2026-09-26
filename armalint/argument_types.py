@@ -147,6 +147,7 @@ _RETURN_TYPES = {
 # unary argument.
 _COMMAND_RETURN_TYPES = {
     "getdir": "Number", "getnumber": "Number", "gettext": "String",
+    "position": "Array",
     "getpos": "Array", "getposasl": "Array", "getposatl": "Array",
     "getposworld": "Array", "getposvisual": "Array",
     "velocity": "Array", "velocitymodelspace": "Array", "vectorup": "Array", "vectordir": "Array",
