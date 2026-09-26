@@ -356,6 +356,10 @@ _BINARY_SIGNATURES["canadd"] = (frozenset(("String", "Array")), "String or Array
 for _inventory_command in ("canadditemtobackpack", "canadditemtouniform", "canadditemtovest"):
     _BINARY_SIGNATURES[_inventory_command] = (frozenset(("String", "Array")), "String or Array")
 _BINARY_SIGNATURES["lockcargo"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
+# Arma 3 also accepts the forced-flight form ``[altitude, force]`` for
+# ``flyInHeight`` alongside the scalar altitude form.
+_SIGNATURES["flyinheight"] = (frozenset(("Number", "Array")), "Number or Array")
+_BINARY_SIGNATURES["flyinheight"] = (frozenset(("Number", "Array")), "Number or Array")
 # These metadata entries are incomplete in older command snapshots: targets
 # and nearestLocations return arrays, and nearestBuilding accepts a position
 # array in addition to an object handle.
