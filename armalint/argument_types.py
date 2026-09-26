@@ -164,9 +164,10 @@ _COMMAND_RETURN_TYPES = {
     "lineintersectswith": "Array",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
     "behaviour": "String", "combatmode": "String", "formation": "String",
+    "speedmode": "String",
     "in": "Boolean",
     "min": "Number", "max": "Number", "mod": "Number",
-    "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
+    "random": "Number", "acos": "Number", "isnull": "Boolean", "isnil": "Boolean",
     "isclass": "Boolean", "isarray": "Boolean", "istext": "Boolean",
     "isnumber": "Boolean", "isequaltype": "Boolean", "find": "Number",
     "isserver": "Boolean", "isdedicated": "Boolean", "hasinterface": "Boolean",
@@ -210,6 +211,8 @@ _ARRAY_ELEMENT_TYPES = {
     "crew": "Object", "units": "Object", "allair": "Object", "allland": "Object",
     "groupselectedunits": "Object", "hcselected": "Group",
     "allman": "Object", "allstaticobjects": "Object", "allstaticweapons": "Object",
+    # allTurrets returns turret path arrays, not object handles.
+    "allturrets": "Array",
     "velocitymodelspace": "Number",
     "lineintersectswith": "Array", "lineintersectssurfaces": "Array", "fullcrew": "Array",
     "weapons": "String", "magazines": "String", "items": "String", "assigneditems": "String",
@@ -357,6 +360,8 @@ _BINARY_SIGNATURES["canadd"] = (frozenset(("String", "Array")), "String or Array
 for _inventory_command in ("canadditemtobackpack", "canadditemtouniform", "canadditemtovest"):
     _BINARY_SIGNATURES[_inventory_command] = (frozenset(("String", "Array")), "String or Array")
 _BINARY_SIGNATURES["lockcargo"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
+_SIGNATURES["allowcrewinimmobile"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
+_BINARY_SIGNATURES["allowcrewinimmobile"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
 # Arma 3 also accepts the forced-flight form ``[altitude, force]`` for
 # ``flyInHeight`` alongside the scalar altitude form.
 _SIGNATURES["flyinheight"] = (frozenset(("Number", "Array")), "Number or Array")
@@ -633,6 +638,8 @@ def _infer_expression(
                             if tokens[idx].type == "rparen"), None)
         if close_probe is not None:
             inner_tokens = [t for t in tokens[start + 1:close_probe] if t.type not in _TRIVIA]
+            if any(t.value.lower() == "vectorcos" for t in inner_tokens):
+                return "Number"
             if (len(inner_tokens) >= 3 and inner_tokens[0].type == "local"
                     and inner_tokens[1].value.lower() == "select"
                     and inner_tokens[2].type == "number"):
@@ -713,6 +720,16 @@ def _infer_expression(
             "nearobjects", "nearentities", "nearestobjects",
             "nearestterrainobjects", "nearroads"}):
         return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
+    # When a unary command wraps another command (for example
+    # ``round (speed vehicle _unit)`` or ``speedMode group player``), the
+    # outer command determines the expression's result.  Looking at the next
+    # command first would incorrectly leak the operand's type outward.
+    if start < rhs_end and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
+        return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
+    # ``vectorCos`` is a binary vector operation whose result is scalar. It
+    # is commonly nested inside ``aCos`` as ``[... ] vectorCos (...)``.
+    if any(token.value.lower() == "vectorcos" for token in tokens[start:rhs_end]):
+        return "Number"
     if (start + 1 < rhs_end
             and tokens[start].type != "lparen"
             and tokens[start + 1].value.lower() in _COMMAND_RETURN_TYPES
@@ -1799,6 +1816,11 @@ def check_argument_types(
                 and _is_opaque_object_candidate(tokens, j)):
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if tok.value.lower() in ("acos", "asin", "atan") and any(
+                item.value.lower() == "vectorcos" for item in tokens[j:]):
+            # Vector cosine produces a scalar even when nested in a grouped
+            # expression, such as ``aCos ([0,0,1] vectorCos _normal)``.
+            actual = "Number"
         if tokens[j].type == "local":
             actual = (_narrowed_type(tokens, j, variables)
                       or _latest_assignment_type(tokens, tokens[j].value, i, variables)
