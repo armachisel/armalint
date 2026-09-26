@@ -10,6 +10,9 @@ It is intentionally deterministic: a shared token stream feeds the analyzers,
 diagnostics carry stable machine-readable codes, and the CLI supports human,
 JSON, and SARIF output.
 
+Read the [online documentation](https://armachisel.github.io/armalint/) or
+browse the documentation source in [`docs/`](docs/index.md).
+
 ## Requirements
 
 - Python **3.9+**
