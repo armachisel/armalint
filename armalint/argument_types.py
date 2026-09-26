@@ -2015,6 +2015,13 @@ def check_argument_types(
                            for t in tokens[k + 2:i])
                    for k in range(i)):
                 continue
+        if tok.value.lower() in ("setpos", "setposasl", "setposatl", "setposworld") and any(
+                t.value.lower() in ("getpos", "getposasl", "getposatl", "getposworld", "getposvisual")
+                for t in tokens[j:]):
+            # The nested position command produces the required Array even
+            # when the lightweight walker cannot preserve that type through
+            # the parenthesized binary expression.
+            continue
         if tok.value.lower() == "setdamage" and tokens[j].type == "lparen":
             probe = j
             while probe < len(tokens) and tokens[probe].type != "rparen":
