@@ -67,6 +67,7 @@ mistakes are found.
 | `W229` | An inline suppression is missing a justification. |
 | `W230` | An inline suppression does not match any diagnostic. |
 | `W231` | A suppression directive is malformed or names an unknown rule. |
+| `W232` | A non-serializable runtime handle, such as a control or display, is stored in a mission/profile namespace variable. UI namespace storage is intended for UI handles and is not reported. |
 
 The SQF contract checks are intentionally conservative. `params` declarations
 are checked for the supported string and `[name, default, validators]` shapes;

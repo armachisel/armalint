@@ -113,16 +113,29 @@ CI/code-scanning integrations; `--json` remains the compact native format.
 
 ```text
 armalint-update [--mission DIR] [--config PATH] [--workshop PATH]
-                [--arma-dir PATH] [--out PATH] [--arma-version VERSION]
-                [--dry-run] [--clear-cache]
+                [--arma-dir PATH] [--all-game-data] [--out PATH] [--arma-version VERSION]
+                [--dry-run] [--clear-cache] [--rebuild]
 ```
 
 Normally automatic installation discovery is enough. If Arma is installed in
 an unusual place, pass `--arma-dir`. Repeat `--workshop` and `--arma-dir` when
 you need to search more than one location. `--dry-run` reports what would be
 found without writing caches.
+By default only the base game and DLC roots referenced by mission addon
+dependencies are indexed. `--all-game-data` opts into indexing every detected
+base/DLC root; this is useful for projects that deliberately support arbitrary
+installed DLC, but it also hides undeclared DLC usage and increases update time.
 `--arma-version` records the game version in the metadata cache; the
 `ARMALINT_ARMA_VERSION` environment variable can provide the same value.
+
+Project-local Workshop downloads under `.armalint/dependencies` are reused on
+later runs. Use `--force-download-dependencies` when a dependency should be
+refreshed. Use `--rebuild` (or `--full-rebuild`) to discard the incremental
+scan cache and refresh declared source and Workshop dependencies in one run.
+
+When a download is required, Armalint invokes SteamCMD. SteamCMD has its own
+authentication session, and signing in can log the desktop Steam client out on
+the same machine. Save any active Steam work and be ready to sign in again.
 
 ## `armalint-update-commands`
 

@@ -79,7 +79,7 @@ def find_include_cycles(path: str) -> list[tuple[str, int, str]]:
 def find_include_guard_issues(path: str) -> list[tuple[str, int, str]]:
     """Return repeated includes whose target has no recognizable guard."""
     issues: list[tuple[str, int, str]] = []
-    seen: set[str] = set()
+    seen: dict[str, tuple[str, int, tuple[tuple[str, bool], ...], bool]] = {}
 
     def guarded(target: str) -> bool:
         try:
@@ -102,6 +102,30 @@ def find_include_guard_issues(path: str) -> list[tuple[str, int, str]]:
         except OSError:
             return
         base_dir = os.path.dirname(os.path.abspath(current))
+        conditional_context: list[tuple[str, bool]] = []
+        line_context: dict[int, tuple[tuple[str, bool], ...]] = {}
+        array_fragment_lines: set[int] = set()
+        for number, raw_line in enumerate(lines, 1):
+            stripped = raw_line.strip()
+            line_context[number] = tuple(conditional_context)
+            if re.match(r"#\s*(ifdef|ifndef|if)\b", stripped, re.IGNORECASE):
+                match_if = re.match(r"#\s*(ifdef|ifndef|if)\s+(.+)$", stripped, re.IGNORECASE)
+                conditional_context.append((match_if.group(2).strip().lower() if match_if else stripped.lower(), not (match_if and match_if.group(1).lower() == "ifndef")))
+            elif re.match(r"#\s*(else|elif)\b", stripped, re.IGNORECASE) and conditional_context:
+                name, branch = conditional_context[-1]
+                conditional_context[-1] = (name, not branch)
+            elif re.match(r"#\s*endif\b", stripped, re.IGNORECASE) and conditional_context:
+                conditional_context.pop()
+            if stripped.startswith("#include"):
+                prior_index = number - 2
+                while prior_index >= 0:
+                    prior = lines[prior_index].strip()
+                    if not prior or prior.startswith("#"):
+                        prior_index -= 1
+                        continue
+                    break
+                if prior_index >= 0 and (prior.endswith("[") or prior.startswith(",")):
+                    array_fragment_lines.add(number)
         for line_number, line in enumerate(lines, 1):
             match = _INCLUDE_RE.match(line)
             if not match:
@@ -110,9 +134,15 @@ def find_include_guard_issues(path: str) -> list[tuple[str, int, str]]:
             if not os.path.isfile(target):
                 continue
             target_key = _normalized(target)
-            if target_key in seen and not guarded(target):
-                issues.append((current, line_number, target))
-            seen.add(target_key)
+            context = line_context.get(line_number, ())
+            previous = seen.get(target_key)
+            if previous and not guarded(target):
+                _previous_file, previous_line, previous_context, previous_array = previous
+                conditional_repeat = bool(context and previous_context and context != previous_context)
+                array_repeat = line_number in array_fragment_lines and previous_array
+                if not conditional_repeat and not array_repeat:
+                    issues.append((current, line_number, target))
+            seen[target_key] = (current, line_number, context, line_number in array_fragment_lines)
             visit(target, stack + (normalized,))
 
     visit(path, ())

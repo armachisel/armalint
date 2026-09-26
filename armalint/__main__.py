@@ -72,6 +72,12 @@ def _is_mission_file(name: str) -> bool:
     return name.lower().endswith(".sqm")
 
 
+def _count_label(count: int, singular: str, plural: str | None = None) -> str:
+    """Format a count with the correct singular/plural noun."""
+    noun = singular if count == 1 else (plural or singular + "s")
+    return f"{count} {noun}"
+
+
 def _is_ignored(rel_path: str, patterns: list[str]) -> bool:
     """True if ``rel_path`` matches any of the ``fnmatch`` ``patterns``."""
     for pattern in patterns:
@@ -122,7 +128,7 @@ def _collect_macro_files(path: str) -> list[str]:
             result.extend(
                 os.path.join(root, name)
                 for name in names
-                if name.lower().endswith((".inc", ".hpp", ".cpp"))
+                if name.lower().endswith((".h", ".inc", ".hpp", ".cpp"))
             )
     return result
 
@@ -448,7 +454,7 @@ def _main(argv: list[str] | None = None) -> int:
         else:
             for d in all_diags:
                 print(format_diagnostic(d))
-            print(f"{len(linted_files)} snippet(s) linted, {len(all_diags)} diagnostic(s)")
+            print(f"{_count_label(len(linted_files), 'snippet')} linted, {_count_label(len(all_diags), 'diagnostic')}")
         threshold = {"error": 3, "warning": 2, "info": 1, "none": 99}[args.fail_on]
         severity_rank = {Severity.INFO: 1, Severity.WARNING: 2, Severity.ERROR: 3}
         return 1 if any(severity_rank[d.severity] >= threshold for d in all_diags) else 0
@@ -480,6 +486,27 @@ def _main(argv: list[str] | None = None) -> int:
         os.path.normcase(os.path.abspath(file)): file_configs[key]
         for file in files
         if (key := os.path.normcase(os.path.abspath(file))) in file_configs
+    }
+    # Progress should describe the same lintable inputs as the final summary.
+    # The collection phase also sees include fragments and nested mission
+    # fragments that are intentionally not linted as standalone files.
+    progress_targets: list[str] = []
+    for candidate in files:
+        if _is_sqf_file(candidate) or _is_config_file(candidate):
+            progress_targets.append(candidate)
+            continue
+        if not _is_mission_file(candidate):
+            continue
+        normalized_candidate = os.path.normcase(os.path.abspath(candidate))
+        if any(
+            (os.path.isfile(path) and os.path.normcase(os.path.abspath(path)) == normalized_candidate)
+            or (os.path.isdir(path) and os.path.normcase(os.path.abspath(os.path.join(path, os.path.basename(candidate)))) == normalized_candidate)
+            for path in input_paths
+        ):
+            progress_targets.append(candidate)
+    progress_positions = {
+        os.path.normcase(os.path.abspath(path)): index
+        for index, path in enumerate(progress_targets, 1)
     }
     for config_path in sorted(set(file_configs.values())):
         load_checked(config_path)
@@ -611,6 +638,12 @@ def _main(argv: list[str] | None = None) -> int:
             # Bump this when the index contents or macro collection rules
             # change; otherwise an older cache can preserve stale unknown-
             # macro diagnostics even though all source fingerprints match.
+            # Version 9 includes expansion of class-producing config macros
+            # such as ``addc(Name)`` in CfgFunctions blocks.  Version 8
+            # includes table-driven ``setVariable`` loader entries
+            # (for example PF_h1_1-style function names).  These symbols are
+            # derived from string/file pairs in SQF source, so older cached
+            # indexes must be rebuilt once after the collector learns them.
             # Version 7 includes standalone ``tag =`` CfgFunctions
             # fragments, so cached indexes must be rebuilt for those symbols.
             # Version 6 includes config fragments for positional directory
@@ -620,7 +653,7 @@ def _main(argv: list[str] | None = None) -> int:
             # fragments to the collected symbol set.  Force one rebuild of
             # older project caches so dynamically configured APIs become
             # visible to W201.
-            if payload.get("version") == 7 and payload.get("fingerprints") == fingerprints:
+            if payload.get("version") == 9 and payload.get("fingerprints") == fingerprints:
                 cached_index = SymbolIndex.from_json(payload.get("index", {}))
         except (OSError, ValueError, TypeError, AttributeError):
             pass
@@ -649,7 +682,7 @@ def _main(argv: list[str] | None = None) -> int:
             os.makedirs(os.path.dirname(symbol_cache_path), exist_ok=True)
             if persist_symbol_cache:
                 with open(symbol_cache_path, "w", encoding="utf-8") as fh:
-                    json.dump({"version": 7, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
+                    json.dump({"version": 9, "fingerprints": fingerprints, "index": index.to_json()}, fh, sort_keys=True)
         except OSError:
             pass
     index.cba_declared |= any(dep.startswith("cba_") for dep in declared_dependencies)
@@ -719,6 +752,7 @@ def _main(argv: list[str] | None = None) -> int:
     # are skipped.
     linted_files: list[str] = []
     all_diags = []
+    stopped_early = False
     stream_diagnostics = not (args.json or args.sarif or args.checkstyle or args.github_actions or args.diff or args.diff_staged or baseline_keys)
     streamed_count = 0
     progress_stream = sys.stderr if sys.stderr.isatty() else None
@@ -728,7 +762,7 @@ def _main(argv: list[str] | None = None) -> int:
         if progress_stream is None:
             return
         label = os.path.relpath(path, os.getcwd())
-        message = f"Linting {current:>{len(str(len(files)))}}/{len(files)}  {label}"
+        message = f"Linting {current:>{len(str(len(progress_targets)))}}/{len(progress_targets)}  {label}"
         progress_stream.write("\r" + message[:progress_width].ljust(progress_width))
         progress_stream.flush()
 
@@ -740,7 +774,9 @@ def _main(argv: list[str] | None = None) -> int:
     clear_phase()
 
     for file_number, f in enumerate(files, 1):
-        show_progress(file_number, f)
+        progress_number = progress_positions.get(os.path.normcase(os.path.abspath(f)))
+        if progress_number is not None:
+            show_progress(progress_number, f)
         nearest_config = file_configs.get(os.path.normcase(os.path.abspath(f)))
         file_config = load_checked(nearest_config) if nearest_config else {}
         file_ignored_rules = ignored_rules | extract_ignored_rules(file_config)
@@ -827,6 +863,7 @@ def _main(argv: list[str] | None = None) -> int:
                 streamed_count += emit_count
         if args.max_issues is not None and len(all_diags) >= args.max_issues:
             all_diags = all_diags[:args.max_issues]
+            stopped_early = True
             break
 
     clear_progress()
@@ -904,7 +941,12 @@ def _main(argv: list[str] | None = None) -> int:
             if not stream_diagnostics:
                 for d in all_diags:
                     print(format_diagnostic(d))
-        print(f"{len(linted_files)} file(s) linted, {len(all_diags)} diagnostic(s)")
+        linted_count = len(linted_files)
+        if stopped_early:
+            file_summary = f"{linted_count} of {_count_label(len(progress_targets), 'file')}"
+        else:
+            file_summary = _count_label(linted_count, "file")
+        print(f"{file_summary} linted, {_count_label(len(all_diags), 'diagnostic')}")
 
     threshold = {"error": 3, "warning": 2, "info": 1, "none": 99}[args.fail_on]
     severity_rank = {Severity.INFO: 1, Severity.WARNING: 2, Severity.ERROR: 3}

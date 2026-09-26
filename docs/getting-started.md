@@ -58,6 +58,16 @@ entry from both `mods` and `dependencies` into the project's
 `.armalint/dependencies` directory. Without that flag, those entries must
 already be present in a discovered Steam Workshop library.
 
+SteamCMD uses a separate login session from the desktop Steam client. Signing
+in to SteamCMD can log the desktop Steam client out on the same machine, so
+save any active Steam work and be prepared to sign in again afterward.
+
+The updater indexes the base Arma data and only DLC data referenced by the
+mission's declared addon dependencies. This keeps scans smaller and lets the
+linter report accidental use of an undeclared DLC function as an unknown
+function. Use `--all-game-data` when the project intentionally supports any
+installed DLC.
+
 The first scan can take a while. With a large Arma installation, a large mod
 list, or many declared source and Workshop dependencies, it may take several
 minutes because Armalint has to open and inspect each selected PBO. The updater
@@ -70,11 +80,19 @@ The updater also writes `.armalint/armalint_mods_metadata.json`, which records t
 metadata schema, optional Arma version, source addon/PBO for extracted
 functions, and unreadable or unsupported PBOs.
 
+Downloaded dependencies are kept in `.armalint/dependencies` and are treated as
+normal scan roots on later runs. Existing downloads and unchanged scan roots
+are reused; `--force-download-dependencies` refreshes Workshop items, while
+`--rebuild` refreshes dependencies and rebuilds every scan root.
+
 If you want to start that scan again from scratch:
 
 ```powershell
-armalint-update --mission C:\path\to\MyMission.Altis --clear-cache
+armalint-update --mission C:\path\to\MyMission.Altis --rebuild
 ```
+
+`--clear-cache` only removes the incremental scan cache and exits. It is useful
+when you want to clear the cache before a separately controlled update.
 
 The cache is per mission. A second mission gets its own list and its own scan
 cache. An `armalint.json` file can add optional mods, broad function tags,

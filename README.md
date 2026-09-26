@@ -192,6 +192,7 @@ severities, is in [`docs/rule-catalog.md`](docs/rule-catalog.md).
 | W216 | warning  | Comparison uses incompatible statically known primitive types.   |
 | W217 | warning  | Invalid `params` declaration shape.                              |
 | W218 | warning  | Invalid namespace variable operation.                             |
+| W232 | warning  | Non-serializable value stored in a namespace variable.            |
 | W219 | warning  | Invalid event-handler lifecycle or declaration.                   |
 | W220 | warning  | Invalid remote-execution contract.                                |
 | W221 | warning  | Invalid public-variable contract.                                 |
@@ -351,6 +352,7 @@ also load the **mod function cache** — a JSON array of the precise
 
 ```powershell
 python -m armalint.update --mission <dir> [--workshop <path>] [--arma-dir <path>]
+                              [--all-game-data]
 ```
 
 This resolves the mission's required addons (from `mission.sqm`) plus any
@@ -365,10 +367,18 @@ The updater also writes `.armalint/armalint_scan_cache.json` beside these caches
 updates it compares addon file sizes and modification times and reuses scan
 results for unchanged roots, avoiding PBO parsing. Roots with changed, added, or
 removed addon files are rescanned. Delete this file to force a complete rescan.
+By default only the base game and DLC roots referenced by mission addon
+dependencies are indexed. Use `--all-game-data` when the project intentionally
+supports every installed DLC; leaving DLCs unselected lets the linter expose
+accidental undeclared DLC usage as unknown functions.
 The first scan can take several minutes when the Arma installation, mod list, or
 declared dependency set is large: Armalint opens each selected PBO to build its
 function, signature, macro, and addon index. Progress is shown during the scan;
 later updates reuse unchanged roots and are normally much faster.
+
+If `--download-dependencies` needs to authenticate with SteamCMD, be aware that
+logging in can log the desktop Steam client out on the same machine. Save any
+active Steam work and be prepared to sign in again afterward.
 You can also clear it from the command line with
 `python -m armalint.update --mission <dir> --clear-cache`; this preserves the
 function-name and type caches and exits, so the next normal update performs a

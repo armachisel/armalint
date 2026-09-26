@@ -46,7 +46,7 @@ MOD_METADATA_CACHE_FILENAME = "armalint_mods_metadata.json"
 MOD_SCAN_CACHE_FILENAME = "armalint_scan_cache.json"
 # Bump when extraction rules change so an unchanged PBO is rescanned with the
 # new symbol discovery logic (for example addon-tag fallbacks).
-MOD_SCAN_CACHE_VERSION = 8
+MOD_SCAN_CACHE_VERSION = 12
 
 #: Steam app id for Arma 3 (the numeric folder under ``workshop/content``).
 _ARMA_APP_ID = "107410"
@@ -514,7 +514,7 @@ def _mod_prefix(mod_dir: str) -> str | None:
     for kind, path in list_addons(mod_dir):
         if kind == "pbo":
             try:
-                files = read_pbo(path, include=lambda entry: entry.lower().endswith((".hpp", ".inc", ".cpp")))
+                files = read_pbo(path, include=lambda entry: entry.lower().endswith((".h", ".hpp", ".inc", ".cpp")))
             except Exception:
                 continue
             prefix = _read_prefix_from_files(files)
@@ -564,7 +564,7 @@ def _extract_pbo_functions(pbo_path: str, mod_prefix: str | None = None) -> set[
         files = read_pbo(
             pbo_path,
             include=lambda entry: entry.lower().endswith(
-                (".sqf", ".sqs", ".hpp", ".inc", ".cpp", "config.bin")
+                (".sqf", ".sqs", ".h", ".hpp", ".inc", ".cpp", "config.bin")
             ),
         )
     except Exception:
@@ -655,7 +655,7 @@ def _extract_text_cfg_patch_names(files: dict[str, bytes], addon_dir: str | None
     text = "\n".join(
         raw.decode("utf-8", "replace")
         for name, raw in files.items()
-        if name.lower().endswith((".hpp", ".inc", ".cpp"))
+        if name.lower().endswith((".h", ".hpp", ".inc", ".cpp"))
     )
     macros: dict[str, str] = {}
     for match in re.finditer(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.MULTILINE):
@@ -895,6 +895,7 @@ def extract_mod_data(
     metadata: dict | None = None,
     addon_sources: dict[str, str] | None = None,
     wanted_addons: set[str] | None = None,
+    macros: set[str] | None = None,
 ) -> tuple[set[str], dict[str, list[str | None]]]:
     """Extract function names and explicit argument types in one addon pass.
 
@@ -916,9 +917,7 @@ def extract_mod_data(
             try:
                 files = read_pbo(
                     path,
-                    (lambda entry: progress(f"{path} [{entry}]", False)
-                     if entry.lower().endswith((".sqf", ".sqs", ".hpp", ".inc", ".cpp", "config.bin"))
-                     else None) if progress else None,
+                    (lambda entry: progress(f"{path} [{entry}]", False)) if progress else None,
                     include=lambda entry: entry.lower().endswith(
                         (".sqf", ".sqs", ".hpp", ".inc", ".cpp", "config.bin")
                     ),
@@ -926,6 +925,18 @@ def extract_mod_data(
             except Exception as exc:
                 if metadata is not None:
                     metadata["errors"].append({"path": path, "kind": "unreadable-or-unsupported-pbo", "error": str(exc)})
+                # Encrypted or otherwise unsupported EBOs still have a useful,
+                # stable archive stem.  Keep that stem in the addon index so
+                # required patch names that extend it (for example
+                # ``ww2_spe_structures_c_simpleobjects_c`` or
+                # ``gm_objects_fortification``) can be attributed during the
+                # late dependency-resolution pass.  We do not infer any
+                # functions or signatures from the unreadable archive.
+                archive_stem = os.path.splitext(os.path.basename(path))[0].lower()
+                if addon_names is not None:
+                    addon_names.add(archive_stem)
+                if addon_sources is not None:
+                    addon_sources.setdefault(archive_stem, path)
                 if progress:
                     progress(path, True)
                 continue
@@ -967,6 +978,12 @@ def extract_mod_data(
                     break
             if addon_names is not None:
                 addon_names.add(os.path.splitext(os.path.basename(path))[0].lower())
+            if addon_sources is not None:
+                # Some published addons put several CfgPatches classes in a
+                # single archive and use a longer patch name than the PBO
+                # filename (for example uns_ammo_c in uns_ammo.pbo). Keep the
+                # archive stem as a fallback owner for late resolution.
+                addon_sources.setdefault(os.path.splitext(os.path.basename(path))[0].lower(), path)
             tag = _addon_tag(path)
             prefix = _read_prefix_from_files(files)
             sources = {name: data for name, data in files.items() if name.lower().endswith(".sqf")}
@@ -996,6 +1013,18 @@ def extract_mod_data(
                     addon_sources.setdefault(name.lower(), path)
             if addon_names is not None:
                 addon_names.update(patch_names)
+        if macros is not None:
+            for name, data in files.items():
+                if not name.lower().endswith((".h", ".hpp", ".inc", ".cpp")):
+                    continue
+                macros.update(
+                    match.lower()
+                    for match in re.findall(
+                        r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)",
+                        data.decode("utf-8", errors="replace"),
+                        re.MULTILINE,
+                    )
+                )
         if prefix and mod_prefix is None:
             mod_prefix = prefix
         records.append((kind, tag, prefix, cfg_names, cfg_files, cfg_metadata, sources, path))
@@ -1069,13 +1098,13 @@ def extract_mod_macros(mod_dir: str) -> set[str]:
     for kind, path in list_addons(mod_dir):
         try:
             files = (
-                read_pbo(path, include=lambda entry: entry.lower().endswith((".hpp", ".inc", ".cpp", "config.bin")))
+                read_pbo(path, include=lambda entry: entry.lower().endswith((".h", ".hpp", ".inc", ".cpp", "config.bin")))
                 if kind == "pbo" else _directory_addon_files(path)
             )
         except Exception:
             continue
         for name, raw in files.items():
-            if not name.lower().endswith((".hpp", ".inc", ".cpp")):
+            if not name.lower().endswith((".h", ".hpp", ".inc", ".cpp")):
                 continue
             text = raw.decode("utf-8", "replace")
             macros.update(re.findall(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.MULTILINE))
@@ -1091,7 +1120,7 @@ def extract_source_macros(source_root: str, include_roots: list[str] | None = No
             continue
         for current, _dirs, names in os.walk(root):
             for name in names:
-                if not name.lower().endswith((".hpp", ".inc", ".cpp")):
+                if not name.lower().endswith((".h", ".hpp", ".inc", ".cpp")):
                     continue
                 try:
                     with open(os.path.join(current, name), "r", encoding="utf-8", errors="replace") as fh:
@@ -1157,6 +1186,7 @@ def extract_mod_data_cached(
     addon_sources: dict[str, str] | None = None,
     wanted_addons: set[str] | None = None,
     stats: dict[str, int] | None = None,
+    macros: set[str] | None = None,
 ) -> tuple[set[str], dict[str, list[str | None]]]:
     """Reuse a root's prior extraction when its file metadata is unchanged."""
     key = os.path.normcase(os.path.abspath(mod_dir))
@@ -1170,10 +1200,12 @@ def extract_mod_data_cached(
             addon_names.update(x for x in entry["addon_names"] if isinstance(x, str))
         if addon_sources is not None and isinstance(entry.get("addon_sources"), dict):
             addon_sources.update({str(k).lower(): str(v) for k, v in entry["addon_sources"].items()})
+        if macros is not None and isinstance(entry.get("macros"), list):
+            macros.update(x.lower() for x in entry["macros"] if isinstance(x, str))
         if progress:
             for _kind, path in addons:
-                progress(path, False)
-                progress(path, True)
+                progress(f"[cached] {path}", False)
+                progress(f"[cached] {path}", True)
         names = entry.get("functions", [])
         signatures = entry.get("signatures", {})
         return (
@@ -1183,6 +1215,7 @@ def extract_mod_data_cached(
 
     extracted_addon_names: set[str] = set()
     extracted_addon_sources: dict[str, str] = {}
+    extracted_macros: set[str] = set()
     if stats is not None:
         stats["rescanned"] = stats.get("rescanned", 0) + 1
     metadata: dict = {}
@@ -1190,6 +1223,7 @@ def extract_mod_data_cached(
         mod_dir, progress, extracted_addon_names, metadata,
         addon_sources=extracted_addon_sources,
         wanted_addons=wanted_addons,
+        macros=extracted_macros,
     )
     if addon_names is not None:
         addon_names.update(extracted_addon_names)
@@ -1201,6 +1235,7 @@ def extract_mod_data_cached(
         "signatures": signatures,
         "addon_names": sorted(extracted_addon_names),
         "addon_sources": extracted_addon_sources,
+        "macros": sorted(extracted_macros),
         "source_root": os.path.abspath(mod_dir),
         "metadata": metadata,
     }

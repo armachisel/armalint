@@ -19,6 +19,21 @@ def check_value_flow(tokens: list[Token]) -> list[Diagnostic]:
     depth = 0
     epoch = 0
     for i, token in enumerate(tokens):
+        # Assignments in mutually exclusive preprocessor branches do not
+        # overwrite one another at runtime.  Treat each conditional boundary
+        # as a flow epoch so constructs such as ``#ifdef _SQF_VM`` / ``#else``
+        # do not produce W222 or W223 when both branches assign the same
+        # local.  This is deliberately conservative: we lose flow facts at a
+        # branch boundary rather than claiming that a later assignment is
+        # definitely reachable from an earlier one.
+        if token.type == "preprocessor":
+            directive = token.value.strip().split(None, 1)[0].lower() if token.value.strip() else ""
+            if directive in {"if", "ifdef", "ifndef", "elif", "else", "endif"}:
+                epoch += 1
+                assigned.clear()
+                read_since.clear()
+                literal_assignments.clear()
+            continue
         if token.type == "local":
             j = i + 1
             while j < len(tokens) and tokens[j].type in _TRIVIA:

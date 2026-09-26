@@ -174,6 +174,15 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     analyzed independently before definitions are merged at control-flow joins.
     """
     defined = set() if defined is None else {name.lower() for name in defined}
+    # Arma supplies callback parameters for these common engine helpers.  They
+    # are not lexical declarations in the callback source itself:
+    # BIS_fnc_sortBy provides _input0 to its comparator, while
+    # onMapSingleClick provides _pos to the click handler.
+    token_values = {token.value.lower() for token in tokens}
+    if "bis_fnc_sortby" in token_values:
+        defined.add("_input0")
+    if any(token.type == "string" and token.value.lower() == "onmapsingleclick" for token in tokens):
+        defined.add("_pos")
     diags: list[Diagnostic] = []
     n = len(tokens)
     i = 0
@@ -226,10 +235,27 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
                 continue
 
             if kw == "for":
-                # for "_i" from ... — first string after 'for' defines the local.
+                # for "_i" from ... — the string after 'for' defines the local.
                 j = _next_significant(tokens, i)
                 if j < n and tokens[j].type == "string" and tokens[j].value.startswith("_"):
                     defined.add(tokens[j].value.lower())
+                elif j < n and tokens[j].type == "lbracket":
+                    # Numeric loop form: for [{_i = 0}, {_i < 5}, {_i = _i + 1}] do {}
+                    # The initializer's assignment declares the loop local for
+                    # the condition, increment, and body.
+                    depth = 0
+                    k = j
+                    while k < n:
+                        if tokens[k].type in ("lbracket", "lbrace"):
+                            depth += 1
+                        elif tokens[k].type in ("rbracket", "rbrace"):
+                            depth -= 1
+                            if depth == 0:
+                                break
+                        elif depth == 2 and tokens[k].type == "local" and _is_assignment_lhs(tokens, k):
+                            defined.add(tokens[k].value.lower())
+                            break
+                        k += 1
                 i += 1
                 continue
 
@@ -336,6 +362,17 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
                 if token.type == "string" and token.value.startswith("_"):
                     loop_in.add(token.value)
                     break
+            else:
+                # Numeric loop form: for [{_i = 0}, ...] do {}.
+                depth = 0
+                for index, token in enumerate(node.header):
+                    if token.type in ("lbracket", "lbrace"):
+                        depth += 1
+                    elif token.type in ("rbracket", "rbrace"):
+                        depth -= 1
+                    elif depth == 2 and token.type == "local" and _is_assignment_lhs(node.header, index):
+                        loop_in.add(token.value.lower())
+                        break
         diags, _ = _scan_tokens(node.header, loop_in)
         if node.body:
             body_diags, _ = _walk_node(node.body, loop_in, True)

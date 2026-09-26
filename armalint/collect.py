@@ -123,6 +123,34 @@ def collect_code_functions(source: str, index: SymbolIndex, tokens: list | None 
             if _FNC in name.lower():
                 index.add_tag(name.split("_fnc_", 1)[0])
 
+    # Generic table-driven loaders often assign a local key and compiled code
+    # through ``setVariable[_function, _code]``.  The key strings live in the
+    # table rather than beside the call, so register identifier-shaped string
+    # entries when the surrounding file clearly contains both the namespace
+    # registration and a compile operation.  This covers PF-style loaders
+    # without treating ordinary string literals as callable functions.
+    has_dynamic_loader = (
+        any(t.value.lower() == "setvariable" for t in tokens)
+        and any(t.value.lower() in _COMPILE_KW for t in tokens)
+    )
+    if has_dynamic_loader:
+        for pos, tok in enumerate(tokens[:-2]):
+            if tok.type != "string" or not _IDENT.match(tok.value):
+                continue
+            probe = pos + 1
+            while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                probe += 1
+            if probe >= len(tokens) or tokens[probe].type != "comma":
+                continue
+            probe += 1
+            while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                probe += 1
+            if (probe < len(tokens) and tokens[probe].type == "string"
+                    and ("\\" in tokens[probe].value or ".sqf" in tokens[probe].value.lower())):
+                index.add_function(tok.value)
+                if _FNC in tok.value.lower():
+                    index.add_tag(tok.value.split("_fnc_", 1)[0])
+
     # Event-handler APIs can also carry an inline callback under a string key.
     # Register that key when the same argument list contains code, so callback
     # analysis does not depend on a ``_fnc_`` naming convention.
@@ -158,6 +186,24 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
     children are still searched). Missing or malformed input is tolerated: the
     function simply returns without raising.
     """
+    # Expand simple one-parameter config macros that generate function
+    # classes, such as ``#define addc(cname) class cname { ... }``.  These
+    # macros are common in mission CfgFunctions blocks; parsing the invocation
+    # literally would hide every generated function from the symbol index.
+    macro_defs = re.findall(
+        r"^\s*#\s*define\s+([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*)\s*\)\s+([^\r\n]+)$",
+        source,
+        re.MULTILINE,
+    )
+    for macro_name, parameter, replacement in macro_defs:
+        if "class" not in replacement.lower():
+            continue
+        call_pattern = re.compile(rf"\b{re.escape(macro_name)}\s*\(\s*([A-Za-z_]\w*)\s*\)")
+        source = call_pattern.sub(
+            lambda match: replacement.replace(parameter, match.group(1)),
+            source,
+        )
+
     tokens = tokenize(source)
     n = len(tokens)
 
@@ -392,6 +438,30 @@ if __name__ == "__main__":
     )
     assert idx8.is_known_function("myCallback")
     assert idx8.is_known_function("ALT_fnc_fromNamespace")
+    # Table-driven namespace loaders publish names from string/file pairs;
+    # those names must be available to callers in other files.
+    idx_loader = SymbolIndex()
+    collect_code_functions(
+        '{_x params["_function", "_file"]; private _code = compileFinal preprocessFile _file; '
+        'missionNamespace setVariable[_function, _code]} forEach [['
+        '"PF_h1_1", "PF\\A3\\h1_1.sqf"], '
+        '["PF_h2a_1", "PF\\A3\\h2a_1.sqf"]];',
+        idx_loader,
+    )
+    assert idx_loader.is_known_function("PF_h1_1")
+    assert idx_loader.is_known_function("PF_h2a_1")
+
+    # Config macros that generate classes must be expanded before CfgFunctions
+    # traversal, as used by compact mission function registries.
+    idx_macro = SymbolIndex()
+    collect_description_cfg_functions(
+        '#define addc(cname) class cname { headerType = -1; }\n'
+        'class CfgFunctions { class AR { tag = "AR"; class Group { '
+        'file = "ar"; addc(Rappel_From_Heli); addc(Play_3D_Sound); }; }; };',
+        idx_macro,
+    )
+    assert idx_macro.is_known_function("AR_fnc_Rappel_From_Heli")
+    assert idx_macro.is_known_function("AR_fnc_Play_3D_Sound")
     idx9 = SymbolIndex()
     collect_code_functions('player addEventHandler ["myEventCallback", { hint "x"; }];', idx9)
     assert idx9.is_known_function("myEventCallback")

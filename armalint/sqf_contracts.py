@@ -12,10 +12,20 @@ _NAMESPACE = "W218"
 _EVENT = "W219"
 _REMOTE = "W220"
 _PUBLIC = "W221"
+_SERIALIZATION = "W232"
 _TRIVIA = frozenset(("comment", "preprocessor"))
 _NAMESPACES = frozenset((
     "missionnamespace", "profilenamespace", "parsingnamespace", "uinamespace",
     "servernamespace", "localnamespace", "missionprofilenamespace",
+))
+_SERIALIZABLE_NAMESPACES = frozenset((
+    "missionnamespace", "profilenamespace", "missionprofilenamespace",
+))
+_NON_SERIALIZABLE_HANDLES = frozenset((
+    "controlnull", "displaynull", "scriptnull", "tasknull",
+))
+_NON_SERIALIZABLE_FACTORIES = frozenset((
+    "controldisplay", "finddisplay", "displayctrl", "ctrlcreate",
 ))
 
 
@@ -58,6 +68,24 @@ def _diag(code: str, message: str, token: Token) -> Diagnostic:
     return Diagnostic(Severity.WARNING, code, message, token.line, token.column)
 
 
+def _first_significant(tokens: list[Token], start: int, end: int | None = None) -> Token | None:
+    limit = len(tokens) if end is None else min(end, len(tokens))
+    return next((token for token in tokens[start:limit] if token.type not in _TRIVIA), None)
+
+
+def _looks_non_serializable(tokens: list[Token], start: int, end: int | None = None) -> bool:
+    """Recognize values the engine cannot persist in a namespace variable.
+
+    This deliberately only handles unambiguous null handles and UI-handle
+    factories. Unknown expressions are left alone rather than guessed at.
+    """
+    first = _first_significant(tokens, start, end)
+    if first is None:
+        return False
+    name = first.value.lower()
+    return name in _NON_SERIALIZABLE_HANDLES or name in _NON_SERIALIZABLE_FACTORIES
+
+
 def _macro_body_lines(source: str | None) -> set[int]:
     """Return physical lines occupied by continued preprocessor macros."""
     if not source:
@@ -85,6 +113,22 @@ def check_sqf_contracts(tokens: list[Token], source: str | None = None) -> list[
         if token.type in _TRIVIA or token.type not in ("ident", "keyword"):
             continue
         name = token.value.lower()
+
+        # Plain global assignments become missionNamespace variables.  Arma
+        # cannot serialize UI/runtime handles such as controls or displays;
+        # storing one globally produces a runtime warning when the engine
+        # serializes the mission namespace.  Local/private variables are safe
+        # and intentionally excluded.
+        if token.type in ("ident", "keyword") and not token.value.startswith("_"):
+            assignment = _next(tokens, i)
+            if assignment < len(tokens) and tokens[assignment].value == "=":
+                value = _next(tokens, assignment)
+                if _looks_non_serializable(tokens, value):
+                    diagnostics.append(_diag(
+                        _SERIALIZATION,
+                        f"namespace variable {token.value} stores a non-serializable runtime handle",
+                        token,
+                    ))
 
         if name == "params":
             # A params-looking sequence inside a continued #define is macro
@@ -148,6 +192,19 @@ def check_sqf_contracts(tokens: list[Token], source: str | None = None) -> list[
                 valid = argument < len(tokens) and tokens[argument].type in ("string", "lbracket", "local", "ident", "keyword", "lparen")
                 if not valid:
                     diagnostics.append(_diag(_NAMESPACE, f"{tokens[previous].value} {name} expects a name or [name, value] array", token))
+                if name == "setvariable" and valid:
+                    parsed = _items(tokens, argument)
+                    if parsed is not None and len(parsed[0]) >= 2:
+                        value = _first(parsed[0][1])
+                        if (previous >= 0
+                                and tokens[previous].value.lower() in _SERIALIZABLE_NAMESPACES
+                                and value is not None
+                                and _looks_non_serializable(parsed[0][1], 0)):
+                            diagnostics.append(_diag(
+                                _SERIALIZATION,
+                                f"{tokens[previous].value} variable stores a non-serializable runtime handle",
+                                value,
+                            ))
 
         if name in ("addeventhandler", "addmissioneventhandler", "addmpeventhandler"):
             opening = _next(tokens, i)
@@ -211,5 +268,8 @@ if __name__ == "__main__":
     assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, 1];'))
     assert any(d.code == _PUBLIC for d in check_sqf_contracts_text('publicVariable 42;'))
     assert check_sqf_contracts_text('publicVariable ("ready_" + _suffix);') == []
+    assert any(d.code == _SERIALIZATION for d in check_sqf_contracts_text('ALT_control = controlNull;'))
+    assert check_sqf_contracts_text('private _control = controlNull;') == []
+    assert any(d.code == _SERIALIZATION for d in check_sqf_contracts_text('missionNamespace setVariable ["control", controlNull];'))
     assert check_sqf_contracts_text('#define WRAP \\\nparams [P_ARRAY("_value")];\n') == []
     print("sqf_contracts self-test passed")

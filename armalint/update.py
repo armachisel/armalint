@@ -30,6 +30,7 @@ import re
 import shutil
 import sys
 import subprocess
+import time
 import urllib.request
 import urllib.error
 import zipfile
@@ -73,6 +74,20 @@ def _warn(message: str) -> None:
     print(f"warning: {message}", file=sys.stderr)
 
 
+def _dependency_failure_marker(install_dir: str, workshop_id: str) -> str:
+    """Return the marker used to avoid retrying a known failed download."""
+    return os.path.join(install_dir, f".failed-workshop-{workshop_id}")
+
+
+def _mark_dependency_failed(install_dir: str, workshop_id: str) -> None:
+    try:
+        os.makedirs(install_dir, exist_ok=True)
+        with open(_dependency_failure_marker(install_dir, workshop_id), "w", encoding="utf-8") as fh:
+            fh.write("download failed\n")
+    except OSError:
+        pass
+
+
 def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, name: str | None = None, steam_user: str | None = None, steam_password: str | None = None, steam_guard: str | None = None) -> bool:
     os.makedirs(install_dir, exist_ok=True)
     # PowerShell and some IDE terminals expose the interactive console on
@@ -93,6 +108,11 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
         interactive_login = bool(steam_user and not steam_password)
         label = name or workshop_id
         if stream:
+            print(
+                f"Downloading {label} (Workshop ID {workshop_id})",
+                file=stream,
+                flush=True,
+            )
             print(
                 f"SteamCMD starting {'authenticated' if steam_user else 'anonymous'} download for {label}",
                 file=stream,
@@ -200,11 +220,19 @@ def _download_workshop_item(steamcmd: str, workshop_id: str, install_dir: str, n
             stream.flush()
     if returncode != 0:
         _warn(f"SteamCMD failed to download Workshop item {workshop_id}")
+        _mark_dependency_failed(install_dir, workshop_id)
         return False
     content_path = os.path.join(install_dir, "steamapps", "workshop", "content", "107410", workshop_id)
     if not os.path.isdir(content_path) or not any(os.scandir(content_path)):
         _warn(f"SteamCMD did not install Workshop dependency {name or workshop_id}; check its SteamCMD log (authenticated Arma 3 access may be required)")
+        _mark_dependency_failed(install_dir, workshop_id)
         return False
+    try:
+        os.remove(_dependency_failure_marker(install_dir, workshop_id))
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
     # SteamCMD's own success line only includes the numeric Workshop ID.
     # Echo a stable, human-readable mapping so logs remain useful when a
     # project downloads several dependencies in one run.
@@ -241,7 +269,12 @@ def _download_steamcmd_archive(destination: str) -> None:
         stream.flush()
 
 
-def _acquire_dependency_source(spec: dict, source_root: str, base_dir: str | None = None) -> str | None:
+def _acquire_dependency_source(
+    spec: dict,
+    source_root: str,
+    base_dir: str | None = None,
+    refresh: bool = False,
+) -> str | None:
     """Resolve a local source or clone a declared remote dependency source.
 
     A dependency source may be a checkout that already lives beside the
@@ -264,6 +297,8 @@ def _acquire_dependency_source(spec: dict, source_root: str, base_dir: str | Non
         return os.path.abspath(candidate)
     destination = os.path.join(source_root, re.sub(r"[^A-Za-z0-9_.-]+", "_", str(spec.get("name", "dependency"))))
     if os.path.isdir(os.path.join(destination, ".git")):
+        if not refresh:
+            return destination
         try:
             subprocess.run(["git", "-C", destination, "pull", "--ff-only"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return destination
@@ -332,6 +367,7 @@ def _extract_with_progress(path: str, label: str, root_number: int, root_total: 
     state = {"done": completed, "item": "starting"}
     frames = "|/-\\"
     width = max(20, shutil.get_terminal_size((100, 24)).columns - 1)
+    last_draw = [0.0]
 
     def status() -> str:
         percent = 100 if overall_total == 0 else int(state["done"] * 100 / overall_total)
@@ -340,14 +376,23 @@ def _extract_with_progress(path: str, label: str, root_number: int, root_total: 
         return message
 
     def progress(item: str, finished: bool) -> None:
-        state["item"] = os.path.basename(item)
+        if item.startswith("[cached] "):
+            state["item"] = "reusing cached index"
+        else:
+            state["item"] = os.path.basename(item)
         if finished:
             state["done"] += 1
-        else:
+        now = time.monotonic()
+        # PowerShell terminals make a flushed carriage-return redraw relatively
+        # expensive.  Keep counting every archive, but redraw at most ten
+        # times per second; the spinner thread continues to show activity
+        # between updates.
+        if not finished or now - last_draw[0] >= 0.1:
             # Draw synchronously before entering a potentially CPU-heavy PBO
             # parse.  The spinner thread may not get scheduled while a parser
             # holds the interpreter, but the user still sees what is active.
             draw(status())
+            last_draw[0] = now
 
     def draw(message: str, end: str = "") -> None:
         # Pad the entire line so shorter updates erase leftovers without ANSI
@@ -382,6 +427,63 @@ def _is_mod_dir_name(name: str) -> bool:
     Everything else (``Dta``, ``Missions``, ``Addons``, …) is not a mod.
     """
     return name.startswith("@") or name.isdigit()
+
+
+def _find_declared_game_root(addon_name: str, roots: list[str]) -> str | None:
+    """Find the game/DLC root most likely to provide a declared addon."""
+    exact = find_game_addon(addon_name, roots)
+    if exact:
+        return exact
+    target = addon_name.lower()
+    target_variants = {target}
+    if target.startswith("a3_"):
+        target_variants.add(target[3:])
+    for root in roots:
+        addons_dir = os.path.join(root, "Addons")
+        if not os.path.isdir(addons_dir):
+            continue
+        try:
+            for entry in os.listdir(addons_dir):
+                lower = entry.lower()
+                if not lower.endswith((".pbo", ".ebo")):
+                    continue
+                stem = os.path.splitext(lower)[0]
+                if any(candidate.startswith(stem + "_") or candidate == stem for candidate in target_variants):
+                    return root
+        except OSError:
+            continue
+    return None
+
+
+def _select_game_data_roots(
+    arma_dirs: list[str], all_roots: list[str], required_addons: list[str],
+    scan_cache: dict, all_game_data: bool,
+) -> list[str]:
+    """Select base game data plus DLC roots referenced by the mission."""
+    if all_game_data:
+        return list(all_roots)
+    all_root_keys = {os.path.normcase(os.path.abspath(root)) for root in all_roots}
+    selected = {
+        os.path.normcase(os.path.abspath(game_dir)): game_dir
+        for game_dir in arma_dirs
+        if os.path.normcase(os.path.abspath(game_dir)) in all_root_keys
+    }
+    cached_owner: dict[str, str] = {}
+    for root, entry in scan_cache.items():
+        if not isinstance(entry, dict):
+            continue
+        source_root = entry.get("source_root", root)
+        source_key = os.path.normcase(os.path.abspath(str(source_root)))
+        if source_key not in all_root_keys:
+            continue
+        for addon in entry.get("addon_names", []):
+            if isinstance(addon, str):
+                cached_owner[addon.lower()] = str(source_root)
+    for addon in required_addons:
+        owner = _find_declared_game_root(addon, all_roots) or cached_owner.get(addon.lower())
+        if owner:
+            selected[os.path.normcase(os.path.abspath(owner))] = owner
+    return sorted(selected.values(), key=os.path.normcase)
 
 
 def _read_mission_sqm(mission_dir: str) -> tuple[str | None, list[str]]:
@@ -462,9 +564,23 @@ def run_update(args) -> int:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
     scan_cache_path = os.path.join(os.path.dirname(out_path), MOD_SCAN_CACHE_FILENAME)
     scan_cache = load_mod_scan_cache(scan_cache_path)
+    if getattr(args, "rebuild", False):
+        scan_cache = {}
+        try:
+            os.remove(scan_cache_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            _warn(f"could not clear scan cache {scan_cache_path}: {exc}")
 
     # 3. Search roots: workshop content roots + Arma install directories.
     workshop_roots = list(getattr(args, "workshop", None) or discover_workshop_roots())
+    dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
+    dependency_workshop_root = os.path.join(
+        dependency_cache, "steamapps", "workshop", "content", "107410"
+    )
+    if os.path.isdir(dependency_workshop_root):
+        workshop_roots.append(dependency_workshop_root)
     source_macros: set[str] = set()
     source_dependency_roots: list[tuple[str, dict]] = []
     source_cache_root = os.path.join(os.path.dirname(out_path), "dependencies", "source")
@@ -475,7 +591,12 @@ def run_update(args) -> int:
         source_path = None
         source_base = os.path.dirname(os.path.abspath(config_path)) if config_path else mission_dir
         if getattr(args, "download_dependencies", False):
-            source_path = _acquire_dependency_source(spec, source_cache_root, source_base)
+            source_path = _acquire_dependency_source(
+                spec,
+                source_cache_root,
+                source_base,
+                refresh=bool(getattr(args, "rebuild", False)),
+            )
         else:
             # Local source checkouts are usable without a download.  Remote
             # sources remain cache-only unless --download-dependencies is set.
@@ -500,34 +621,21 @@ def run_update(args) -> int:
         elif getattr(args, "download_dependencies", False):
             _warn(f"could not acquire source dependency {spec.get('name', '<unnamed>')}")
     if getattr(args, "download_dependencies", False):
-        steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd(
-            [mission_dir]
-        )
-        steamcmd = _ensure_steamcmd(os.path.dirname(out_path), steamcmd)
+        steamcmd = None
         steam_user = getattr(args, "steamcmd_user", None)
         steam_user = steam_user or os.environ.get("STEAMCMD_USER")
         steam_password = os.environ.get("STEAMCMD_PASSWORD")
         steam_guard = os.environ.get("STEAMCMD_GUARD_CODE")
-        if steam_password and not steam_user:
-            _warn("STEAMCMD_PASSWORD is set but STEAMCMD_USER is missing; ignoring the password")
-            steam_password = None
-        if steamcmd and not steam_user and sys.stdin.isatty() and sys.stdout.isatty():
-            answer = input("Use an authenticated Steam account for Workshop downloads? [y/N] ").strip().lower()
-            if answer in ("y", "yes"):
-                steam_user = input("Steam username: ").strip() or None
-                if steam_user:
-                    print("SteamCMD authentication setup started; checking Workshop dependencies...", flush=True)
-        if steam_user and not steam_password and sys.stdin.isatty() and sys.stdout.isatty():
-            # SteamCMD's Windows console prompt is not reliably forwarded when
-            # its stdout is captured.  Collect credentials here and provide
-            # them through its stdin instead of waiting on an invisible prompt.
-            steam_password = getpass.getpass("Steam password: ") or None
-        dependency_cache = os.path.join(os.path.dirname(out_path), "dependencies")
         # ``mods`` and ``dependencies`` are both explicit project inputs.  A
         # download run must make both available; previously only dependency
         # objects were sent to SteamCMD, leaving declared optional mods
         # reported as unresolved on the following scan.
-        specs_to_download = list(dependency_specs)
+        # Source-only dependencies are acquired and indexed above.  Only
+        # specs with a Workshop ID belong in the SteamCMD download loop.
+        specs_to_download = [
+            spec for spec in dependency_specs
+            if spec.get("workshopId") or spec.get("workshop_id")
+        ]
         specs_to_download.extend(
             {
                 "name": mod.get("name") or mod.get("url") or mod.get("workshop_id"),
@@ -556,14 +664,59 @@ def run_update(args) -> int:
                 specs_to_download.append({"name": "cba_main", "workshopId": cba_id})
             else:
                 _warn("CBA is declared but has no Workshop ID; skipping download")
-        if not getattr(args, "force_download_dependencies", False):
-            specs_to_download = [
-                spec for spec in specs_to_download
-                if not (spec.get("workshopId") or spec.get("workshop_id"))
-                or not resolve_workshop_mod(
-                    spec.get("workshopId") or spec.get("workshop_id"), workshop_roots
+        if not getattr(args, "force_download_dependencies", False) and not getattr(args, "rebuild", False):
+            def cached_workshop_item(spec: dict) -> bool:
+                workshop_id = str(spec.get("workshopId") or spec.get("workshop_id") or "")
+                if not workshop_id:
+                    return False
+                if resolve_workshop_mod(workshop_id, workshop_roots):
+                    return True
+                # Keep this direct check as a guard against a custom
+                # --workshop list or a stale discovery result hiding the
+                # project-local dependency cache.
+                candidate = os.path.join(dependency_workshop_root, workshop_id)
+                try:
+                    return os.path.isdir(candidate) and any(os.scandir(candidate))
+                except OSError:
+                    return False
+
+            pending_specs: list[dict] = []
+            for spec in specs_to_download:
+                workshop_id = str(spec.get("workshopId") or spec.get("workshop_id") or "")
+                if not workshop_id or not cached_workshop_item(spec):
+                    if workshop_id and os.path.isfile(_dependency_failure_marker(dependency_cache, workshop_id)):
+                        _warn(
+                            f"skipping {spec.get('name') or workshop_id}: previous Workshop download failed; "
+                            "use --force-download-dependencies to retry"
+                        )
+                        continue
+                    pending_specs.append(spec)
+            specs_to_download = pending_specs
+            if not specs_to_download:
+                print("Workshop dependencies already cached; skipping downloads", flush=True)
+        if any(spec.get("workshopId") or spec.get("workshop_id") for spec in specs_to_download):
+            # Do not discover SteamCMD, offer to install it, or ask for
+            # credentials until cache filtering has found an actual download.
+            steamcmd = getattr(args, "steamcmd", None) or discover_steamcmd([mission_dir])
+            steamcmd = _ensure_steamcmd(os.path.dirname(out_path), steamcmd)
+            if steam_password and not steam_user:
+                _warn("STEAMCMD_PASSWORD is set but STEAMCMD_USER is missing; ignoring the password")
+                steam_password = None
+            if steamcmd and not steam_user and sys.stdin.isatty() and sys.stdout.isatty():
+                print(
+                    "warning: SteamCMD login may sign the desktop Steam client out on this machine; "
+                    "save active Steam work and be prepared to sign in again.",
+                    flush=True,
                 )
-            ]
+                answer = input("Use an authenticated Steam account for Workshop downloads? [y/N] ").strip().lower()
+                if answer in ("y", "yes"):
+                    steam_user = input("Steam username: ").strip() or None
+                    if steam_user:
+                        print("SteamCMD authentication setup started; checking Workshop dependencies...", flush=True)
+            if steam_user and not steam_password and sys.stdin.isatty() and sys.stdout.isatty():
+                # SteamCMD's Windows console prompt is not reliably forwarded
+                # when its stdout is captured. Collect credentials here.
+                steam_password = getpass.getpass("Steam password: ") or None
         for spec in specs_to_download:
             workshop_id = spec.get("workshopId") or spec.get("workshop_id")
             if not workshop_id:
@@ -575,9 +728,16 @@ def run_update(args) -> int:
     configured_arma_dirs = list(getattr(args, "arma_dir", None) or [])
     arma_dirs = configured_arma_dirs or discover_arma_install_dirs()
     all_search_roots = workshop_roots + arma_dirs
-    game_addon_roots = sorted({
+    all_game_addon_roots = sorted({
         root for game_dir in arma_dirs for root in discover_game_addon_roots(game_dir)
     }, key=os.path.normcase)
+    game_addon_roots = _select_game_data_roots(
+        arma_dirs,
+        all_game_addon_roots,
+        required_addons,
+        scan_cache,
+        bool(getattr(args, "all_game_data", False)),
+    )
 
     # 4. Resolve mod folders (deduplicated by path).
     resolved: dict[str, dict] = {}
@@ -634,7 +794,7 @@ def run_update(args) -> int:
         if path:
             resolved_required.add(addon.lower())
             register(path, None, None, f"required addon {addon}")
-        elif find_game_addon(addon, game_addon_roots):
+        elif _find_declared_game_root(addon, all_game_addon_roots):
             # Base-game and DLC Addons are scanned below as a group; they are
             # valid required addons even though they aren't @mod folders.
             resolved_required.add(addon.lower())
@@ -665,13 +825,30 @@ def run_update(args) -> int:
         )
         completed_addons += len(list_addons(path))
         functions |= names
-        macros |= extract_mod_macros(path)
+        # Macro names are extracted during the same pass as functions and are
+        # persisted in the per-root scan cache.  Do not reopen every cached
+        # PBO just to rediscover its headers.
+        if isinstance(scan_cache.get(os.path.normcase(os.path.abspath(path))), dict):
+            cached_macros = scan_cache[os.path.normcase(os.path.abspath(path))].get("macros", [])
+            macros.update(x.lower() for x in cached_macros if isinstance(x, str))
         for name, types in types_by_name.items():
             function_types.setdefault(name, types)
     resolved_late: list[tuple[str, str]] = []
     for addon in unresolved_required:
         if addon.lower() not in resolved_required and addon.lower() not in installed_addon_names:
             owner = addon_sources.get(addon.lower())
+            if owner is None:
+                # A PBO/EBO may contain several patch classes whose names are
+                # qualified beyond the archive stem (e.g. gm_objects_tents in
+                # gm_objects.ebo). Accept the longest matching archive stem;
+                # the required addon still has to be declared by the mission.
+                addon_key = addon.lower()
+                candidates = [
+                    (stem, path) for stem, path in addon_sources.items()
+                    if addon_key.startswith(stem + "_")
+                ]
+                if candidates:
+                    owner = max(candidates, key=lambda item: len(item[0]))[1]
             if owner:
                 # The patch is declared in config.bin, even when its class
                 # name differs from the containing PBO filename.
@@ -796,6 +973,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Arma install directory (default: discover Steam installs); scans base/DLC Addons and @* mod folders; repeatable",
     )
     parser.add_argument(
+        "--all-game-data",
+        action="store_true",
+        help="index every detected base and DLC Addons root (default: base game plus DLCs declared by mission dependencies)",
+    )
+    parser.add_argument(
         "--out",
         metavar="PATH",
         default=None,
@@ -810,6 +992,13 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="download declared Workshop dependencies with SteamCMD")
     parser.add_argument("--force-download-dependencies", action="store_true",
                         help="refresh declared Workshop dependencies even when already installed")
+    parser.add_argument(
+        "--rebuild",
+        "--full-rebuild",
+        dest="rebuild",
+        action="store_true",
+        help="discard the incremental scan cache and refresh declared source/Workshop dependencies",
+    )
     parser.add_argument("--steamcmd", metavar="PATH", default=None,
                         help="SteamCMD executable for --download-dependencies")
     parser.add_argument("--steamcmd-user", metavar="NAME", default=None,
@@ -954,6 +1143,10 @@ def _run_self_test() -> int:
             os.path.join(dlc_addons, "dlc_functions.pbo"),
             {"functions/fnc_dlcOnly.sqf": b'params [["_name", "", [""]]];'},
         )
+        _write_pbo(
+            os.path.join(dlc_addons, "unselected_functions.pbo"),
+            {"functions/fnc_shouldNotScanDlc.sqf": b"params [[\"_value\", 0, [0]]];"},
+        )
         _write_pbo(os.path.join(dlc_addons, "air_f_heli.pbo"),
                    {"config.bin": _cfg_patch("A3_Air_F_Heli_Light_01")})
         unselected_workshop_addons = os.path.join(
@@ -994,6 +1187,7 @@ def _run_self_test() -> int:
         }
         cached = load_mod_cache(out_path)
         assert cached == expected, (cached, expected)
+        assert "unselected_functions_fnc_shouldNotScanDlc" not in cached
         cached_types = load_mod_type_cache(os.path.join(tmp, MOD_TYPE_CACHE_FILENAME))
         assert cached_types == {
             "ace_medical_fnc_setunconscious": ["Object", "Number"],

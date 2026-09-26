@@ -3870,7 +3870,7 @@
             }
           ],
           "returns": [
-            "OBJECT"
+            "ARRAY"
           ]
         }
       ],

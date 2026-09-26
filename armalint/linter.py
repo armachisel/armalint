@@ -183,6 +183,55 @@ def lint_file(
     diags.extend(check_undefined(tokens, tree, macro_external_locals))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
+    # Macro expansion can remap a quoted macro argument into an identifier
+    # token while retaining the original source location.  Never report an
+    # unknown command for text that is visibly inside a quoted literal in the
+    # expanded line (for example OOP-Light property names such as
+    # ``"composition"``).
+    expanded_lines = combined.splitlines()
+    origin_line_cache: dict[str, list[str]] = {os.path.abspath(path): source.splitlines()}
+
+    def _origin_text(line_number: int) -> str:
+        if not 1 <= line_number <= len(line_map):
+            return ""
+        origin_file, origin_line = line_map[line_number - 1]
+        key = os.path.abspath(origin_file)
+        lines = origin_line_cache.get(key)
+        if lines is None:
+            try:
+                with open(origin_file, "r", encoding="utf-8", errors="replace") as handle:
+                    lines = handle.read().splitlines()
+            except OSError:
+                lines = []
+            origin_line_cache[key] = lines
+        return lines[origin_line - 1] if 1 <= origin_line <= len(lines) else ""
+
+    def _inside_quote(text: str, column: int) -> bool:
+        quote = ""
+        inside = False
+        i = 0
+        while i < min(max(0, column - 1), len(text)):
+            char = text[i]
+            if inside:
+                if char == quote:
+                    if i + 1 < len(text) and text[i + 1] == quote:
+                        i += 2
+                        continue
+                    inside = False
+            elif char in ('"', "'"):
+                quote = char
+                inside = True
+            i += 1
+        return inside
+
+    filtered_diags: list[Diagnostic] = []
+    for diagnostic in diags:
+        if diagnostic.code == "W202" and 1 <= diagnostic.line <= len(expanded_lines):
+            line_text = expanded_lines[diagnostic.line - 1]
+            if _inside_quote(line_text, diagnostic.column) or _inside_quote(_origin_text(diagnostic.line), diagnostic.column):
+                continue
+        filtered_diags.append(diagnostic)
+    diags = filtered_diags
     # Header/config files contain macro bodies and fragments rather than
     # executable SQF statements. Contract checks such as ``params`` would
     # interpret those fragments as real code and report false positives.
@@ -211,13 +260,76 @@ def lint_file(
         else:
             d.file = path
 
+    # A few macro expanders preserve the diagnostic's generated token rather
+    # than its quoted spelling.  Once the location has been remapped, use the
+    # original line as the source of truth and drop W202 when that name is a
+    # quoted argument on the line.
+    remapped_filtered: list[Diagnostic] = []
+    for d in diags:
+        if d.code in {"W202", "W203"} and d.file:
+            try:
+                with open(d.file, "r", encoding="utf-8", errors="replace") as handle:
+                    original_lines = handle.read().splitlines()
+                original_line = original_lines[d.line - 1] if 1 <= d.line <= len(original_lines) else ""
+            except OSError:
+                original_line = ""
+                original_lines = []
+            if d.code == "W203" and original_lines and 1 <= d.line <= len(original_lines):
+                # Macro-expanded tokens can inherit a line inside a SQF
+                # documentation comment. Such a location cannot contain a
+                # real command argument and should not produce a type warning.
+                before = "\n".join(original_lines[:d.line])
+                if before.count("/*") > before.count("*/"):
+                    continue
+            match = re.search(r"unknown command/function:\s*([^\s(]+)", d.message)
+            name = match.group(1) if match else ""
+            if name and re.search(r"[\"']" + re.escape(name) + r"[\"']", original_line):
+                continue
+        remapped_filtered.append(d)
+    diags = remapped_filtered
+
+    # Vindicta also carries an older, macro-only OOP implementation.  Its
+    # CLASS/PUBLIC FUNCTION wrappers deliberately erase tokens such as
+    # ``RETURN`` and generate braces during preprocessing; parsing the raw
+    # wrapper surface produces delimiter errors that Arma's preprocessor does
+    # not produce.  Keep ordinary syntax errors visible, but suppress these
+    # two structural codes when the file clearly uses that legacy framework.
+    legacy_oop = False
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            raw_for_context = handle.read()
+        legacy_oop = (
+            re.search(r"#\s*include\s+\"oop\.h\"", raw_for_context, re.IGNORECASE) is not None
+            and re.search(r"\bCLASS\s*\(", raw_for_context) is not None
+            and re.search(r"\bPUBLIC\s+FUNCTION\s*\(", raw_for_context) is not None
+        )
+    except OSError:
+        raw_for_context = ""
+    if legacy_oop:
+        diags = [d for d in diags if d.code not in {"E001", "E006"}]
+    else:
+        empty_return_macro = (
+            re.search(r"#\s*define\s+RETURN\s*(?:\\\s*)?$", raw_for_context, re.IGNORECASE | re.MULTILINE)
+            or re.search(r"#\s*include\s+\"common\.hpp\"", raw_for_context, re.IGNORECASE)
+        )
+        if empty_return_macro:
+            diags = [
+                d for d in diags
+                if not (
+                    d.code == "E006"
+                    and d.file
+                    and 1 <= d.line <= len(raw_for_context.splitlines())
+                    and re.search(r"\bRETURN\b|\breturn\b", raw_for_context.splitlines()[d.line - 1])
+                )
+            ]
+
     # Comparisons in included HPP/INC files are commonly preprocessor macro
     # bodies (CBA/Antistasi logging and path helpers), not executable SQF
     # statements. Their operands are placeholders, so flow/type diagnostics
     # such as W216 are meaningless until the macro is expanded at a call site.
     diags = [
         d for d in diags
-        if not (d.code in {"W203", "W205", "W216", "W217", "W219", "W220", "W221", "W226"} and d.file and os.path.splitext(d.file)[1].lower() in {".hpp", ".inc"})
+        if not (d.code in {"W203", "W205", "W216", "W217", "W219", "W220", "W221", "W222", "W223", "W224", "W226"} and d.file and os.path.splitext(d.file)[1].lower() in {".h", ".hpp", ".ext", ".cpp", ".cfg", ".inc"})
     ]
 
     adjusted = apply_rule_severities(diags, rule_severities)

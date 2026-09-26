@@ -64,6 +64,42 @@ def check_config_structure(source: str, filename: str = "") -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     stack: list[tuple[Token, set[str]]] = []
     macro_lines = _macro_lines(source)
+    # Keep the conditional branch context for each physical line.  Configs
+    # commonly provide mutually exclusive alternatives such as one
+    # ``maxPlayers`` value per map; those are not duplicate runtime
+    # properties.  A context entry is ``(directive, branch)`` where branch
+    # is True for the if-side and False for the else-side.
+    conditional_context: dict[int, tuple[tuple[str, bool], ...]] = {}
+    conditional_stack: list[tuple[str, bool]] = []
+    for line_number, line in enumerate(source.split("\n"), 1):
+        stripped = line.strip()
+        conditional_context[line_number] = tuple(conditional_stack)
+        match = re.match(r"#\s*(ifdef|ifndef|if)\s+(.+)$", stripped, re.IGNORECASE)
+        if match:
+            conditional_stack.append((match.group(2).strip().lower(), match.group(1).lower() != "ifndef"))
+            continue
+        if re.match(r"#\s*(else|elif)\b", stripped, re.IGNORECASE) and conditional_stack:
+            name, branch = conditional_stack[-1]
+            conditional_stack[-1] = (name, not branch)
+            continue
+        if re.match(r"#\s*endif\b", stripped, re.IGNORECASE) and conditional_stack:
+            conditional_stack.pop()
+
+    def conditional_alternative(first_line: int, second_line: int) -> bool:
+        first = conditional_context.get(first_line, ())
+        second = conditional_context.get(second_line, ())
+        # Independent sibling ``#ifdef`` blocks are commonly used as a list
+        # of mutually exclusive map/platform alternatives.  When both
+        # declarations are conditional and their contexts differ, they do
+        # not coexist in the intended configuration.
+        if first and second and first != second:
+            return True
+        for name, branch in first:
+            if (name, not branch) in second:
+                return True
+        return False
+
+    previous_property_line: dict[int, dict[str, int]] = {}
     for i, token in enumerate(tokens):
         if token.line in macro_lines:
             continue
@@ -79,8 +115,19 @@ def check_config_structure(source: str, filename: str = "") -> list[Diagnostic]:
             if j < len(tokens) and tokens[j].type == "operator" and tokens[j].value == "=":
                 key = token.value.lower()
                 if key in stack[-1][1]:
-                    diagnostics.append(Diagnostic(Severity.WARNING, "W214", f"config property defined more than once: {token.value}", token.line, token.column, filename))
+                    # Find the earlier declaration in this class.  If the two
+                    # declarations are in opposite preprocessor branches,
+                    # only one exists in any concrete config and no duplicate
+                    # property is present at runtime.
+                    prior_line = None
+                    for opening, props in reversed(stack):
+                        prior_line = previous_property_line.get(id(props), {}).get(key)
+                        if prior_line is not None:
+                            break
+                    if prior_line is None or not conditional_alternative(prior_line, token.line):
+                        diagnostics.append(Diagnostic(Severity.WARNING, "W214", f"config property defined more than once: {token.value}", token.line, token.column, filename))
                 stack[-1][1].add(key)
+                previous_property_line.setdefault(id(stack[-1][1]), {})[key] = token.line
     for opening, _properties in stack:
         diagnostics.append(Diagnostic(Severity.ERROR, "E010", "unclosed '{' in config", opening.line, opening.column, filename))
     return diagnostics

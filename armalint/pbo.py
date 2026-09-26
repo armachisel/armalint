@@ -48,6 +48,7 @@ The LZSS variant is Okumura-style with:
 
 from __future__ import annotations
 
+import os
 import struct
 
 # Packing-method values stored in each header entry (little-endian uint32).
@@ -151,7 +152,21 @@ def read_pbo(path: str, progress=None, include=None) -> dict[str, bytes]:
     can decide how to handle them.
     """
     with open(path, "rb") as fh:
-        buf = fh.read()
+        # Avoid one opaque, potentially very long read for large Workshop or
+        # game archives.  Chunking also gives callers a heartbeat before the
+        # header and entry list have been parsed.
+        size = os.fstat(fh.fileno()).st_size
+        chunks: list[bytes] = []
+        read_size = 0
+        while True:
+            chunk = fh.read(8 * 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            read_size += len(chunk)
+            if progress is not None:
+                progress(f"[reading] {read_size}/{size}")
+        buf = b"".join(chunks)
 
     n = len(buf)
     pos = 0
@@ -182,13 +197,17 @@ def read_pbo(path: str, progress=None, include=None) -> dict[str, bytes]:
         entries.append((_decode_name(name_bytes), method, orig_size, data_size))
 
     files: dict[str, bytes] = {}
-    for name, method, orig_size, data_size in entries:
+    for entry_index, (name, method, orig_size, data_size) in enumerate(entries, 1):
         # Large game PBOs can spend noticeable time decompressing and copying
         # entries after the addon-level progress callback has fired.  Expose
         # entry progress so callers can keep a live status line during that
         # work without changing the returned data or the default API.
         selected = include is None or include(name)
-        if progress is not None and selected:
+        # Most PBOs contain many binary assets which are deliberately skipped
+        # by ``include``.  Report selected entries immediately, and emit a
+        # lightweight heartbeat for skipped entries so a large archive does
+        # not look hung while its data blocks are being walked.
+        if progress is not None and (selected or entry_index % 64 == 0):
             progress(name)
         if pos + data_size > n:
             raise ValueError(f"truncated data block for {name!r}")

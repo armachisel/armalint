@@ -56,7 +56,9 @@ _SIGNATURES: dict[str, tuple[frozenset[str], str]] = {
     "isdamageallowed": (frozenset(("Object",)), "Object"),
     # The engine accepts null-able handles beyond world objects, including
     # UI controls/displays and other handle types returned by the UI API.
-    "isnull": (frozenset(("Object", "Control", "Display", "Group", "Location", "Script", "Task")), "Object, Control, Display, Group, Location, Script or Task"),
+    # Config handles have a null sentinel (``configNull``) and are commonly
+    # tested with isNull after inheritsFrom/config lookups.
+    "isnull": (frozenset(("Object", "Control", "Display", "Group", "Location", "Script", "Task", "Config")), "Object, Control, Display, Group, Location, Script, Task or Config"),
     "isplayer": (frozenset(("Object",)), "Object"),
     "istouchingground": (frozenset(("Object",)), "Object"),
     "name": (frozenset(("Object",)), "Object"),
@@ -160,12 +162,15 @@ _COMMAND_RETURN_TYPES = {
     "allman": "Array", "allstaticobjects": "Array", "allstaticweapons": "Array",
     "lineintersectswith": "Array",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
+    "behaviour": "String", "combatmode": "String", "formation": "String",
     "in": "Boolean",
     "min": "Number", "max": "Number", "mod": "Number",
     "random": "Number", "isnull": "Boolean", "isnil": "Boolean",
     "isclass": "Boolean", "isarray": "Boolean", "istext": "Boolean",
     "isnumber": "Boolean", "isequaltype": "Boolean", "find": "Number",
     "isserver": "Boolean", "isdedicated": "Boolean", "hasinterface": "Boolean",
+    "getarray": "Array", "gettext": "String", "getnumber": "Number",
+    "apply": "Array",
     "createhashmap": "HashMap", "createhashmapfrom": "HashMap",
     "createvehicle": "Object", "createvehiclelocal": "Object",
     "createsimpleobject": "Object", "createagent": "Object",
@@ -318,6 +323,9 @@ _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array
 if "vectormultiply" in _BINARY_SIGNATURES:
     _BINARY_SIGNATURES["vectormultiply"] = (frozenset(("Number", "Array")), "Number or Array")
 _BINARY_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
+_BINARY_SIGNATURES["setfog"] = (frozenset(("Number", "Array")), "Number or Array")
+_BINARY_SIGNATURES["setskill"] = (frozenset(("Number", "Array")), "Number or Array")
+_BINARY_SIGNATURES["mapgridposition"] = (frozenset(("Object", "Array")), "Object or Array")
 # Arrays use a numeric index; HashMaps accept their key type (commonly a
 # String or position Array).  The receiver determines which form applies at
 # runtime, so retain the documented key variants here.
@@ -354,10 +362,14 @@ _BINARY_SIGNATURES["lockcargo"] = (frozenset(("Boolean", "Array")), "Boolean or 
 _COMMAND_RETURN_TYPES["targets"] = "Array"
 _COMMAND_RETURN_TYPES["nearestlocations"] = "Array"
 _COMMAND_RETURN_TYPES["buildingpos"] = "Array"
+_COMMAND_RETURN_TYPES["playableunits"] = "Array"
+_COMMAND_RETURN_TYPES["switchableunits"] = "Array"
 _COMMAND_RETURN_TYPES["units"] = "Array"
 _COMMAND_RETURN_TYPES["displayctrl"] = "Control"
 _COMMAND_RETURN_TYPES["groupselectedunits"] = "Array"
 _COMMAND_RETURN_TYPES["hcselected"] = "Array"
+_ARRAY_ELEMENT_TYPES["playableunits"] = "Object"
+_ARRAY_ELEMENT_TYPES["switchableunits"] = "Object"
 _SIGNATURES["dogetout"] = (frozenset(("Object", "Array")), "Object or Array")
 _SIGNATURES["nearestbuilding"] = (frozenset(("Object", "Array")), "Object or Array")
 # The engine's setName command uses the three-element identity form
@@ -372,6 +384,11 @@ if "setname" in _BINARY_SIGNATURES:
 _SIGNATURES["waypoints"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["currentwaypoint"] = (frozenset(("Group", "Object")), "Group or Object")
 _SIGNATURES["deletegroup"] = (frozenset(("Group", "Object")), "Group or Object")
+# The locality query accepts group handles as well as objects in SQF.  The
+# command reference exposes only its object form, which causes false positives
+# for common code such as ``local (group player)``.
+_SIGNATURES["local"] = (frozenset(("Object", "Group")), "Object or Group")
+_SIGNATURES["mapgridposition"] = (frozenset(("Object", "Array")), "Object or Array")
 _SIGNATURES["joinsilent"] = (frozenset(("Object", "Group")), "Object or Group")
 _BINARY_SIGNATURES["joinsilent"] = (frozenset(("Group", "Object")), "Group or Object")
 if "leavevehicle" in _BINARY_SIGNATURES:
@@ -476,6 +493,11 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
                 depth -= 1
                 if depth == 0:
                     inner = [t for t in tokens[i + 1:end] if t.type not in _TRIVIA]
+                    # ``(selectRandom _colors) apply {_x / 255}`` is an
+                    # array transform even when the element expression is
+                    # too dynamic to infer independently.
+                    if any(t.value.lower() == "apply" for t in inner):
+                        return "Array"
                     return _infer_expression(inner, 0, variables) if inner else None
         return None
     if tok.type == "operator" and tok.value == "!":
@@ -506,6 +528,11 @@ def _infer_operand(tokens: list[Token], i: int, variables: dict[str, str]) -> st
             # must not carry an element type from an unrelated loop.
             return None
         inferred = variables.get(tok.value.lower())
+        # A type guard in the current expression is more precise than the
+        # file-wide declaration collected from an earlier params/default.
+        narrowed = _narrowed_type(tokens, i, variables)
+        if narrowed:
+            inferred = narrowed
         if inferred == "Array":
             # Chained hash indexing (``_records#0#1``) selects a field from a
             # nested record.  The common SQF shape is an array of records
@@ -656,6 +683,7 @@ def _infer_expression(
             "nearestterrainobjects", "nearroads"}):
         return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
     if (start + 1 < rhs_end
+            and tokens[start].type != "lparen"
             and tokens[start + 1].value.lower() in _COMMAND_RETURN_TYPES
             and tokens[start + 1].value.lower() not in _KNOWN_VARIABLE_TYPES):
         return _COMMAND_RETURN_TYPES[tokens[start + 1].value.lower()]
@@ -785,6 +813,32 @@ def _infer_expression(
             and any(t.type == "operator" and t.value in ("*", "/", "%") for t in expression_tokens)
             and not any(t.type == "lbracket" for t in expression_tokens)):
         return "Number"
+    # Array concatenation can use array-returning commands or inferred Array
+    # locals without a literal array in the expression.
+    if (any(t.type == "operator" and t.value == "+" for t in expression_tokens)
+            and (any(t.value.lower() in {"playableunits", "switchableunits", "allplayers", "allunits", "allvehicles", "allgroups"} for t in expression_tokens)
+                 or any(t.type == "local" and variables.get(t.value.lower()) == "Array" for t in expression_tokens))
+            and not any(t.type == "string" for t in expression_tokens)):
+        return "Array"
+    # String concatenation can use a previously inferred String local without
+    # containing a literal string in this expression (for example
+    # ``_playername + (name _nextplayer)``).  Check this before the generic
+    # arithmetic fallback, since both forms use ``+`` in SQF.
+    if (any(t.type == "operator" and t.value == "+" for t in expression_tokens)
+            and (any(t.type == "string" for t in expression_tokens)
+                 or any(t.type == "local" and variables.get(t.value.lower()) == "String" for t in expression_tokens))
+            and not any(t.type == "lbracket" for t in expression_tokens)):
+        return "String"
+    # Arithmetic nested inside a unary command's parentheses is tokenized as
+    # a local-led expression (for example ``ln (_amount / _baseAmount)``),
+    # so the grouped-expression branch above cannot see the outer lparen.
+    # SQF arithmetic is numeric unless an array or string concatenation is present.
+    if (any(t.type == "operator" and t.value in ("+", "-", "*", "/", "%")
+            for t in expression_tokens)
+            and not any(t.type == "lbracket" for t in expression_tokens)
+            and not any(t.type == "string" for t in expression_tokens)
+            and not any(t.type == "local" and variables.get(t.value.lower()) == "String" for t in expression_tokens)):
+        return "Number"
     if start < len(tokens) and tokens[start].type == "lparen":
         depth = 0
         for close in range(start, len(tokens)):
@@ -874,6 +928,13 @@ def _infer_expression(
                 {"west", "east", "resistance", "civilian", "sideunknown"}
                 or (tokens[arg].type == "local" and variables.get(tokens[arg].value.lower()) == "Side"))):
             return "HashMap"
+    # These commands take another unary expression as their object/group
+    # operand (for example ``behaviour leader _group``).  The nested
+    # ``leader`` command returns an Object, but the outer command returns the
+    # requested String; handle it before generic command-chain disambiguation.
+    if start < len(tokens) and tokens[start].value.lower() in {
+            "behaviour", "combatmode", "formation"}:
+        return "String"
     if start < len(tokens) and tokens[start].value.lower() in _COMMAND_RETURN_TYPES:
         # A nular command can be the left operand of a binary command (for
         # example, ``missionNamespace getVariable``). In that form its own
@@ -1095,6 +1156,124 @@ def _is_opaque_object_candidate(tokens: list[Token], index: int) -> bool:
     return False
 
 
+def _is_untyped_params_local(tokens: list[Token], index: int) -> bool:
+    """Whether a local was introduced by an untyped ``params`` list.
+
+    Method-form callbacks such as ``(_record select 1) params ["_x", ...]``
+    do not provide defaults or validators.  A previous assignment to the same
+    scratch name can otherwise leak into the callback and make an element
+    look like an Array or Number.  Treat that boundary as unknown instead of
+    reporting a type error based on stale flow information.
+    """
+    if index >= len(tokens) or tokens[index].type != "local":
+        return False
+    name = tokens[index].value.lower()
+    for cursor in range(index - 1, max(-1, index - 500), -1):
+        if tokens[cursor].value.lower() != "params":
+            continue
+        previous = cursor - 1
+        while previous >= 0 and tokens[previous].type in _TRIVIA:
+            previous -= 1
+        # Plain function parameters are intentionally unknown, but they do
+        # not suffer from stale callback flow.  This recovery is for the
+        # method-form ``(value) params [...]`` boundary only.
+        if previous < 0 or tokens[previous].type != "rparen":
+            continue
+        start = cursor + 1
+        while start < len(tokens) and tokens[start].type in _TRIVIA:
+            start += 1
+        if start >= len(tokens) or tokens[start].type != "lbracket":
+            continue
+        depth = 0
+        found = False
+        has_typed_entry = False
+        for pos in range(start, min(len(tokens), start + 160)):
+            token = tokens[pos]
+            if token.type == "lbracket":
+                depth += 1
+            elif token.type == "rbracket":
+                depth -= 1
+                if depth == 0:
+                    break
+            elif depth == 1 and token.type == "string" and token.value.lower() == name:
+                found = True
+                nxt = pos + 1
+                while nxt < len(tokens) and tokens[nxt].type in _TRIVIA:
+                    nxt += 1
+                # A plain string entry is an untyped parameter.  Nested
+                # declarations (name, default, validators) are typed.
+                if nxt < len(tokens) and tokens[nxt].type == "comma":
+                    probe = nxt + 1
+                    while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                        probe += 1
+                    if probe < len(tokens) and tokens[probe].type == "lbracket":
+                        has_typed_entry = True
+        if found and not has_typed_entry:
+            return True
+    return False
+
+
+def _collect_dynamic_array_locals(tokens: list[Token], variables: dict[str, str]) -> None:
+    """Recover Array for unknown function results used as collections.
+
+    Mission helpers often return arrays but are not present in the game
+    function index.  A later ``count``, ``select`` or ``forEach`` use is safe
+    evidence that the assigned value is a collection; preserving that fact
+    prevents its selected element from being misclassified as a scalar.
+    """
+    collection_names: set[str] = set()
+    for k, item in enumerate(tokens[:-1]):
+        if item.value.lower() == "count":
+            probe = k + 1
+            while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                probe += 1
+            if probe < len(tokens) and tokens[probe].type == "local":
+                collection_names.add(tokens[probe].value.lower())
+        elif item.type == "local":
+            probe = k + 1
+            while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                probe += 1
+            if probe < len(tokens) and tokens[probe].value.lower() in {"select", "foreach"}:
+                collection_names.add(item.value.lower())
+    for i, token in enumerate(tokens[:-2]):
+        if token.type != "local" or tokens[i + 1].value != "=":
+            continue
+        rhs = tokens[i + 2:i + 80]
+        if not any(t.value.lower() == "call" for t in rhs):
+            continue
+        name = token.value.lower()
+        if name in collection_names:
+            variables[name] = "Array"
+
+
+def _depends_on_untyped_params(tokens: list[Token], start: int, end: int) -> bool:
+    return any(
+        token.type == "local" and _is_untyped_params_local(tokens, index)
+        for index, token in enumerate(tokens[start:end], start)
+    )
+
+
+def _is_dynamic_array_element_local(tokens: list[Token], index: int, variables: dict[str, str]) -> bool:
+    """Whether a local is an element selected from an opaque collection."""
+    if index >= len(tokens) or tokens[index].type != "local":
+        return False
+    name = tokens[index].value.lower()
+    for pos in range(index - 1, max(-1, index - 500), -1):
+        if (tokens[pos].type == "local" and tokens[pos].value.lower() == name
+                and pos + 3 < index and tokens[pos + 1].value == "="):
+            source = pos + 2
+            if tokens[source].type != "local":
+                continue
+            probe = source + 1
+            while probe < index and tokens[probe].type in _TRIVIA:
+                probe += 1
+            if probe < index and tokens[probe].value.lower() == "select":
+                source_name = tokens[source].value.lower()
+                if variables.get(source_name) == "Array":
+                    return True
+    return False
+
+
 def _collect_param_types(tokens: list[Token], variables: dict[str, str]) -> None:
     """Infer locals from ``params [[name, default, [validators]], ...]``."""
     for i, token in enumerate(tokens):
@@ -1136,6 +1315,18 @@ def _collect_foreach_element_types(
     tokens: list[Token], variables: dict[str, str], nodes: list[Node] | None = None
 ) -> None:
     """Infer loop element types from AST headers and body spans."""
+    collection_elements: dict[str, str] = {}
+    for index, token in enumerate(tokens[:-2]):
+        if token.type != "local" or tokens[index + 1].type != "operator" or tokens[index + 1].value != "=":
+            continue
+        producer = next(
+            (item.value.lower() for item in tokens[index + 2:index + 8]
+             if item.type in ("ident", "keyword") and item.value.lower() in _ARRAY_ELEMENT_TYPES),
+            None,
+        )
+        if producer is not None:
+            collection_elements[token.value.lower()] = _ARRAY_ELEMENT_TYPES[producer]
+
     def collect_body(node: Node, element_type: str) -> None:
         if isinstance(node, Statement):
             for i, token in enumerate(node.tokens[:-2]):
@@ -1172,6 +1363,9 @@ def _collect_foreach_element_types(
             if t.type in ("ident", "keyword") and t.value.lower() in _ARRAY_ELEMENT_TYPES
         ), None)
         element_type = _ARRAY_ELEMENT_TYPES.get(producer) if producer else None
+        if element_type is None:
+            collection = next((t.value.lower() for t in node.header if t.type == "local"), None)
+            element_type = collection_elements.get(collection) if collection else None
         header = node.header
         if len(header) >= 2 and header[0].type == "lparen" and header[-1].type == "rparen":
             header = header[1:-1]
@@ -1193,6 +1387,40 @@ def _collect_foreach_element_types(
 
     for node in (nodes if nodes is not None else parse(tokens).statements):
         collect_loop(node)
+
+
+def _foreach_implicit_element_type(tokens: list[Token], index: int) -> str | None:
+    """Infer an implicit ``_x`` type from the foreach suffix of its body."""
+    for cursor in range(index, min(len(tokens), index + 500)):
+        if tokens[cursor].value.lower() != "foreach":
+            continue
+        operand = cursor + 1
+        while operand < len(tokens) and tokens[operand].type in _TRIVIA:
+            operand += 1
+        if operand >= len(tokens):
+            return None
+        producer = next(
+            (token.value.lower() for token in tokens[operand:operand + 8]
+             if token.type in ("ident", "keyword") and token.value.lower() in _ARRAY_ELEMENT_TYPES),
+            None,
+        )
+        if producer:
+            return _ARRAY_ELEMENT_TYPES[producer]
+        if tokens[operand].type == "local":
+            name = tokens[operand].value.lower()
+            for prior in range(max(0, index - 700), index):
+                if tokens[prior].type == "local" and tokens[prior].value.lower() == name:
+                    rhs = prior + 2
+                    if rhs < len(tokens) and tokens[prior + 1].value == "=":
+                        producer = next(
+                            (token.value.lower() for token in tokens[rhs:rhs + 8]
+                             if token.type in ("ident", "keyword") and token.value.lower() in _ARRAY_ELEMENT_TYPES),
+                            None,
+                        )
+                        if producer:
+                            return _ARRAY_ELEMENT_TYPES[producer]
+        return None
+    return None
 
 
 def _merge_types(previous: str | None, inferred: str | None) -> str | None:
@@ -1296,6 +1524,39 @@ def _collect_type_guards(tokens: list[Token], variables: dict[str, str]) -> None
             variables[tokens[i].value.lower()] = sample
 
 
+def _latest_assignment_type(
+    tokens: list[Token], name: str, before: int, variables: dict[str, str]
+) -> str | None:
+    """Return the nearest unambiguous assignment type for a local use.
+
+    A file-wide map intentionally forgets locals assigned values of different
+    types.  For a use immediately following ``_value = getArray ...`` it is
+    still safe and useful to use that nearest assignment, even when the same
+    scratch local is reused later for a number or string.
+    """
+    key = name.lower()
+    for i in range(before - 1, -1, -1):
+        if (tokens[i].type == "local" and tokens[i].value.lower() == key
+                and i + 1 < before and tokens[i + 1].value == "="):
+            inferred = _infer_expression(tokens, i + 2, variables)
+            if _depends_on_untyped_params(tokens, i + 2, min(before, i + 80)):
+                return "Unknown"
+            if inferred:
+                return inferred
+            break
+    return None
+
+
+def _is_unary_copy_local(tokens: list[Token], name: str, before: int) -> bool:
+    """Whether a local was copied with SQF's unary ``+`` operator."""
+    key = name.lower()
+    for i in range(before - 1, -1, -1):
+        if (tokens[i].type == "local" and tokens[i].value.lower() == key
+                and i + 2 < before and tokens[i + 1].value == "="):
+            return tokens[i + 2].type == "operator" and tokens[i + 2].value == "+"
+    return False
+
+
 def _seed_ast_assignments(nodes: list[Node], variables: dict[str, str], function_return_types: dict[str, str] | None) -> None:
     for node in nodes:
         if isinstance(node, Statement):
@@ -1334,6 +1595,8 @@ def check_argument_types(
         if tok.type != "local" or tokens[i + 1].type != "operator" or tokens[i + 1].value != "=":
             continue
         inferred = _infer_expression(tokens, i + 2, variables, function_return_types)
+        if _depends_on_untyped_params(tokens, i + 2, min(len(tokens), i + 80)):
+            inferred = "Unknown"
         key = tok.value.lower()
         if i + 2 < len(tokens) and tokens[i + 2].value.lower() == "if":
             # Branch values may come from unrelated engine handles and cannot
@@ -1374,6 +1637,7 @@ def check_argument_types(
         if i + 4 < len(tokens) and tokens[i + 2].type == "local" and tokens[i + 3].value.lower() == "select" and tokens[i + 4].type == "number":
             if tokens[i + 2].value.lower() in element_types:
                 variables[key] = element_types[tokens[i + 2].value.lower()]
+    _collect_dynamic_array_locals(tokens, variables)
     # Re-apply precise loop-element facts after ordinary assignment collection;
     # the loop body may otherwise look like a conflicting global assignment.
     for node in ast_nodes:
@@ -1459,6 +1723,24 @@ def check_argument_types(
                 and _is_opaque_object_candidate(tokens, j)):
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if tokens[j].type == "local":
+            actual = (_narrowed_type(tokens, j, variables)
+                      or _latest_assignment_type(tokens, tokens[j].value, i, variables)
+                      or actual)
+            if tokens[j].value.lower() == "_x":
+                implicit_type = _foreach_implicit_element_type(tokens, j)
+                if implicit_type:
+                    actual = implicit_type
+            if _is_untyped_params_local(tokens, j):
+                actual = None
+            elif _is_dynamic_array_element_local(tokens, j, variables):
+                actual = None
+            elif actual == "Unknown":
+                actual = None
+            if tokens[j].value.lower() == "_x":
+                implicit_type = _foreach_implicit_element_type(tokens, j)
+                if implicit_type:
+                    actual = implicit_type
         if (tok.value.lower() == "count" and actual == "Number"
                 and _has_type_recovery_guard(tokens, j)):
             continue
@@ -1539,6 +1821,13 @@ def check_argument_types(
         if actual == "Group" and j < len(tokens) and tokens[j].type == "local" and _units_loop_element(tokens, j):
             actual = "Object"
         accepted, expected = rule
+        if (tok.value.lower() == "datetonumber" and actual == "Number"
+                and tokens[j].type == "local"
+                and _is_unary_copy_local(tokens, tokens[j].value, i)):
+            # Unary + is the idiomatic SQF array-copy form.  Preserve the
+            # caller's unknown container type instead of treating the copy as
+            # a numeric expression for dateToNumber.
+            continue
         # A local inferred as Group at an untyped callback boundary is not
         # proof that a Group is passed to isPlayer; retain the strict command
         # contract while avoiding this known inference artifact.
@@ -1580,6 +1869,24 @@ def check_argument_types(
         if j < len(tokens) and tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
             continue
         actual = _infer_operand(tokens, j, variables)
+        if tokens[j].type == "local" and tokens[j].value.lower() == "_x":
+            implicit_type = _foreach_implicit_element_type(tokens, j)
+            if implicit_type:
+                actual = implicit_type
+        if tokens[j].type == "local":
+            actual = (_narrowed_type(tokens, j, variables)
+                      or _latest_assignment_type(tokens, tokens[j].value, i, variables)
+                      or actual)
+            if tokens[j].value.lower() == "_x":
+                implicit_type = _foreach_implicit_element_type(tokens, j)
+                if implicit_type:
+                    actual = implicit_type
+            if _is_untyped_params_local(tokens, j):
+                actual = None
+            elif _is_dynamic_array_element_local(tokens, j, variables):
+                actual = None
+            elif actual == "Unknown":
+                actual = None
         if tok.value.lower() == "domove" and tokens[j].type == "local":
             name = tokens[j].value.lower()
             if any(tokens[k].type == "local" and tokens[k].value.lower() == name
@@ -1856,6 +2163,14 @@ def check_argument_types(
         if (local_literal_type and not type_name_comparison and not command_result_comparison
                 and actual_left in primitive and actual_right in primitive
                 and actual_left != actual_right):
+            # ``_x`` inside a foreach over a dynamic producer such as
+            # ``getArray`` has no statically knowable element type.  Do not
+            # let a stale type inferred from another loop create a primitive
+            # mismatch warning for that callback.
+            if any(tokens[side].type == "local" and tokens[side].value.lower() == "_x"
+                   and any(t.value.lower() == "foreach" for t in tokens[side:min(len(tokens), side + 500)])
+                   for side in (left, right) if 0 <= side < len(tokens)):
+                continue
             diags.append(Diagnostic(Severity.WARNING, _COMPARISON_CODE, f"comparison cannot match {actual_left} with {actual_right}", tok.line, tok.column))
     return diags
 
