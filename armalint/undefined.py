@@ -14,7 +14,7 @@ _SCOPE_CODE = "W215"
 _ALWAYS_DEFINED = frozenset(
     (
         "_this", "_x", "_forEachIndex", "_index", "_exception",
-        "_thisScript", "_fnc_scriptName",
+        "_thisScript", "_fnc_scriptName", "_thisType", "_thisId",
         "_thisArgs", "_thisEventHandler", "_thisFSM", "_fnc_scriptNameParent",
         # Common OOP/macro wrapper bindings. These are introduced by the
         # wrapper before the method body is evaluated and therefore do not
@@ -409,6 +409,89 @@ def _walk_node(node: Node, incoming: set[str], scoped: bool = False) -> tuple[li
     return [], set(incoming)
 
 
+def _assignment_is_on_reachable_path(tokens: list[Token], use: Diagnostic, name: str) -> bool:
+    """Allow assignments in an enclosing branch to reach nested uses.
+
+    The structured walker intentionally intersects definitions at branch joins,
+    but a use nested inside the same branch is still dominated by assignments
+    earlier in that branch.  This token-level check recovers that relationship
+    without weakening warnings for uses after the branch has ended.
+    """
+    use_index = next((i for i, token in enumerate(tokens)
+                      if token.line == use.line and token.column == use.column
+                      and token.type == "local" and token.value.lower() == name), None)
+    if use_index is None:
+        return False
+    ancestors: list[tuple[int, ...]] = []
+    stack: list[int] = []
+    for index, token in enumerate(tokens):
+        ancestors.append(tuple(stack))
+        if token.type == "lbrace":
+            stack.append(index)
+        elif token.type == "rbrace" and stack:
+            stack.pop()
+    use_path = ancestors[use_index]
+    for index, token in enumerate(tokens[:use_index]):
+        if token.type != "local" or token.value.lower() != name or not _is_assignment_lhs(tokens, index):
+            continue
+        assignment_path = ancestors[index]
+        if len(assignment_path) <= len(use_path) and use_path[:len(assignment_path)] == assignment_path:
+            return True
+    return False
+
+
+def _all_cameras_params_warnings(tokens: list[Token]) -> list[Diagnostic]:
+    """Flag optional fields destructured from variable-length allCameras tuples."""
+    diagnostics: list[Diagnostic] = []
+    for index, token in enumerate(tokens):
+        if token.type != "keyword" or token.value.lower() != "params":
+            continue
+        receiver = index - 1
+        while receiver >= 0 and tokens[receiver].type in _TRIVIA:
+            receiver -= 1
+        if receiver < 0 or tokens[receiver].type != "local" or tokens[receiver].value.lower() != "_x":
+            continue
+        start = _next_significant(tokens, index)
+        if start >= len(tokens) or tokens[start].type != "lbracket":
+            continue
+        names, end = _collect_params_names(tokens, start)
+        required: list[bool] = []
+        depth = 0
+        for pos in range(start, end):
+            if tokens[pos].type == "lbracket":
+                depth += 1
+                continue
+            if tokens[pos].type == "rbracket":
+                depth -= 1
+                continue
+            if tokens[pos].type == "string" and tokens[pos].value.startswith("_"):
+                if depth == 1:
+                    required.append(True)
+                elif depth == 2 and (not required or len(required) < len(names)):
+                    required.append(False)
+        probe_end = min(len(tokens), end + 180)
+        foreach = next((pos for pos in range(end, probe_end)
+                        if tokens[pos].value.lower() == "foreach"), None)
+        if foreach is None or not any(tokens[pos].value.lower() == "allcameras"
+                                      for pos in range(foreach + 1, probe_end)):
+            continue
+        # The first three fields are present in the camera tuple; effect/view
+        # are optional and must be defaulted before use.
+        for name, is_required in zip(names[3:], required[3:]):
+            if not is_required:
+                continue
+            use = next((tokens[pos] for pos in range(end, probe_end)
+                        if tokens[pos].type == "local"
+                        and tokens[pos].value.lower() == name.lower()), None)
+            if use is not None:
+                diagnostics.append(Diagnostic(
+                    Severity.WARNING, _CODE,
+                    f"possible undefined variable: {use.value}",
+                    use.line, use.column,
+                ))
+    return diagnostics
+
+
 def check_undefined(
     tokens: list[Token], tree: Program | None = None,
     external_locals: set[str] | frozenset[str] | None = None,
@@ -427,6 +510,22 @@ def check_undefined(
     for node in tree.statements:
         node_diags, defined = _walk_node(node, defined)
         diags.extend(node_diags)
+    # A branch-local assignment remains valid for uses nested in that branch;
+    # the conservative merge above only needs to affect code after the branch.
+    filtered: list[Diagnostic] = []
+    for diagnostic in diags:
+        if diagnostic.code == _CODE:
+            name = diagnostic.message.split(":", 1)[-1].strip().lstrip("\\")
+            if name and _assignment_is_on_reachable_path(tokens, diagnostic, name):
+                continue
+        filtered.append(diagnostic)
+    diags = filtered
+    existing = {(item.line, item.column, item.code, item.message) for item in diags}
+    for diagnostic in _all_cameras_params_warnings(tokens):
+        key = (diagnostic.line, diagnostic.column, diagnostic.code, diagnostic.message)
+        if key not in existing:
+            diags.append(diagnostic)
+            existing.add(key)
     # Declaration diagnostics are kept separate from W101 so a project can
     # adopt shadowing checks independently. Brace depth is a conservative scope
     # approximation that works for nested SQF code blocks without guessing at
@@ -519,6 +618,8 @@ if __name__ == "__main__":
     # Nested params defaults define their first-element local.
     assert check_undefined_text('params ["_a", ["_b", 0]]; hint str _b;') == []
     assert check_undefined_text('params [["_a", 1], "_b", ["_c", false]]; hint str _a; hint str _c;') == []
+    camera_params = check_undefined_text('{ _x params ["_cam", "_r2t", "_isPrimary", "_effect", "_view"]; hint _effect; } forEach allCameras;')
+    assert any(item.code == _CODE and "_effect" in item.message for item in camera_params), camera_params
 
     diags = check_undefined_text('params ["_a", ["_b", 0]]; hint str _missing;')
     assert len(diags) == 1, diags

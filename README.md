@@ -211,17 +211,21 @@ severities, is in [`docs/rule-catalog.md`](docs/rule-catalog.md).
 
 `W203` checks common built-in commands, binary commands, indexed function
 signatures, and extracted mod or mission signatures. It infers types from
-literals, assignments, selected array elements, known command results, and
-structured loop producers. Unknown expressions are left alone. `W204` checks
-excess arguments against known indexed signatures; shorter calls remain valid
-because extracted `params` declarations can contain optional arguments.
+literals, assignments, selected array elements, nested command expressions,
+known command results, structured loop producers, and declared function return
+types. Unknown expressions and opaque calls are left alone rather than guessed.
+`W204` checks excess arguments against known indexed signatures; shorter calls
+remain valid because extracted `params` declarations can contain optional
+arguments.
 
 The built-in command metadata includes common SQF overloads and command-chain
 results. Position arrays are valid for `lookAt`, inventory pairs such as
 `["magazine_class", 1]` are valid for `addMagazine`, collection commands such
-as `units` and `groupSelectedUnits` produce arrays, and `displayCtrl` produces
-a `Control`. These are generic command rules, not mission-specific name
-heuristics.
+as `units` and `groupSelectedUnits` produce arrays, `splitString` produces an
+array of strings, and `displayCtrl` produces a `Control`. Overloaded forms such
+as Boolean `parseNumber`, array `flyInHeight`, array `setDamage`, and the
+array-form `getFSMVariable` are also understood. These are generic command
+rules, not mission-specific name heuristics.
 
 Error (`E*`) diagnostics make the CLI exit non-zero; warnings (`W*`) do not.
 
@@ -315,8 +319,9 @@ not expressed in source, add ordered `_this` argument types under
 }
 ```
 
-Argument types are checked when they are statically inferable (currently
-literal values and simple literal assignments). Use a union such as
+Argument types are checked when they are statically inferable, including
+literal values, assignments, selected array elements, command results, and
+simple nested expressions. Use a union such as
 `"String|Array"` for an argument that accepts either type. Source extraction
 only reports explicit validators; a default value by itself is not treated as
 a type contract.

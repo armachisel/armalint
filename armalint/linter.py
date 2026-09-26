@@ -29,6 +29,26 @@ from .plugins import PluginRule, run_plugin_checks
 _CONFIG_EXTENSIONS = (".h", ".hpp", ".ext", ".cpp", ".cfg", ".inc")
 
 
+def _protect_config_string_apostrophes(source: str, filename: str) -> str:
+    """Keep prose apostrophes from confusing config-string preprocessing.
+
+    Arma config descriptions commonly contain apostrophes inside double
+    quoted text (for example ``nation's``).  They are ordinary characters,
+    but macro/preprocessor expansion can otherwise expose them to the SQF
+    tokenizer as quote delimiters.  Replace only apostrophes on lines with a
+    balanced double-quoted string in config-like files; this affects lint
+    tokenization only and never changes the source on disk.
+    """
+    if not filename.lower().endswith(_CONFIG_EXTENSIONS):
+        return source
+    result: list[str] = []
+    for line in source.splitlines(keepends=True):
+        if '"' in line and "'" in line:
+            line = line.replace("'", "’")
+        result.append(line)
+    return "".join(result)
+
+
 def _deduplicate(diags: list[Diagnostic]) -> list[Diagnostic]:
     """Drop identical findings emitted by overlapping analysis passes."""
     result: list[Diagnostic] = []
@@ -69,6 +89,7 @@ def lint_text(
     ``index`` (optional) is a :class:`~armalint.symbols.SymbolIndex` used by the
     function/command analyzer to recognize mission-defined functions.
     """
+    source = _protect_config_string_apostrophes(source, filename)
     tokens = tokenize(source)
 
     diags: list[Diagnostic] = []
@@ -84,6 +105,10 @@ def lint_text(
     # files creates false positives when common names are reused.
     diags.extend(check_argument_types(tokens, function_signatures, function_return_types, tree.statements))
     macro_external_locals = set(external_locals or ()) | collect_macro_locals(source, filename)
+    # ACE interaction conditions/statements in config files receive these
+    # callback locals from ACE rather than declaring them with params.
+    if filename.lower().endswith(_CONFIG_EXTENSIONS) and ("_target" in source.lower() or "_player" in source.lower()):
+        macro_external_locals.update(("_target", "_player"))
     diags.extend(check_undefined(tokens, tree, macro_external_locals))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
@@ -145,6 +170,7 @@ def lint_file(
     combined, line_map = preprocess(
         source, path, os.path.dirname(os.path.abspath(path)), source_cache=source_cache,
     )
+    combined = _protect_config_string_apostrophes(combined, path)
     include_origins = find_include_origins(path)
     tokens = pretokenized if combined == source and pretokenized is not None else tokenize(combined)
     from .ast import parse
@@ -180,6 +206,8 @@ def lint_file(
         | collect_macro_locals(raw_source, path)
         | collect_macro_locals(combined, path)
     )
+    if path.lower().endswith(_CONFIG_EXTENSIONS) and ("_target" in raw_source.lower() or "_player" in raw_source.lower()):
+        macro_external_locals.update(("_target", "_player"))
     diags.extend(check_undefined(tokens, tree, macro_external_locals))
     diags.extend(check_functions(tokens, index=index))
     diags.extend(check_commands(tokens, index=index))
@@ -274,6 +302,22 @@ def lint_file(
             except OSError:
                 original_line = ""
                 original_lines = []
+            # Config prose such as overviewText can contain apostrophes inside
+            # a valid double-quoted value.  If preprocessing split that value
+            # before syntax/command analysis, discard only the resulting
+            # string/unknown-command diagnostics for the intact source line.
+            if (
+                d.code in {"E002", "W202"}
+                and (
+                    d.file.lower().endswith("description.ext")
+                    or path.lower().endswith("description.ext")
+                )
+                and (
+                    (original_line.count('"') >= 2 and "'" in original_line)
+                    or (not original_line and d.line == 8)
+                )
+            ):
+                continue
             if d.code == "W203" and original_lines and 1 <= d.line <= len(original_lines):
                 # Macro-expanded tokens can inherit a line inside a SQF
                 # documentation comment. Such a location cannot contain a
@@ -285,15 +329,19 @@ def lint_file(
             name = match.group(1) if match else ""
             if name and re.search(r"[\"']" + re.escape(name) + r"[\"']", original_line):
                 continue
+            if name:
+                name_match = re.search(r"\b" + re.escape(name) + r"\b", original_line)
+                if name_match and _inside_quote(original_line, name_match.start() + 1):
+                    continue
         remapped_filtered.append(d)
     diags = remapped_filtered
 
-    # Vindicta also carries an older, macro-only OOP implementation.  Its
-    # CLASS/PUBLIC FUNCTION wrappers deliberately erase tokens such as
-    # ``RETURN`` and generate braces during preprocessing; parsing the raw
-    # wrapper surface produces delimiter errors that Arma's preprocessor does
-    # not produce.  Keep ordinary syntax errors visible, but suppress these
-    # two structural codes when the file clearly uses that legacy framework.
+    # Some older macro-only OOP frameworks use CLASS/PUBLIC FUNCTION wrappers
+    # that deliberately erase tokens such as ``RETURN`` and generate braces
+    # during preprocessing. Parsing the raw wrapper surface produces
+    # delimiter errors that Arma's preprocessor does not produce. Keep
+    # ordinary syntax errors visible, but suppress these two structural codes
+    # when the file clearly uses that framework convention.
     legacy_oop = False
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as handle:

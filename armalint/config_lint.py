@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 
+import re
+
 from .diagnostic import Diagnostic, Severity
 from .linter import lint_text
 from .symbols import SymbolIndex
@@ -178,7 +180,17 @@ def lint_config(
     to the config file's coordinates. The config *structure* (class/property
     names) is never linted.
     """
-    tokens = tokenize(source)
+    # Config prose may contain apostrophes inside double-quoted values. Keep
+    # those characters opaque while locating embedded code fields; otherwise
+    # a malformed intermediate token stream can turn words such as ``nation``
+    # into apparent SQF identifiers.
+    protected_lines = []
+    for line in source.splitlines(keepends=True):
+        if '"' in line and "'" in line:
+            line = line.replace("'", "’")
+        protected_lines.append(line)
+    source_for_tokens = "".join(protected_lines)
+    tokens = tokenize(source_for_tokens)
     n = len(tokens)
     diags: list[Diagnostic] = []
     diags.extend(check_config_structure(source, filename))
@@ -202,6 +214,29 @@ def lint_config(
 
         string_tok = tokens[k]
         for d in lint_text(content, filename, index, function_signatures, function_return_types, ignored_rules, rule_severities, style):
+            if d.code == "W202":
+                # Embedded SQF commonly contains quoted UI text such as
+                # ``'%1 Hour(s)'``.  The nested lint pass may tokenize a word
+                # inside that literal as a command; only report identifiers
+                # outside quoted regions.
+                match = re.search(r"unknown command/function:\s*([^\s(]+)", d.message)
+                name = match.group(1) if match else ""
+                quote = ""
+                inside = False
+                quoted_name = False
+                for pos, char in enumerate(content):
+                    if inside:
+                        if name and content.startswith(name, pos):
+                            quoted_name = True
+                        if char == quote:
+                            if pos + 1 < len(content) and content[pos + 1] == quote:
+                                continue
+                            inside = False
+                    elif char in ('"', "'"):
+                        quote = char
+                        inside = True
+                if quoted_name:
+                    continue
             orig_line = d.line
             if orig_line == 1:
                 # Same line as the opening quote: shift the column onto the
@@ -213,7 +248,30 @@ def lint_config(
             d.file = filename
             diags.append(d)
 
-    return diags
+    # Remapped diagnostics are now attached to the original config line.  Do
+    # one final source-level quote check so words in UI prose (for example
+    # ``Hour`` in ``'%1 Hour(s)'``) cannot escape the embedded-code filter.
+    source_lines = source.splitlines()
+    filtered: list[Diagnostic] = []
+    for diagnostic in diags:
+        if diagnostic.code == "W202" and 1 <= diagnostic.line <= len(source_lines):
+            match = re.search(r"unknown command/function:\s*([^\s(]+)", diagnostic.message)
+            name = match.group(1) if match else ""
+            if name:
+                line = source_lines[diagnostic.line - 1]
+                before = line.split(name, 1)[0] if name in line else ""
+                quote = ""
+                inside = False
+                for pos, char in enumerate(before):
+                    if inside and char == quote:
+                        inside = False
+                    elif not inside and char in ('"', "'"):
+                        quote = char
+                        inside = True
+                if inside:
+                    continue
+        filtered.append(diagnostic)
+    return filtered
 
 
 if __name__ == "__main__":

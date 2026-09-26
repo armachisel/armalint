@@ -157,7 +157,8 @@ that project expects to call. They do not change the built-in database or any
 other mission's analysis.
 
 If a mission function has a known return type, declare it with
-`functionReturns`. This lets type inference continue through a call:
+`functionReturns`. This lets type inference continue through nested command
+expressions and later argument checks:
 
 ```json
 {
@@ -171,4 +172,5 @@ If a mission function has a known return type, declare it with
 For example, after the first declaration Armalint can understand
 `_distance = [] call ALT_fnc_distanceToRoute; round _distance;` as a numeric
 expression. Without the declaration it leaves the call's return type unknown
-and does not guess.
+and does not guess. The same rule applies to a return value nested inside a
+parenthesized expression or command chain.

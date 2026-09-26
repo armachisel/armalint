@@ -1275,7 +1275,15 @@ def load_mod_type_cache(path: str) -> dict[str, list[str | None]]:
     result: dict[str, list[str | None]] = {}
     for name, types in data.items():
         if isinstance(name, str) and isinstance(types, list) and all(x is None or isinstance(x, str) for x in types):
-            result[name.lower()] = types
+            normalized_name = name.lower()
+            # ACE's addVirtualItems API takes an array of item classnames as
+            # its second argument.  Older extracted metadata incorrectly
+            # records that slot as Boolean, which creates a false W203 for
+            # the documented ``[_unit, _items, _filter]`` call shape.
+            if normalized_name == "ace_arsenal_fnc_addvirtualitems" and len(types) > 1:
+                types = list(types)
+                types[1] = "Array"
+            result[normalized_name] = types
     return result
 
 

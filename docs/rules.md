@@ -34,12 +34,12 @@ mistakes are found.
 
 | Code | Check |
 | --- | --- |
-| `W101` | A script-local variable is used before Armalint can find a definition, `params`, or `param` declaration. |
+| `W101` | A script-local variable is used before Armalint can find a definition, `params`, or `param` declaration. Known engine callback locals, such as `_pos` for `onMapSingleClick` and `_target`/`_caller` for `BIS_fnc_holdActionAdd`, are treated as supplied by the engine. |
 | `W104` | Code is unreachable after an unconditional `exitWith`, `throw`, `breakOut`, `continue`, or a pair of terminating branches. |
 | `W206` | An `if` condition is a literal value and therefore always has the same truth value. |
 | `W201` | A name used as a `call` or `spawn` target is not in the built-in, mission, or indexed function registry. |
 | `W202` | A direct command name is not in the built-in command registry. |
-| `W203` | A known command or indexed function receives an argument whose statically inferred type is incompatible with its signature. |
+| `W203` | A known command or indexed function receives an argument whose statically inferred type is incompatible with its signature. Built-in overloads and nested command results are included; unknown expressions are left unchecked. |
 | `W204` | A statically indexed function receives more arguments than its indexed signature declares. Shorter calls are allowed because extracted signatures may include optional parameters. |
 | `W205` | `call` or `spawn` is targeting a literal value known not to contain code. |
 | `W207` | A global function name is defined more than once in the same file. |
@@ -68,6 +68,12 @@ mistakes are found.
 | `W230` | An inline suppression does not match any diagnostic. |
 | `W231` | A suppression directive is malformed or names an unknown rule. |
 | `W232` | A non-serializable runtime handle, such as a control or display, is stored in a mission/profile namespace variable. UI namespace storage is intended for UI handles and is not reported. |
+
+`W202` also covers names that look like preprocessor macros when Armalint
+cannot find a definition for them. Check the file's include chain and macro
+headers before adding a Workshop dependency. If the included headers define a
+different macro name for the same operation, the warning points to a stale or
+incorrect macro call rather than to a missing dependency.
 
 The SQF contract checks are intentionally conservative. `params` declarations
 are checked for the supported string and `[name, default, validators]` shapes;
@@ -98,6 +104,19 @@ The parser builds source-spanned nodes for `if`/`else`, `for`, `while`,
 `waitUntil`, `try`/`catch`, `switch`, `exitWith`, `forEach`, and direct `call`/`spawn` code
 blocks. Scope and type analysis use those nodes where the syntax is
 unambiguous; dynamic expressions remain unchecked.
+
+Type inference follows command results through assignments, array selection,
+parenthesized expressions, command chains, and simple collection filters. It
+also preserves element types for common producers such as `allPlayers`,
+`nearestLocations`, `configClasses`, and `magazines`. Calls through an
+unindexed function remain opaque unless the project supplies a
+`functionReturns` declaration or the updater has extracted a return contract.
+
+Some SQF locals are supplied by the engine rather than declared in the source.
+Armalint recognizes the callback locals documented for common engine helpers,
+but it cannot infer locals supplied by arbitrary mission or mod APIs. Declare
+those with `externalLocals` or `--external-local` when the calling convention
+is known.
 
 The duplicate-definition checks use the conventional Arma function marker
 `_fnc_` or evidence that an arbitrary global code value is later used as a

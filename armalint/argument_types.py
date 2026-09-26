@@ -196,6 +196,7 @@ _COMMAND_RETURN_TYPES = {
     "allland": "Array", "allman": "Array",
     "configname": "String", "configfile": "Config", "configclasses": "Array",
     "configproperties": "Array", "configsourcemod": "String",
+    "gethitpointdamage": "Number",
     # These commands return arrays of source names.  Older XML snapshots
     # describe them as scalar strings, which causes bogus count/select
     # diagnostics in config-driven code.
@@ -208,7 +209,7 @@ _ARRAY_ELEMENT_TYPES = {
     "allvehicles": "Object", "allmissionobjects": "Object", "allgroups": "Group",
     "alldead": "Object", "alldeadmen": "Object", "allturrets": "Object",
     "allsimpleobjects": "Object",
-    "nearestobjects": "Object", "nearestterrainobjects": "Object", "roadsconnectedto": "Object",
+    "nearestobjects": "Object", "nearestterrainobjects": "Object", "nearestlocations": "Location", "roadsconnectedto": "Object",
     "nearobjects": "Object", "nearentities": "Object",
     "crew": "Object", "units": "Object", "allair": "Object", "allland": "Object",
     "groupselectedunits": "Object", "hcselected": "Group",
@@ -321,15 +322,32 @@ _load_generated_command_signatures()
 # numeric return in some versions.  SQF's command used here returns an Array;
 # keep the stable engine type explicit so array subtraction remains typed.
 _COMMAND_RETURN_TYPES["toarray"] = "Array"
+# The metadata snapshot labels splitString's result as STRING, but SQF
+# returns an array of substrings.
+_COMMAND_RETURN_TYPES["splitstring"] = "Array"
 # SQF accepts groups for these unary commands, and ``reveal`` uses the
 # documented array-encoded right operand ``[target, knowledge]``.
 _SIGNATURES["leader"] = (frozenset(("Object", "Group")), "Object or Group")
+# Since Arma 3 1.50 parseNumber also accepts a Boolean and returns 0/1.
+_SIGNATURES["parsenumber"] = (frozenset(("String", "Boolean")), "String or Boolean")
+# These commands have documented overloads that older metadata snapshots do
+# not represent correctly.  getFSMVariable takes either a variable name or
+# the [name, default] form, and getUnitLoadout also accepts a classname or
+# config in addition to a unit object.
+_SIGNATURES["getfsmvariable"] = (frozenset(("String", "Array")), "String or Array")
+_BINARY_SIGNATURES["getfsmvariable"] = (frozenset(("String", "Array")), "String or Array")
+_SIGNATURES["getunitloadout"] = (frozenset(("Object", "String", "Config")), "Object, String or Config")
+_SIGNATURES["ctrlcommitted"] = (frozenset(("Control", "Object")), "Control or Object")
 _SIGNATURES["side"] = (frozenset(("Object", "Group", "Location")), "Object, Group or Location")
 _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array")
 if "vectormultiply" in _BINARY_SIGNATURES:
     _BINARY_SIGNATURES["vectormultiply"] = (frozenset(("Number", "Array")), "Number or Array")
 _BINARY_SIGNATURES["distance2d"] = (frozenset(("Object", "Array", "Location")), "Object, Array or Location")
 _BINARY_SIGNATURES["setfog"] = (frozenset(("Number", "Array")), "Number or Array")
+# setDamage accepts the scalar damage form and the extended
+# ``[damage, source, instigator]`` form.
+_SIGNATURES["setdamage"] = (frozenset(("Number", "Array")), "Number or Array")
+_BINARY_SIGNATURES["setdamage"] = (frozenset(("Number", "Array")), "Number or Array")
 _BINARY_SIGNATURES["setskill"] = (frozenset(("Number", "Array")), "Number or Array")
 _BINARY_SIGNATURES["mapgridposition"] = (frozenset(("Object", "Array")), "Object or Array")
 # Arrays use a numeric index; HashMaps accept their key type (commonly a
@@ -594,6 +612,33 @@ def _infer_expression(
     while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
         rhs_end += 1
 
+    # ``getArray`` returns an untyped config array.  Several config
+    # properties are defined by the engine as arrays of classnames, so an
+    # indexed value from them is known to be a String.  Keep this as a
+    # property-based rule rather than tying inference to a variable name or
+    # mission source file.
+    classname_properties = {"magazines", "weapons", "items", "backpacks", "compatibleitems"}
+    expression_tokens = tokens[start:rhs_end]
+    # Calls to unindexed mission/mod functions have opaque return types.  This
+    # check must happen before literal-array inference because the call target
+    # is commonly preceded by an argument array.
+    for call_index, expression_token in enumerate(expression_tokens):
+        if expression_token.value.lower() not in ("call", "spawn"):
+            continue
+        target_index = call_index + 1
+        while target_index < len(expression_tokens) and expression_tokens[target_index].type in _TRIVIA:
+            target_index += 1
+        if target_index < len(expression_tokens) and expression_tokens[target_index].type == "ident":
+            target = expression_tokens[target_index].value.lower()
+            known_return = (function_return_types or {}).get(target) or _RETURN_TYPES.get(target)
+            if known_return:
+                return known_return
+            return None
+    if (any(t.value.lower() == "getarray" for t in expression_tokens)
+            and any(t.type == "string" and t.value.lower() in classname_properties for t in expression_tokens)
+            and any(t.value.lower() == "select" for t in expression_tokens)):
+        return "String"
+
     def selected_local_element_type(local_index: int) -> str | None:
         """Recover an element type from a prior array-producing assignment."""
         if local_index >= len(tokens) or tokens[local_index].type != "local":
@@ -605,6 +650,11 @@ def _infer_expression(
                 end = pos + 2
                 while end < local_index and tokens[end].type != "semicolon":
                     end += 1
+                assignment_tokens = tokens[pos + 2:end]
+                if (any(t.value.lower() == "getarray" for t in assignment_tokens)
+                        and any(t.type == "string" and t.value.lower() in classname_properties
+                                for t in assignment_tokens)):
+                    return "String"
                 producers = {t.value.lower() for t in tokens[pos + 2:end]}
                 for producer, element_type in _ARRAY_ELEMENT_TYPES.items():
                     if producer in producers:
@@ -699,6 +749,13 @@ def _infer_expression(
             if (any(t.value.lower() == "finddisplay" for t in inner_tokens)
                     and any(t.value.lower() == "displayctrl" for t in tokens[close_probe + 1:rhs_end])):
                 return "Control"
+            # Binary collection commands inside parentheses retain their
+            # array result (for example ``count (player nearObjects [...])``).
+            if any(t.value.lower() in {"nearobjects", "nearentities", "nearestobjects", "nearroads"}
+                   for t in inner_tokens):
+                return "Array"
+            if any(t.value.lower() == "nearestobject" for t in inner_tokens):
+                return "Object"
             if any(t.value.lower() in {"getpos", "getposatl", "getposasl", "getposworld", "getposvisual"}
                    for t in inner_tokens):
                 return "Array"
@@ -723,6 +780,12 @@ def _infer_expression(
     # Binary command chains such as ``_unit getPos [...]`` and
     # ``_position vectorAdd [...]`` produce the command's return type.  The
     # receiver's type alone is not the result of the expression.
+    # ``name _unit splitString " "`` is also a binary chain; the metadata
+    # snapshot incorrectly describes splitString as returning String.
+    if any(token.value.lower() == "splitstring" for token in tokens[start:rhs_end]):
+        return "Array"
+    if any(token.value.lower() == "nearestobject" for token in tokens[start:rhs_end]):
+        return "Object"
     # Collection commands retain their own result type when their operand is
     # another command (``units group player``).  The generic chain rule below
     # would otherwise see ``group`` first and incorrectly return Group.
@@ -935,6 +998,12 @@ def _infer_expression(
                         return None
                     if j < len(tokens) and tokens[j].value.lower() in _COMMAND_RETURN_TYPES:
                         return _COMMAND_RETURN_TYPES[tokens[j].value.lower()]
+                    # A call to an unindexed mission/mod function has an
+                    # opaque return type.  Do not let the argument array of
+                    # that call leak out as the result type (for example,
+                    # ``round ([args] call external_fnc)``).
+                    if any(token.value.lower() in ("call", "spawn") for token in inner_tokens):
+                        return None
                     return inner
     if start < len(tokens) and tokens[start].type == "operator" and tokens[start].value in ("+", "-"):
         # Unary + preserves the operand type (commonly used to copy arrays);
@@ -1243,6 +1312,32 @@ def _is_untyped_params_local(tokens: list[Token], index: int) -> bool:
         # not suffer from stale callback flow.  This recovery is for the
         # method-form ``(value) params [...]`` boundary only.
         if previous < 0 or tokens[previous].type != "rparen":
+            # Plain ``params ["_a", "_b"]`` declarations are also
+            # untyped boundaries.  Treat their locals as dynamic rather than
+            # carrying a stale type from an earlier function in the file.
+            start = cursor + 1
+            while start < len(tokens) and tokens[start].type in _TRIVIA:
+                start += 1
+            if start < len(tokens) and tokens[start].type == "lbracket":
+                depth = 0
+                for pos in range(start, min(len(tokens), start + 160)):
+                    if tokens[pos].type == "lbracket":
+                        depth += 1
+                    elif tokens[pos].type == "rbracket":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    elif depth == 1 and tokens[pos].type == "string" and tokens[pos].value.lower() == name:
+                        nxt = pos + 1
+                        while nxt < len(tokens) and tokens[nxt].type in _TRIVIA:
+                            nxt += 1
+                        if nxt >= len(tokens) or tokens[nxt].type != "comma":
+                            return True
+                        probe = nxt + 1
+                        while probe < len(tokens) and tokens[probe].type in _TRIVIA:
+                            probe += 1
+                        if probe < len(tokens) and tokens[probe].type != "lbracket":
+                            return True
             continue
         start = cursor + 1
         while start < len(tokens) and tokens[start].type in _TRIVIA:
@@ -1684,6 +1779,10 @@ def check_argument_types(
                 and any(t.type == "operator" and t.value == "+"
                         for t in tokens[i + 2: next((k for k in range(i + 2, len(tokens)) if tokens[k].type == "semicolon"), len(tokens))])):
             inferred = "Array"
+        if (variables.get(key) == "Array"
+                and any(t.type == "operator" and t.value in ("+", "-")
+                        for t in tokens[i + 2: next((k for k in range(i + 2, len(tokens)) if tokens[k].type == "semicolon"), len(tokens))])):
+            inferred = "Array"
         if inferred is None:
             variables.pop(key, None)
         else:
@@ -1826,10 +1925,39 @@ def check_argument_types(
             continue
         if tokens[j].type == "local" and tokens[j].value.lower() in conditional_locals:
             continue
+        if ((tok.value.lower() == "selectrandom" or tok.value.lower().endswith("_selectrandom"))
+                and tokens[j].type in ("ident", "keyword", "local")
+                and not tokens[j].value.startswith("_")
+                and tokens[j].value.lower() not in _KNOWN_VARIABLE_TYPES):
+            # Mission-wide globals are often populated in another file;
+            # their container type is unavailable during single-file analysis.
+            continue
         if (tok.value.lower() == "isplayer" and tokens[j].type == "local"
                 and _is_opaque_object_candidate(tokens, j)):
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if tok.value.lower() == "getobjecttype" and actual == "String" and tokens[j].type == "local":
+            name = tokens[j].value.lower()
+            guarded = False
+            for k in range(i):
+                if tokens[k].type != "local" or tokens[k].value.lower() != name:
+                    continue
+                probe = k + 1
+                while probe < i and tokens[probe].type in _TRIVIA:
+                    probe += 1
+                if probe >= i or tokens[probe].value.lower() != "isequaltype":
+                    continue
+                probe += 1
+                while probe < i and tokens[probe].type in _TRIVIA:
+                    probe += 1
+                if (probe < i and tokens[probe].type == "string"
+                        and any(item.value.lower() == "exitwith" for item in tokens[probe + 1:i])):
+                    guarded = True
+                    break
+            if guarded:
+                # A preceding string type guard with exitWith proves this
+                # branch is the remaining object path.
+                continue
         if tok.value.lower() in ("round", "floor", "ceil") and any(
                 item.value.lower() in ("distance", "distance2d", "distancesqr")
                 for item in tokens[j:]):
@@ -1863,6 +1991,21 @@ def check_argument_types(
                     actual = implicit_type
         if (tok.value.lower() == "count" and actual == "Number"
                 and _has_type_recovery_guard(tokens, j)):
+            continue
+        if tok.value.lower() == "count" and actual == "Object":
+            if any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects")
+                   for t in tokens[max(0, i - 80):i + 1]):
+                continue
+        if ((tok.value.lower() == "selectrandom" or tok.value.lower().endswith("_selectrandom")) and actual == "Number"
+                and tokens[j].type in ("ident", "keyword", "local")
+                and not tokens[j].value.startswith("_")
+                and tokens[j].value.lower() not in _KNOWN_VARIABLE_TYPES
+                and tokens[j].value.lower() not in _RETURN_TYPES):
+            # Mission globals are often populated in another file.  Without
+            # project-wide assignment data, an identifier's element type is
+            # unknown; do not infer Number merely because it is untyped.
+            continue
+        if actual in ("Unknown", "Anything"):
             continue
         if (tok.value.lower() in {"systemchat", "hintsilent", "hint"}
                 and actual == "Array" and _has_array_recovery_guard(tokens, j)):
@@ -1933,6 +2076,14 @@ def check_argument_types(
                    and any(t.value.lower() in ("createvehicle", "createvehiclelocal")
                            for t in tokens[k + 2:i])
                    for k in range(i)):
+                continue
+        # These values are commonly produced by config arrays or opaque
+        # helper callbacks.  Preserve the diagnostic when a concrete type is
+        # known, but do not turn an Unknown value into a false contract error.
+        if actual in ("Unknown", "Anything"):
+            continue
+        if tok.value.lower() == "count" and actual == "Object":
+            if any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects") for t in tokens):
                 continue
         if (tok.value.lower() == "assert" and tokens[j].type == "lparen"
                 and any(t.type == "operator" and t.value in ("==", "!=", "<", ">", "<=", ">=")
@@ -2015,6 +2166,17 @@ def check_argument_types(
                            for t in tokens[k + 2:i])
                    for k in range(i)):
                 continue
+        if tok.value.lower() == "count" and tokens[j].type == "local":
+            name = tokens[j].value.lower()
+            if any(tokens[k].type == "local" and tokens[k].value.lower() == name
+                   and k + 2 < i and tokens[k + 1].value == "="
+                   and any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects") for t in tokens[k + 2:i])
+                   for k in range(i)):
+                continue
+        if tok.value.lower() == "count" and actual == "Object":
+            if any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects")
+                   for t in tokens[max(0, i - 120):i + 1]):
+                continue
         if tok.value.lower() in ("setpos", "setposasl", "setposatl", "setposworld") and any(
                 t.value.lower() in ("getpos", "getposasl", "getposatl", "getposworld", "getposvisual")
                 for t in tokens[j:]):
@@ -2048,7 +2210,7 @@ def check_argument_types(
             # the container is dynamic (as it commonly is across namespace
             # boundaries), its type cannot be proven from the call site.
             continue
-        if actual is not None and actual != "Anything" and actual not in accepted:
+        if actual is not None and actual not in ("Anything", "Unknown") and actual not in accepted:
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
 
     # A statically known non-code value cannot be used as a call/spawn target.
@@ -2061,7 +2223,7 @@ def check_argument_types(
             j += 1
         if j < len(tokens) and tokens[j].type == "local":
             actual = variables.get(tokens[j].value.lower())
-            if actual and actual not in ("Code", "String") and tokens[j].value.lower() not in code_locals:
+            if actual and actual not in ("Code", "String", "Unknown", "Anything") and tokens[j].value.lower() not in code_locals:
                 diags.append(Diagnostic(
                     Severity.WARNING, _CALL_TARGET_CODE,
                     f"{tok.value} expects Code or String, got {actual}",
@@ -2111,7 +2273,7 @@ def check_argument_types(
             if expected is None:
                 continue
             actual = _simple_item_type(items[arg_index], variables)
-            if actual is None:
+            if actual is None or actual in ("Unknown", "Anything"):
                 continue
             accepted = {part.strip().title() for part in expected.split("|")}
             if actual not in accepted and "Anything" not in accepted:
@@ -2166,12 +2328,12 @@ def check_argument_types(
         # token before the comparison is their string argument. Do not compare
         # that argument's type; the command expression is the left operand.
         command_result_comparison = (
-            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction", "getvariable", "gettext", "getnumber", "distance", "distance2d", "distancesqr")
+            left >= 1 and tokens[left - 1].value.lower() in ("find", "findif", "count", "inputaction", "getvariable", "gettext", "getnumber", "gethitpointdamage", "distance", "distance2d", "distancesqr")
         )
         if not command_result_comparison:
             scan = left - 1
             while scan >= 0 and tokens[scan].type != "semicolon" and left - scan <= 96:
-                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction", "getvariable", "gettext", "getnumber", "distance", "distance2d", "distancesqr"):
+                if tokens[scan].value.lower() in ("count", "find", "findif", "inputaction", "getvariable", "gettext", "getnumber", "gethitpointdamage", "distance", "distance2d", "distancesqr"):
                     command_result_comparison = True
                     break
                 scan -= 1
@@ -2303,7 +2465,39 @@ def check_argument_types(
                    for side in (left, right) if 0 <= side < len(tokens)):
                 continue
             diags.append(Diagnostic(Severity.WARNING, _COMPARISON_CODE, f"comparison cannot match {actual_left} with {actual_right}", tok.line, tok.column))
-    return diags
+    filtered_diags: list[Diagnostic] = []
+    for diagnostic in diags:
+        if diagnostic.code == _CODE and diagnostic.message.startswith("selectRandom expects Array, got Number"):
+            same_line = [token for token in tokens
+                         if token.line == diagnostic.line and token.type not in _TRIVIA]
+            command_index = next((index for index, token in enumerate(same_line)
+                                  if (token.value.lower() == "selectrandom"
+                                      or token.value.lower().endswith("_selectrandom"))), None)
+            if command_index is not None and command_index + 1 < len(same_line):
+                operand = same_line[command_index + 1]
+                # An unresolved global (for example a mission-wide loadout
+                # pool) has no type information in a single-file pass.  Keep
+                # local numeric values diagnosable; only suppress the
+                # cross-file identifier case.
+                if (operand.type in ("ident", "keyword")
+                        and not operand.value.startswith("_")):
+                    continue
+                if operand.type == "lparen":
+                    depth = 0
+                    expression = []
+                    for candidate in same_line[command_index + 1:]:
+                        if candidate.type == "lparen":
+                            depth += 1
+                        elif candidate.type == "rparen":
+                            depth -= 1
+                        expression.append(candidate)
+                        if depth == 0:
+                            break
+                    if (any(item.type == "ident" and not item.value.startswith("_") for item in expression)
+                            and not any(item.type == "local" or item.type == "number" for item in expression)):
+                        continue
+        filtered_diags.append(diagnostic)
+    return filtered_diags
 
 
 def check_argument_types_text(source: str) -> list[Diagnostic]:
@@ -2327,6 +2521,9 @@ if __name__ == "__main__":
     assert check_argument_types_text('sqrt "x";')[0].code == _CODE
     assert check_argument_types_text('toLower 42;')[0].code == _CODE
     assert check_argument_types_text('selectRandom "not an array";')[0].code == _CODE
+    assert check_argument_types_text('selectRandom OT_global_pool;') == []
+    assert check_argument_types_text('private _n = 1; selectRandom _n;')[0].code == _CODE
+    assert check_argument_types_text('private _value = "name"; if (_value isEqualType "") exitWith {}; getObjectType _value;') == []
     assert check_argument_types_text('private _smokeMags = magazines _unit select { true }; selectRandom _smokeMags;') == []
     assert check_argument_types_text('private _fnc_exit = { false; }; call _fnc_exit;') == []
     assert check_argument_types_text('private _itemType = _x call BIS_fnc_itemType; _itemType select 0 == "Mine";') == []
@@ -2334,6 +2531,7 @@ if __name__ == "__main__":
     assert check_argument_types_text('objNull isKindOf ["CBA_MiscItem", configFile];') == []
     assert check_argument_types_text('abs -2; toUpper "ok";') == []
     assert check_argument_types_text('parseSimpleArray "[1]"; toString [1, 2];') == []
+    assert check_argument_types_text('parseNumber true; parseNumber false;') == []
     assert check_argument_types_text('parseSimpleArray 42;')[0].code == _CODE
     assert check_argument_types_text('_d = [0, 0, []] call unknown_fnc; round _d;') == []
     assert check_argument_types_text('_d = getDir player; sin _d;') == []

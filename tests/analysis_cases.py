@@ -288,6 +288,16 @@ def _config_iteration_and_conditional_values() -> bool:
     return not any(d.code == "W203" for d in diagnostics)
 
 
+def _config_classname_array_elements() -> bool:
+    source = (
+        'private _chosen = (getArray (configFile / "CfgWeapons" / "SomeWeapon" / "magazines")) select 0; '
+        '_unit addItem _chosen; '
+        'private _classes = getArray (configFile / "CfgWeapons" / "SomeWeapon" / "compatibleItems"); '
+        'private _item = _classes select 0; _unit addItem _item;'
+    )
+    return not any(d.code == "W203" for d in check_argument_types_text(source))
+
+
 def _engine_group_and_road_overloads() -> bool:
     source = 'private _group = objNull; [_unit] join _group; private _road = objNull; private _roads = roadsConnectedTo [_road, true];'
     return not any(d.code == "W203" for d in check_argument_types_text(source))
@@ -659,6 +669,7 @@ CASES = (
     ("extension distance and UI handles", _extension_distance_and_ui_handles),
     ("location and distance overloads", _location_and_distance_overloads),
     ("config iteration and conditional values", _config_iteration_and_conditional_values),
+    ("config classname array elements", _config_classname_array_elements),
     ("engine group and road overloads", _engine_group_and_road_overloads),
     ("command XML metadata parser", _command_xml_metadata_parser),
     ("vendored command metadata snapshot", _vendored_command_metadata_snapshot),

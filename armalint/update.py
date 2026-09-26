@@ -1098,8 +1098,8 @@ def _run_self_test() -> int:
         # A repository checkout may contain several nested missions without a
         # root mission.sqm.  Dependency discovery must still inspect them.
         project_dir = os.path.join(tmp, "project")
-        os.makedirs(os.path.join(project_dir, "Vindicta.Malden"))
-        with open(os.path.join(project_dir, "Vindicta.Malden", "mission.sqm"), "w", encoding="utf-8") as fh:
+        os.makedirs(os.path.join(project_dir, "NestedMission.Altis"))
+        with open(os.path.join(project_dir, "NestedMission.Altis", "mission.sqm"), "w", encoding="utf-8") as fh:
             fh.write('addOns[] = {"nested_project_dependency"};')
         rootless_sqm, rootless_addons = _read_mission_sqm(project_dir)
         assert rootless_sqm is None

@@ -158,8 +158,8 @@ def collect_macro_locals(source: str, filename: str = "", _seen: set[str] | None
     """Collect locals introduced by project macro bodies.
 
     Macro-generated declarations are otherwise invisible to standalone
-    undefined-variable analysis (for example Vindicta's ``METHOD`` and
-    ``LOG_SCOPE`` helpers). This deliberately collects only underscore locals
+    undefined-variable analysis for project macro helpers such as ``METHOD``
+    and ``LOG_SCOPE``. This deliberately collects only underscore locals
     declared inside ``#define`` bodies and the built-in file/line symbols.
     """
     result = {"__file__", "__line__"}
@@ -168,8 +168,8 @@ def collect_macro_locals(source: str, filename: str = "", _seen: set[str] | None
     if current_key in _seen:
         return result
     _seen.add(current_key)
-    # Vindicta/OOP-style method wrappers create these bindings around every
-    # METHOD body even though the declaration is hidden behind the wrapper.
+    # OOP-style method wrappers can create these bindings around every METHOD
+    # body even though the declaration is hidden behind the wrapper.
     # Detect the convention from the source rather than enabling the names for
     # unrelated SQF files.
     if re.search(r"\bMETHOD\s*\(", source):
@@ -178,7 +178,7 @@ def collect_macro_locals(source: str, filename: str = "", _seen: set[str] | None
     # simple bracket scan can stop too early. Capture their quoted local name
     # arguments directly.
     result.update(name.lower() for name in re.findall(r"\bP_[A-Za-z0-9_]+\s*\(\s*\"(_[A-Za-z0-9_]+)\"", source))
-    # Macroized parameter declarations (for example Vindicta's
+    # Macroized parameter declarations (for example
     # ``params [P_ARRAY("_stimulus")]``) are not visible to the normal
     # params parser until the project's macro environment is expanded. The
     # quoted local names are still an unambiguous declaration boundary, so

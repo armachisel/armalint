@@ -86,6 +86,33 @@ def _looks_non_serializable(tokens: list[Token], start: int, end: int | None = N
     return name in _NON_SERIALIZABLE_HANDLES or name in _NON_SERIALIZABLE_FACTORIES
 
 
+def _inside_ui_namespace_with(tokens: list[Token], index: int) -> bool:
+    """Return whether an assignment is inside ``with uiNamespace do {}`."""
+    for start, token in enumerate(tokens[:index]):
+        if token.value.lower() != "with":
+            continue
+        namespace = _next(tokens, start)
+        if namespace >= index or tokens[namespace].value.lower() != "uinamespace":
+            continue
+        do_token = _next(tokens, namespace)
+        if do_token >= index or tokens[do_token].value.lower() != "do":
+            continue
+        opening = _next(tokens, do_token)
+        if opening >= index or tokens[opening].type != "lbrace":
+            continue
+        depth = 1
+        cursor = opening + 1
+        while cursor < index:
+            if tokens[cursor].type == "lbrace":
+                depth += 1
+            elif tokens[cursor].type == "rbrace":
+                depth -= 1
+            cursor += 1
+        if depth > 0:
+            return True
+    return False
+
+
 def _macro_body_lines(source: str | None) -> set[int]:
     """Return physical lines occupied by continued preprocessor macros."""
     if not source:
@@ -123,7 +150,7 @@ def check_sqf_contracts(tokens: list[Token], source: str | None = None) -> list[
             assignment = _next(tokens, i)
             if assignment < len(tokens) and tokens[assignment].value == "=":
                 value = _next(tokens, assignment)
-                if _looks_non_serializable(tokens, value):
+                if not _inside_ui_namespace_with(tokens, i) and _looks_non_serializable(tokens, value):
                     diagnostics.append(_diag(
                         _SERIALIZATION,
                         f"namespace variable {token.value} stores a non-serializable runtime handle",
@@ -263,6 +290,7 @@ if __name__ == "__main__":
     assert any(d.code == _NAMESPACE for d in check_sqf_contracts_text('missionNamespace setVariable 1;'))
     assert check_sqf_contracts_text('missionNamespace getVariable _name;') == []
     assert check_sqf_contracts_text('uiNamespace getVariable (_this select 0);') == []
+    assert check_sqf_contracts_text('with uiNamespace do { pBar = findDisplay 46 ctrlCreate ["RscProgress", -1]; };') == []
     assert check_sqf_contracts_text('player addEventHandler ["Killed", { hint "x"; }]; player removeEventHandler ["Killed", 0];') == []
     assert any(d.code == _EVENT for d in check_sqf_contracts_text('player removeEventHandler ["Killed", 0];'))
     assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, 1];'))

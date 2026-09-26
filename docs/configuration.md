@@ -41,7 +41,7 @@ that builds its own optional addons:
 ```json
 {
   "dependencies": [
-    {"name": "vindicta-addon", "source": "Vindicta-Addon"}
+    {"name": "my-addon", "source": "path/to/my-addon"}
   ]
 }
 ```
