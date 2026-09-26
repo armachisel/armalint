@@ -1830,6 +1830,14 @@ def check_argument_types(
                 and _is_opaque_object_candidate(tokens, j)):
             continue
         actual = _narrowed_type(tokens, j, variables) or _infer_operand(tokens, j, variables)
+        if tok.value.lower() in ("round", "floor", "ceil") and any(
+                item.value.lower() in ("distance", "distance2d", "distancesqr")
+                for item in tokens[j:]):
+            actual = "Number"
+        if tok.value.lower() in ("setpos", "setposasl", "setposatl", "setposworld") and any(
+                item.value.lower() in ("getpos", "getposasl", "getposatl", "getposworld", "getposvisual")
+                for item in tokens[j:]):
+            actual = "Array"
         if tok.value.lower() in ("acos", "asin", "atan") and any(
                 item.value.lower() == "vectorcos" for item in tokens[j:]):
             # Vector cosine produces a scalar even when nested in a grouped
@@ -1946,7 +1954,7 @@ def check_argument_types(
         if tok.value.lower() == "isplayer" and actual == "Group":
             continue
         if actual is not None and actual != "Anything" and not all(member in accepted for member in actual.split("|")):
-            if (tok.value.lower() in ("ctrldelete", "ctrlshown", "ctrlposition") and actual == "Object"
+            if (tok.value.lower() in ("ctrldelete", "ctrlshown", "ctrlposition") and actual in ("Object", "Display")
                     and any(t.value.lower() in ("controlnull", "ctrlcreate", "displayctrl") for t in tokens[:i])):
                 continue
             diags.append(Diagnostic(Severity.WARNING, _CODE, f"{tok.value} expects {expected}, got {actual}", tokens[j].line, tokens[j].column))
@@ -2132,6 +2140,10 @@ def check_argument_types(
         while right < len(tokens) and tokens[right].type in _TRIVIA: right += 1
         actual_left = _infer_operand(tokens, left, variables) if left >= 0 else None
         actual_right = _infer_operand(tokens, right, variables) if right < len(tokens) else None
+        # getSlotItemName is a string-returning command; older metadata can
+        # classify its numeric slot argument as the comparison expression.
+        if any(t.value.lower() == "getslotitemname" for t in tokens[max(0, i - 24):i + 1]):
+            continue
         # In ``array select 0 == value`` the immediate token before the
         # comparison is the numeric index, not the selected element.  The
         # element type is producer-dependent, so leave this comparison
