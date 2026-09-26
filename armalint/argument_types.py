@@ -574,6 +574,26 @@ def _infer_expression(
     rhs_end = start
     while rhs_end < len(tokens) and tokens[rhs_end].type != "semicolon":
         rhs_end += 1
+
+    def selected_local_element_type(local_index: int) -> str | None:
+        """Recover an element type from a prior array-producing assignment."""
+        if local_index >= len(tokens) or tokens[local_index].type != "local":
+            return None
+        name = tokens[local_index].value.lower()
+        for pos in range(local_index - 1, -1, -1):
+            if (tokens[pos].type == "local" and tokens[pos].value.lower() == name
+                    and pos + 2 < local_index and tokens[pos + 1].value == "="):
+                end = pos + 2
+                while end < local_index and tokens[end].type != "semicolon":
+                    end += 1
+                producers = {t.value.lower() for t in tokens[pos + 2:end]}
+                for producer, element_type in _ARRAY_ELEMENT_TYPES.items():
+                    if producer in producers:
+                        return element_type
+                # An intermediate filtered assignment may be opaque; keep
+                # looking for the source collection's earlier producer.
+                continue
+        return None
     # A plain array literal is always an Array.  Check this before inspecting
     # commands embedded in its elements (for example ``[cos 1, -sin 1, 0]``)
     # so an operator inside an element cannot turn the container into Number.
@@ -608,6 +628,12 @@ def _infer_expression(
                             if tokens[idx].type == "rparen"), None)
         if close_probe is not None:
             inner_tokens = [t for t in tokens[start + 1:close_probe] if t.type not in _TRIVIA]
+            if (len(inner_tokens) >= 3 and inner_tokens[0].type == "local"
+                    and inner_tokens[1].value.lower() == "select"
+                    and inner_tokens[2].type == "number"):
+                selected = selected_local_element_type(start + 1)
+                if selected is not None:
+                    return selected
             # A producer followed by an indexed ``select`` inside the
             # parentheses is an element expression, for example
             # ``(hcSelected player select 0)``.  The grouped-expression
@@ -827,6 +853,9 @@ def _infer_expression(
     if (any(t.type == "operator" and t.value == "+" for t in expression_tokens)
             and (any(t.type == "string" for t in expression_tokens)
                  or any(t.type == "local" and variables.get(t.value.lower()) == "String" for t in expression_tokens))
+            and not any(t.value.lower() in _COMMAND_RETURN_TYPES
+                        and _COMMAND_RETURN_TYPES[t.value.lower()] == "Number"
+                        for t in expression_tokens)
             and not any(t.type == "lbracket" for t in expression_tokens)):
         return "String"
     # Arithmetic nested inside a unary command's parentheses is tokenized as
@@ -1233,7 +1262,18 @@ def _collect_dynamic_array_locals(tokens: list[Token], variables: dict[str, str]
             probe = k + 1
             while probe < len(tokens) and tokens[probe].type in _TRIVIA:
                 probe += 1
-            if probe < len(tokens) and tokens[probe].value.lower() in {"select", "foreach"}:
+            previous = k - 1
+            while previous >= 0 and tokens[previous].type in _TRIVIA:
+                previous -= 1
+            # In ``squadParams _commander select 0`` the select operates on
+            # the command result, not on the local argument. Do not classify
+            # the argument as an array merely because it precedes ``select``.
+            preceded_by_command = (
+                previous >= 0
+                and tokens[previous].value.lower() in (_COMMAND_RETURN_TYPES | _RETURN_TYPES)
+            )
+            if (probe < len(tokens) and tokens[probe].value.lower() in {"select", "foreach"}
+                    and not preceded_by_command):
                 collection_names.add(item.value.lower())
     for i, token in enumerate(tokens[:-2]):
         if token.type != "local" or tokens[i + 1].value != "=":
@@ -1634,9 +1674,40 @@ def check_argument_types(
                 and any(t.type == "operator" and t.value == "+" for t in tokens[i + 2:rhs_end])):
             inferred = "Array"
         producer_names = {t.value.lower() for t in tokens[i + 2:rhs_end] if t.type in ("ident", "keyword")}
+        producer = next((name for name in producer_names if name in _ARRAY_ELEMENT_TYPES), None)
+        if inferred == "Array" and producer is not None:
+            element_types[key] = _ARRAY_ELEMENT_TYPES[producer]
+        # Preserve the element type when a filtered collection is narrowed
+        # with a grouped ``(_items select 0)`` assignment. The intermediate
+        # filter call may itself be opaque, but its source collection still
+        # provides reliable element information.
+        if (i + 5 < len(tokens) and tokens[i + 2].type == "lparen"
+                and tokens[i + 3].type == "local"
+                and tokens[i + 4].value.lower() == "select"
+                and tokens[i + 5].type == "number"):
+            source_name = tokens[i + 3].value.lower()
+            if source_name not in element_types:
+                for prior in range(i - 1, -1, -1):
+                    if (tokens[prior].type == "local"
+                            and tokens[prior].value.lower() == source_name
+                            and prior + 2 < i and tokens[prior + 1].value == "="):
+                        prior_end = prior + 2
+                        while prior_end < i and tokens[prior_end].type != "semicolon":
+                            prior_end += 1
+                        prior_names = {t.value.lower() for t in tokens[prior + 2:prior_end]}
+                        prior_producer = next((name for name in prior_names if name in _ARRAY_ELEMENT_TYPES), None)
+                        if prior_producer is not None:
+                            element_types[source_name] = _ARRAY_ELEMENT_TYPES[prior_producer]
+                        break
         if i + 4 < len(tokens) and tokens[i + 2].type == "local" and tokens[i + 3].value.lower() == "select" and tokens[i + 4].type == "number":
             if tokens[i + 2].value.lower() in element_types:
                 variables[key] = element_types[tokens[i + 2].value.lower()]
+        elif (i + 6 < len(tokens) and tokens[i + 2].type == "lparen"
+              and tokens[i + 3].type == "local"
+              and tokens[i + 4].value.lower() == "select"
+              and tokens[i + 5].type == "number"
+              and tokens[i + 3].value.lower() in element_types):
+            variables[key] = element_types[tokens[i + 3].value.lower()]
     _collect_dynamic_array_locals(tokens, variables)
     # Re-apply precise loop-element facts after ordinary assignment collection;
     # the loop body may otherwise look like a conflicting global assignment.
