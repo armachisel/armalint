@@ -1,4 +1,4 @@
-"""Opt-in source style checks."""
+"""Source style checks."""
 
 from __future__ import annotations
 

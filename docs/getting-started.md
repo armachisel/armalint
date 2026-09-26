@@ -109,8 +109,9 @@ project-specific argument types, and mission-wide rule suppression with
 
 Severity values are `error`, `warning`, `info`, and `off`. For one run, use
 `armalint --ignore-rule W206 <path>`; source comments can suppress a single
-line or section. Use `--sarif` for CI/code-scanning integrations and `--style`
-to enable optional whitespace diagnostics (`W301` and `W302`).
+line or section. Use `--sarif` for CI/code-scanning integrations. Whitespace
+diagnostics (`W301` and `W302`) are enabled by default; use `--no-style` to
+disable them.
 
 For CI, use `--fail-on warning`, `--github-actions`, `--checkstyle`, or
 `--diff-staged` as appropriate. Use `--fix-preview` to inspect safe edits

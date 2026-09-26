@@ -203,7 +203,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--sarif", action="store_true", help="emit SARIF 2.1.0 diagnostics")
     parser.add_argument("--checkstyle", action="store_true", help="emit Checkstyle XML diagnostics")
-    parser.add_argument("--style", action="store_true", help="enable optional source style checks")
+    parser.add_argument(
+        "--style", action=argparse.BooleanOptionalAction, default=True,
+        help="enable source style checks (default; use --no-style to disable)",
+    )
     parser.add_argument("--fix", action="store_true", help="apply safe formatting fixes and write changed files")
     parser.add_argument("--fix-preview", action="store_true", help="emit safe autofix edits as JSON without changing files")
     parser.add_argument("--diff", nargs="?", const="HEAD", metavar="REF", help="report only diagnostics on lines changed from REF (default: HEAD)")
@@ -430,7 +433,7 @@ def _main(argv: list[str] | None = None) -> int:
         all_diags = lint_text(
             args.snippet, filename="<snippet>", index=context_index,
             function_signatures=context_signatures, function_return_types=context_returns,
-            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=(args.style or "style" in context_presets or bool(context_selected & {"W301", "W302"})), check_suppressions=args.check_suppressions, plugin_rules=context_plugin_rules, external_locals=context_external_locals,
+            ignored_rules=context_ignored_rules, rule_severities=context_severities, style=args.style, check_suppressions=args.check_suppressions, plugin_rules=context_plugin_rules, external_locals=context_external_locals,
         )
         all_diags.extend(Diagnostic(Severity.ERROR, "E012", f"plugin load failed: {error}", 1, 1, "") for error in context_plugin_errors)
         for config_path, issues in config_issues.items():
@@ -598,7 +601,7 @@ def _main(argv: list[str] | None = None) -> int:
             _build_arg_parser().error(f"unknown rule or category: {item}")
     if selected_rules:
         ignored_rules |= set(RULES) - selected_rules
-    style_requested = args.style or args.fix or "style" in {name.lower() for name in project_presets} or bool(selected_rules & {"W301", "W302"})
+    style_requested = args.style
 
     # Build a mission-wide symbol index so mission-defined functions are not
     # reported as unknown (W201) before linting each file.
@@ -790,8 +793,7 @@ def _main(argv: list[str] | None = None) -> int:
         file_external_locals = external_locals | extract_external_locals(file_config)
         file_severities = dict(rule_severities)
         file_severities.update(extract_rule_severities(file_config))
-        file_presets = {name.lower() for name in extract_presets(file_config)}
-        file_style = style_requested or "style" in file_presets
+        file_style = style_requested
         if _is_sqf_file(f):
             pretokenized = token_cache.get(f)
             if args.fix:

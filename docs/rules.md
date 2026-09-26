@@ -83,8 +83,8 @@ checks pair static registrations with removals in the same file, while dynamic
 handler IDs remain unchecked. Remote execution checks the required argument
 array and Boolean JIP position. Public-variable commands require a literal
 variable-name string so typos and accidental value publication are visible.
-| `W301` | Trailing whitespace when optional style checks are enabled with `--style`. |
-| `W302` | Tab character when optional style checks are enabled with `--style`. |
+| `W301` | Trailing whitespace. |
+| `W302` | Tab character in source indentation. |
 
 ## How cautious is the analysis?
 
@@ -155,7 +155,7 @@ and to report suppressions that no longer match a diagnostic. Use
 `--baseline PATH` to carry known findings between CI runs; baseline entries use
 the same stable fingerprints emitted in SARIF.
 
-Use `--style` to enable optional whitespace rules `W301` (trailing whitespace)
-and `W302` (tab characters). Use `--sarif` for SARIF 2.1.0 output with stable
+Whitespace rules `W301` (trailing whitespace) and `W302` (tab characters) are
+enabled by default; use `--no-style` to disable them. Use `--sarif` for SARIF 2.1.0 output with stable
 rule metadata, severity, messages, and source locations for CI and code
 scanning systems.

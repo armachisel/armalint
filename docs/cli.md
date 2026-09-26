@@ -27,7 +27,7 @@ The most useful options are:
 | `--max-issues N` | Stop after reporting at most `N` diagnostics. |
 | `--check-suppressions` | Report inline suppressions without reasons or matching diagnostics. |
 | `--baseline PATH` | Suppress findings whose fingerprints are recorded in a JSON baseline. |
-| `--style` | Enable optional style diagnostics (`W301`/`W302`). |
+| `--style` / `--no-style` | Enable style diagnostics by default, or disable `W301`/`W302`. |
 | `--fix` | Apply safe style fixes for trailing whitespace and tabs. |
 | `--fix-preview` | Emit machine-readable safe edits without modifying files. |
 | `--diff [REF]` | Report only findings on changed lines relative to `REF` (default `HEAD`). |

@@ -50,7 +50,7 @@ feedback.
 ## Usage
 
 ```text
-python -m armalint [--json|--sarif] [--style] [--ignore GLOB] [--ignore-rule RULE] [--version] <paths>...
+python -m armalint [--json|--sarif] [--style|--no-style] [--ignore GLOB] [--ignore-rule RULE] [--version] <paths>...
 python -m armalint --file PATH [--json|--sarif]
 python -m armalint --snippet SOURCE [--json|--sarif]
 python -m armalint --mission PATH --snippet SOURCE [--json|--sarif]
@@ -71,7 +71,7 @@ armalint-lsp
 | `--max-issues N` | Stop after reporting at most `N` diagnostics.                       |
 | `--check-suppressions` | Report unjustified or unused inline suppressions.              |
 | `--baseline PATH` | Suppress diagnostics recorded in a JSON baseline.                 |
-| `--style`       | Enable optional whitespace diagnostics (`W301`, `W302`).             |
+| `--style` / `--no-style` | Enable whitespace diagnostics by default, or disable `W301`/`W302`. |
 | `--fix`         | Apply safe style fixes (trailing whitespace and tabs) in place.      |
 | `--fix-preview` | Emit safe autofix edits as JSON without changing files.             |
 | `--diff [REF]`  | Report only findings on lines changed from `REF` (default `HEAD`).  |
@@ -209,8 +209,8 @@ severities, is in [`docs/rule-catalog.md`](docs/rule-catalog.md).
 | W229 | warning  | An inline suppression is missing a justification.                  |
 | W230 | info     | An inline suppression does not match any diagnostic.               |
 | W231 | warning  | A suppression directive is malformed or names an unknown rule.    |
-| W301 | warning  | Trailing whitespace when `--style` is enabled.                 |
-| W302 | warning  | Tab character when `--style` is enabled.                       |
+| W301 | warning  | Trailing whitespace.                                           |
+| W302 | warning  | Tab character in source indentation.                          |
 
 `W203` checks common built-in commands, binary commands, indexed function
 signatures, and extracted mod or mission signatures. It infers types from

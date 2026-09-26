@@ -338,6 +338,8 @@ def main() -> int:
         preview = run_cli(str(style_file), "--fix-preview")
         preview_payload = json.loads(preview.stdout or "[]")
         preview_ok = preview.returncode == 0 and preview_payload and "edits" in preview_payload[0] and "  \n" in style_file.read_text(encoding="utf-8")
+        disabled = run_cli(str(style_file), "--no-style", "--json")
+        disabled_ok = disabled.returncode == 0 and json.loads(disabled.stdout or "[]") == []
         fixed = run_cli(str(style_file), "--fix", "--style", "--json")
         fixed_payload = json.loads(fixed.stdout or "[]")
         fix_ok = fixed.returncode == 0 and not fixed_payload and "  \n" not in style_file.read_text(encoding="utf-8") and "\t" not in style_file.read_text(encoding="utf-8")
@@ -361,8 +363,8 @@ def main() -> int:
         max_issues_ok = limited.returncode == 1 and len(limited_payload) == 1
     except json.JSONDecodeError:
         max_issues_ok = False
-    policy_ok = preview_ok and fix_ok and warning_fail and no_fail and diff_ok and annotation_ok and checkstyle_ok and timings_ok and max_issues_ok
-    print(f"[{'PASS' if policy_ok else 'FAIL'}] preview={preview_ok} fix={fix_ok} warning={warning_fail} none={no_fail} diff={diff_ok} annotations={annotation_ok} checkstyle={checkstyle_ok} timings={timings_ok} max_issues={max_issues_ok}")
+    policy_ok = preview_ok and disabled_ok and fix_ok and warning_fail and no_fail and diff_ok and annotation_ok and checkstyle_ok and timings_ok and max_issues_ok
+    print(f"[{'PASS' if policy_ok else 'FAIL'}] preview={preview_ok} disabled={disabled_ok} fix={fix_ok} warning={warning_fail} none={no_fail} diff={diff_ok} annotations={annotation_ok} checkstyle={checkstyle_ok} timings={timings_ok} max_issues={max_issues_ok}")
     if policy_ok:
         passed += 1
     else:

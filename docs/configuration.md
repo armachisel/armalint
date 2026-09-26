@@ -72,7 +72,9 @@ built-in registry. Severity values are `error`, `warning`, `info`, and `off`; th
 `ruleSeverity` and `ignorePatterns` are accepted.
 
 Supported presets are `recommended`, `strict`, `style`, and `performance`.
-`strict` promotes warnings to errors, while `style` enables whitespace rules.
+`strict` promotes warnings to errors. Whitespace rules are enabled by default;
+the command-line `--no-style` option disables them for a run. The `style`
+named preset remains available for selecting `W301` and `W302` explicitly.
 The `--rules` option can select individual codes or categories (`syntax`,
 `correctness`, `flow`, `suppression`, and `style`) for focused checks.
 Configuration files are schema-checked; unknown keys, rule codes, presets, and
