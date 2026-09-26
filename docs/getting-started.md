@@ -58,6 +58,10 @@ entry from both `mods` and `dependencies` into the project's
 `.armalint/dependencies` directory. Without that flag, those entries must
 already be present in a discovered Steam Workshop library.
 
+Workshop names and IDs identify downloads; addon dependencies use Arma patch
+names from `CfgPatches`. You can get those names from `mission.sqm`, the
+updater's `required addon` output, or an addon's `config.cpp`/`config.bin`.
+
 SteamCMD uses a separate login session from the desktop Steam client. Signing
 in to SteamCMD can log the desktop Steam client out on the same machine, so
 save any active Steam work and be prepared to sign in again afterward.

@@ -181,6 +181,24 @@ def extract_function_tags(config: dict) -> set[str]:
     return tags
 
 
+def extract_known_commands(config: dict) -> set[str]:
+    """Read exact project-defined command names used by W202.
+
+    These names extend the command registry for the current project only;
+    they do not modify Armalint's built-in command database.
+    """
+    raw = config.get("knownCommands", config.get("known_commands", []))
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return set()
+    return {
+        item.strip().lower()
+        for item in raw
+        if isinstance(item, str) and item.strip()
+    }
+
+
 def extract_function_type_signatures(config: dict) -> dict[str, list[str]]:
     """Read optional ``functionTypes`` argument types from project config.
 
@@ -323,11 +341,11 @@ def validate_config(config: object) -> list[str]:
     if not isinstance(config, dict):
         return ["configuration root must be a JSON object"]
     allowed = {
-        "mods", "dependencies", "requiredAddons", "functionTags", "functionTypes", "functionReturns", "ignoreRules", "externalLocals", "externalLocal",
+        "mods", "dependencies", "requiredAddons", "functionTags", "knownCommands", "known_commands", "functionTypes", "functionReturns", "ignoreRules", "externalLocals", "externalLocal",
         "ignore", "ignorePatterns", "severity", "ruleSeverity", "presets", "preset", "plugins",
     }
     errors = [f"unknown configuration key: {key}" for key in config if key not in allowed]
-    list_keys = ("dependencies", "requiredAddons", "functionTags", "ignoreRules", "externalLocals", "externalLocal", "ignore", "ignorePatterns", "presets", "plugins")
+    list_keys = ("dependencies", "requiredAddons", "functionTags", "knownCommands", "known_commands", "ignoreRules", "externalLocals", "externalLocal", "ignore", "ignorePatterns", "presets", "plugins")
     for key in list_keys:
         if key in config and not isinstance(config[key], (list, tuple, str)):
             errors.append(f"{key} must be a string or array")
@@ -427,6 +445,7 @@ if __name__ == "__main__":
         assert extract_function_return_types({
             "functionReturns": {"ALT_fnc_distanceToRoute": "Number", "bad": 3}
         }) == {"alt_fnc_distancetoroute": "Number"}
+        assert extract_known_commands({"knownCommands": [" MyCommand ", "", 3]}) == {"mycommand"}
         assert extract_ignored_rules({"ignoreRules": ["w206", " W101 ", "bad", 3]}) == {"W206", "W101"}
         assert extract_external_locals({"externalLocals": ["_addon", " _value ", "bad-name", 3]}) == {"_addon", "_value"}
         assert extract_rule_severities({"severity": {"w206": "error", "W209": "off", "bad": "warning", 3: "info"}}) == {"W206": "error", "W209": "off"}

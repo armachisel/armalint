@@ -20,12 +20,24 @@ from armalint.locals import check_unused_locals_text
 from armalint.sqf_contracts import check_sqf_contracts_text
 from armalint.value_flow import check_value_flow_text
 from armalint.preprocessor_checks import check_preprocessor
+from armalint.commands import check_commands_text
+from armalint.config import extract_known_commands
 from armalint.linter import build_symbol_index
 from armalint.collect import collect_description_cfg_functions
 from armalint.symbols import SymbolIndex
 from armalint.mods import expand_core_function_aliases
 from armalint.__main__ import _collect_files
 from armalint.diagnostic import Diagnostic, Severity
+
+
+def _project_known_commands() -> bool:
+    index = SymbolIndex()
+    for name in extract_known_commands({"knownCommands": ["Vendor_Command"]}):
+        index.add_command(name)
+    return (
+        not check_commands_text("vendor_command _value;", index)
+        and any(item.code == "W202" for item in check_commands_text("vendor_comand _value;", index))
+    )
 
 
 def _ast_wait_until() -> bool:
@@ -661,6 +673,7 @@ CASES = (
     ("conservative unused locals", _unused_locals),
     ("SQF API contract checks", _sqf_contracts),
     ("semantic and preprocessor diagnostics", _semantic_and_preprocessor_diagnostics),
+    ("project known commands", _project_known_commands),
     ("postfix command syntax", _postfix_command_syntax),
     ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),

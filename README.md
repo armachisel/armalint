@@ -300,9 +300,24 @@ file at the project root:
 }
 ```
 
+Projects that expose exact command-like helpers can add them to the local W202
+registry without changing Armalint's built-in command list:
+
+```json
+{
+  "knownCommands": ["vendor_command", "another_command"]
+}
+```
+
+Names are matched case-insensitively and exactly. This only suppresses the
+unknown-command check; it does not add argument or return-type information.
+
 Declare external addon patches in `dependencies`. For example, projects that
 use CBA macros should list the relevant `cba_*` patches; Armalint then reports
 an undeclared CBA dependency instead of silently accepting copied macro code.
+These are `CfgPatches` names such as `cba_main`, not Workshop display names or
+numeric Workshop IDs. Find them in `mission.sqm`, updater `required addon`
+output, or the addon's `config.cpp`/`config.bin`.
 
 The mod updater also extracts argument types from explicit `params` and `param` validators
 in installed mod function source. Run `python -m armalint.update` to write
@@ -342,7 +357,7 @@ can override discovery with an explicit path:
 python -m armalint --config path/to/armalint.json <paths>
 ```
 
-Configuration also supports `presets` (`recommended`, `strict`, `style`, and
+Configuration also supports `knownCommands`, `presets` (`recommended`, `strict`, `style`, and
 `performance`), rule categories, and project Python plugins. See the
 [configuration guide](docs/configuration.md) and [plugin guide](docs/plugins.md)
 for the schemas and examples.

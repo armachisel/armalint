@@ -12,7 +12,7 @@ import sys
 from typing import Any
 
 from .argument_types import _COMMAND_ARITIES, _COMMAND_RETURN_TYPES
-from .config import extract_dependencies, find_config, find_mod_cache, find_mod_type_cache, load_config_file
+from .config import extract_dependencies, extract_known_commands, find_config, find_mod_cache, find_mod_type_cache, load_config_file
 from .known import KNOWN_COMMANDS, KNOWN_FUNCTIONS
 from .linter import build_symbol_index, lint_file, lint_text
 from .mods import load_mod_cache, load_mod_type_cache, load_mod_metadata_cache, expand_core_function_aliases, MOD_METADATA_CACHE_FILENAME
@@ -51,6 +51,11 @@ def _context(mission: str | None):
             files.extend(os.path.join(current, n) for n in names if n.lower().endswith((".sqf", ".hpp", ".ext")))
         index = build_symbol_index(sorted(files))
         index.cba_declared |= any(dep.startswith("cba_") for dep in extract_dependencies(config))
+    if extract_known_commands(config):
+        from .symbols import SymbolIndex
+        index = index or SymbolIndex()
+        for name in extract_known_commands(config):
+            index.add_command(name)
     if cache:
         from .symbols import SymbolIndex
         index = index or SymbolIndex()

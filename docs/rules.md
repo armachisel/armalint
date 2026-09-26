@@ -38,7 +38,7 @@ mistakes are found.
 | `W104` | Code is unreachable after an unconditional `exitWith`, `throw`, `breakOut`, `continue`, or a pair of terminating branches. |
 | `W206` | An `if` condition is a literal value and therefore always has the same truth value. |
 | `W201` | A name used as a `call` or `spawn` target is not in the built-in, mission, or indexed function registry. |
-| `W202` | A direct command name is not in the built-in command registry. |
+| `W202` | A direct command name is not in the built-in or project-configured command registry. |
 | `W203` | A known command or indexed function receives an argument whose statically inferred type is incompatible with its signature. Built-in overloads and nested command results are included; unknown expressions are left unchecked. |
 | `W204` | A statically indexed function receives more arguments than its indexed signature declares. Shorter calls are allowed because extracted signatures may include optional parameters. |
 | `W205` | `call` or `spawn` is targeting a literal value known not to contain code. |

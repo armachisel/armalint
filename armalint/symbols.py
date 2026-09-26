@@ -2,7 +2,8 @@
 
 Collects mission-defined function tags and full function names so the W201
 unknown-function checker can recognize user-defined functions instead of
-flagging them as false positives.
+flagging them as false positives. It also holds project-defined command names
+used by W202.
 
 Names are stored lowercased because SQF identifiers are case-insensitive.
 """
@@ -19,11 +20,12 @@ def _normalize(name: str) -> str:
 
 @dataclass
 class SymbolIndex:
-    """Index of mission-defined function tags and full function names."""
+    """Index of project-defined functions, commands, and preprocessor macros."""
 
     tags: set[str] = field(default_factory=set)
     functions: set[str] = field(default_factory=set)
     macros: set[str] = field(default_factory=set)
+    commands: set[str] = field(default_factory=set)
     cba_declared: bool = False
 
     def add_tag(self, tag: str) -> None:
@@ -36,6 +38,15 @@ class SymbolIndex:
 
     def add_macro(self, name: str) -> None:
         self.macros.add(_normalize(name))
+
+    def add_command(self, name: str) -> None:
+        """Register an exact project-defined command for W202."""
+        self.commands.add(_normalize(name))
+
+    def is_known_command(self, name: str) -> bool:
+        """True when *name* is a built-in or project-defined command."""
+        from .known import is_known_command
+        return _normalize(name) in self.commands or is_known_command(name)
 
     def is_known_function(self, name: str) -> bool:
         """True if ``name`` is a known mission function (case-insensitive).
@@ -67,7 +78,7 @@ class SymbolIndex:
         return len(self.tags) + len(self.functions)
 
     def to_json(self) -> dict:
-        return {"tags": sorted(self.tags), "functions": sorted(self.functions), "macros": sorted(self.macros), "cba_declared": self.cba_declared}
+        return {"tags": sorted(self.tags), "functions": sorted(self.functions), "macros": sorted(self.macros), "commands": sorted(self.commands), "cba_declared": self.cba_declared}
 
     @classmethod
     def from_json(cls, data: dict) -> "SymbolIndex":
@@ -75,6 +86,7 @@ class SymbolIndex:
             tags={str(x) for x in data.get("tags", []) if isinstance(x, str)},
             functions={str(x) for x in data.get("functions", []) if isinstance(x, str)},
             macros={str(x) for x in data.get("macros", []) if isinstance(x, str)},
+            commands={str(x) for x in data.get("commands", []) if isinstance(x, str)},
             cba_declared=bool(data.get("cba_declared", False)),
         )
 

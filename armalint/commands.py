@@ -62,6 +62,8 @@ def check_commands(
             continue
 
         name = tok.value.lower()
+        if index is not None and index.is_known_command(name):
+            continue
         if is_known(name) or (index is not None and index.is_known_macro(name)):
             continue
         if index is not None and index.is_known_function(name):
@@ -109,6 +111,10 @@ if __name__ == "__main__":
     assert check_commands_text("player setPos [0,0,0];") == []
     assert check_commands_text("_r = 1; hint str _r;") == []
     assert check_commands_text("myGlobalVar setPos [0,0,0];") == []
+    project_index = SymbolIndex()
+    project_index.add_command("vendor_command")
+    assert check_commands_text("vendor_command _value;", project_index) == []
+    assert check_commands_text("vendor_comand _value;", project_index)
     assert check_commands_text("ceil (ALT_postSuccessRecordingEndsAt - diag_tickTime);") == []
     # CBA/addon preprocessor helpers can remain unresolved when their external
     # header is outside the project being linted.

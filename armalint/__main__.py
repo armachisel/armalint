@@ -18,6 +18,7 @@ import time
 from . import __version__
 from .config import (
     extract_function_tags,
+    extract_known_commands,
     extract_function_type_signatures,
     extract_function_return_types,
     extract_ignored_rules,
@@ -532,6 +533,7 @@ def _main(argv: list[str] | None = None) -> int:
     # Resolve mod function tags from project config, then register them on the
     # symbol index so mod-provided functions are not reported as unknown.
     config_tags: set[str] = set()
+    known_commands: set[str] = set()
     function_signatures: dict[str, list[str]] = {}
     function_return_types: dict[str, str] = {}
     ignored_rules: set[str] = {rule.upper() for rule in args.ignore_rule}
@@ -544,6 +546,7 @@ def _main(argv: list[str] | None = None) -> int:
     if args.config:
         loaded_config = load_checked(args.config)
         config_tags = extract_function_tags(loaded_config)
+        known_commands |= extract_known_commands(loaded_config)
         declared_dependencies |= extract_dependencies(loaded_config)
         function_signatures = extract_function_type_signatures(loaded_config)
         function_return_types = extract_function_return_types(loaded_config)
@@ -556,6 +559,7 @@ def _main(argv: list[str] | None = None) -> int:
             if cfg_path:
                 loaded_config = load_checked(cfg_path)
                 config_tags |= extract_function_tags(loaded_config)
+                known_commands |= extract_known_commands(loaded_config)
                 declared_dependencies |= extract_dependencies(loaded_config)
                 for name, types in extract_function_type_signatures(loaded_config).items():
                     function_signatures.setdefault(name, types)
@@ -567,6 +571,7 @@ def _main(argv: list[str] | None = None) -> int:
     for config_path in sorted(set(file_configs.values())):
         loaded_config = load_checked(config_path)
         config_tags |= extract_function_tags(loaded_config)
+        known_commands |= extract_known_commands(loaded_config)
         declared_dependencies |= extract_dependencies(loaded_config)
         external_locals |= extract_external_locals(loaded_config)
         for name, types in extract_function_type_signatures(loaded_config).items():
@@ -718,6 +723,8 @@ def _main(argv: list[str] | None = None) -> int:
     included_files = _collect_included_files(files, source_cache)
     for tag in config_tags:
         index.add_tag(tag)
+    for command in known_commands:
+        index.add_command(command)
 
     # Also load mod function caches (written by ``python -m armalint.update``)
     # so mod-provided functions are recognized by exact name. Caches are

@@ -18,6 +18,7 @@ plugins; indexed function metadata is combined across the files being linted.
   "mods": ["https://steamcommunity.com/sharedfiles/filedetails/?id=123456789"],
   "dependencies": ["cba_main", "cba_events"],
   "functionTags": ["ace_medical"],
+  "knownCommands": ["vendor_command"],
   "functionTypes": {"ALT_fnc_route": ["Object", "String"]},
   "functionReturns": {"ALT_fnc_route": "Array"},
   "ignoreRules": ["W206"],
@@ -32,6 +33,22 @@ plugins; indexed function metadata is combined across the files being linted.
 especially useful for preprocessor providers such as CBA: Armalint only treats
 CBA macros as available when a `cba_*` dependency is declared. `requiredAddons`
 is accepted as an equivalent name for projects that mirror Arma config syntax.
+
+Use the addon patch name from Arma's `CfgPatches` config, not the Workshop
+display name or numeric Workshop ID. The patch name is usually visible in the
+updater output after `required addon`, in the mission's `mission.sqm`
+`addOns[]`/`addOnsAuto[]` entries, or in the addon's `config.cpp`/rapified
+`config.bin` under `class CfgPatches`. For example, CBA publishes patches such
+as `cba_main` and `cba_events`, which is why a project using those CBA headers
+declares them by those names. A Workshop entry belongs under `mods` (or a
+dependency object with a `workshopId`); its display name is not the dependency
+name used for addon resolution.
+
+If you do not know the patch name, run the updater for the mission and inspect
+the unresolved `required addon` warnings, or inspect the installed PBO with an
+Arma config viewer. Declare the patch that contains the macros or functions the
+project actually uses, then run the updater again so its headers and symbols
+are indexed.
 
 Dependencies may also point at an unpacked addon checkout. The path is relative
 to `armalint.json`; Armalint scans its `addons/` directories and resolves their
@@ -49,7 +66,9 @@ that builds its own optional addons:
 `functionTags` is a broad fallback. Prefer an updater-generated exact index
 when possible, because a tag also accepts misspelled names. `functionTypes`
 and `functionReturns` document project contracts that cannot be extracted from
-source. Severity values are `error`, `warning`, `info`, and `off`; the aliases
+source. `knownCommands` adds exact, case-insensitive command names to the
+project's W202 registry; it does not add command signatures or modify the
+built-in registry. Severity values are `error`, `warning`, `info`, and `off`; the aliases
 `ruleSeverity` and `ignorePatterns` are accepted.
 
 Supported presets are `recommended`, `strict`, `style`, and `performance`.
