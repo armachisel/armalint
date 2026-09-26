@@ -147,6 +147,7 @@ _RETURN_TYPES = {
 # unary argument.
 _COMMAND_RETURN_TYPES = {
     "getdir": "Number", "getnumber": "Number", "gettext": "String",
+    "getslotitemname": "String",
     "position": "Array",
     "getpos": "Array", "getposasl": "Array", "getposatl": "Array",
     "getposworld": "Array", "getposvisual": "Array",
@@ -188,6 +189,7 @@ _COMMAND_RETURN_TYPES = {
     "getpilotcameratarget": "Object", "cursorobject": "Object", "cursortarget": "Object",
     "finddisplay": "Display", "displayctrl": "Control",
     "allplayers": "Array", "allunits": "Array", "allvehicles": "Array",
+    "allmines": "Array", "addaction": "Number",
     "allgroups": "Array", "allmissionobjects": "Array", "alldead": "Array",
     "alldeadmen": "Array", "allturrets": "Array", "allsimpleobjects": "Array",
     "allstaticobjects": "Array", "allstaticweapons": "Array", "allair": "Array",
@@ -362,6 +364,13 @@ for _inventory_command in ("canadditemtobackpack", "canadditemtouniform", "canad
 _BINARY_SIGNATURES["lockcargo"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
 _SIGNATURES["allowcrewinimmobile"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
 _BINARY_SIGNATURES["allowcrewinimmobile"] = (frozenset(("Boolean", "Array")), "Boolean or Array")
+_SIGNATURES["enablegunlights"] = (frozenset(("Boolean", "String")), "Boolean or String")
+_SIGNATURES["dostop"] = (frozenset(("Object", "Array")), "Object or Array")
+_SIGNATURES["hcleader"] = (frozenset(("Group", "Object")), "Group or Object")
+_SIGNATURES["removeaction"] = (frozenset(("Number", "Object")), "Number or Object")
+_BINARY_SIGNATURES["enablegunlights"] = (frozenset(("Boolean", "String")), "Boolean or String")
+_BINARY_SIGNATURES["hcleader"] = (frozenset(("Group", "Object")), "Group or Object")
+_BINARY_SIGNATURES["removeaction"] = (frozenset(("Number", "Object")), "Number or Object")
 # Arma 3 also accepts the forced-flight form ``[altitude, force]`` for
 # ``flyInHeight`` alongside the scalar altitude form.
 _SIGNATURES["flyinheight"] = (frozenset(("Number", "Array")), "Number or Array")
@@ -452,7 +461,7 @@ def _infer_ast_expression(expr: Expression | None, variables: dict[str, str], fu
                     for item in selected_array.items
                 ]
                 item_types = {item_type for item_type in inferred_items if item_type}
-                return next(iter(item_types)) if inferred_items and all(item_type == inferred_items[0] for item_type in inferred_items) else None
+                return next(iter(item_types)) if item_types and inferred_items and all(item_type == inferred_items[0] for item_type in inferred_items) else None
             if isinstance(expr.right, LiteralExpression) and expr.right.value.type == "number":
                 try:
                     index = int(float(expr.right.value.value))
@@ -626,6 +635,8 @@ def _infer_expression(
                     index = int(float(tokens[after_literal + 1].value))
                     if 0 <= index < len(items):
                         return _simple_item_type(items[index], variables)
+            if (after_literal < rhs_end and tokens[after_literal].value.lower() == "creategroup"):
+                return "Group"
             if (after_literal >= rhs_end
                     or tokens[after_literal].value.lower() != "select"):
                 return "Array"
@@ -688,6 +699,9 @@ def _infer_expression(
             if (any(t.value.lower() == "finddisplay" for t in inner_tokens)
                     and any(t.value.lower() == "displayctrl" for t in tokens[close_probe + 1:rhs_end])):
                 return "Control"
+            if any(t.value.lower() in {"getpos", "getposatl", "getposasl", "getposworld", "getposvisual"}
+                   for t in inner_tokens):
+                return "Array"
     # A code block on the left of ``count`` is the filter form and the
     # command still returns a numeric count.
     if (start < rhs_end and tokens[start].type == "lbrace"
