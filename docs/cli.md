@@ -75,6 +75,13 @@ Use `--max-issues N` when a first pass is too noisy. Armalint stops after
 the file that reaches the limit and reports only the first `N` diagnostics;
 the normal `--fail-on` exit policy still applies.
 
+If early warnings hide a later finding, lint that file directly or temporarily
+ignore the noisy rule, for example:
+
+```powershell
+armalint --ignore-rule W302 path/to/replay_playback.sqf
+```
+
 Use `--file` when an explicit single-file option is more convenient than a
 positional path. Add `--mission` to resolve mission functions and signatures
 without linting every mission file. A snippet cannot be combined with file or

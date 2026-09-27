@@ -209,6 +209,7 @@ severities, is in [`docs/rule-catalog.md`](docs/rule-catalog.md).
 | W229 | warning  | An inline suppression is missing a justification.                  |
 | W230 | info     | An inline suppression does not match any diagnostic.               |
 | W231 | warning  | A suppression directive is malformed or names an unknown rule.    |
+| W233 | warning  | Nested `select` may index an empty or short array element.        |
 | W301 | warning  | Trailing whitespace.                                           |
 | W302 | warning  | Tab character in source indentation.                          |
 

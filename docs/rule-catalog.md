@@ -50,5 +50,6 @@ This file is generated from `armalint.rules`. Do not edit it by hand.
 | `W230` | info | suppression | Suppression does not match a diagnostic |
 | `W231` | warning | correctness | Malformed or unknown suppression directive |
 | `W232` | warning | correctness | Non-serializable value stored in a namespace variable |
+| `W233` | warning | correctness | Nested `select` may index an empty or short array element |
 | `W301` | warning | style | Trailing whitespace |
 | `W302` | warning | style | Tab character in source indentation |

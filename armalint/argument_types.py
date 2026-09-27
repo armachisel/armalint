@@ -2465,6 +2465,50 @@ def check_argument_types(
                    for side in (left, right) if 0 <= side < len(tokens)):
                 continue
             diags.append(Diagnostic(Severity.WARNING, _COMPARISON_CODE, f"comparison cannot match {actual_left} with {actual_right}", tok.line, tok.column))
+    # A nested indexed select such as ``(_frames select _index) select 1``
+    # assumes every selected element is a tuple with at least two fields.
+    # SQF raises at runtime when a malformed/empty frame reaches that code;
+    # ordinary argument-type inference cannot express that shape constraint.
+    # Flag the dynamic form so callers can add an element-length guard.
+    for i, tok in enumerate(tokens):
+        if tok.type != "keyword" or tok.value.lower() != "select":
+            continue
+        right = i + 1
+        while right < len(tokens) and tokens[right].type in _TRIVIA:
+            right += 1
+        if right >= len(tokens) or tokens[right].type != "number":
+            continue
+        left = i - 1
+        while left >= 0 and tokens[left].type in _TRIVIA:
+            left -= 1
+        if left < 0 or tokens[left].type != "rparen":
+            continue
+        depth = 0
+        opening = None
+        for cursor in range(left, -1, -1):
+            if tokens[cursor].type == "rparen":
+                depth += 1
+            elif tokens[cursor].type == "lparen":
+                depth -= 1
+                if depth == 0:
+                    opening = cursor
+                    break
+        if opening is None:
+            continue
+        inner = [item for item in tokens[opening + 1:left] if item.type not in _TRIVIA]
+        select_at = next((pos for pos, item in enumerate(inner)
+                          if item.type == "keyword" and item.value.lower() == "select"), None)
+        if select_at is None or select_at == 0:
+            continue
+        source = inner[0]
+        if source.type not in ("local", "ident", "keyword"):
+            continue
+        diags.append(Diagnostic(
+            Severity.WARNING, "W233",
+            "nested select may index an empty or short array element; guard its length",
+            tok.line, tok.column,
+        ))
+
     filtered_diags: list[Diagnostic] = []
     for diagnostic in diags:
         if diagnostic.code == _CODE and diagnostic.message.startswith("selectRandom expects Array, got Number"):

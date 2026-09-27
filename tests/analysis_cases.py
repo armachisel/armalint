@@ -163,6 +163,11 @@ def _ast_grouped_select_type() -> bool:
     return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
 
 
+def _nested_select_bounds_warning() -> bool:
+    diagnostics = check_argument_types_text('private _frame = (_frames select _index) select 1;')
+    return any(d.code == "W233" for d in diagnostics)
+
+
 def _ast_namespace_default_type() -> bool:
     diagnostics = check_argument_types_text('_value = missionNamespace getVariable ["flag", 1]; allowDamage _value;')
     return any(d.code == "W203" and "allowDamage" in d.message for d in diagnostics)
@@ -655,6 +660,7 @@ CASES = (
     ("AST switch case condition", _ast_switch_case_condition),
     ("switch case selectRandom type", _switch_case_select_random_type),
     ("AST grouped select type", _ast_grouped_select_type),
+    ("nested select bounds warning", _nested_select_bounds_warning),
     ("AST namespace default type", _ast_namespace_default_type),
     ("AST grouped namespace default type", _ast_grouped_namespace_default_type),
     ("non-code call target", _non_code_call_target),

@@ -83,6 +83,7 @@ checks pair static registrations with removals in the same file, while dynamic
 handler IDs remain unchecked. Remote execution checks the required argument
 array and Boolean JIP position. Public-variable commands require a literal
 variable-name string so typos and accidental value publication are visible.
+| `W233` | Nested `select` may index an empty or short array element; guard the selected element's length. |
 | `W301` | Trailing whitespace. |
 | `W302` | Tab character in source indentation. |
 
