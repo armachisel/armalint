@@ -164,8 +164,9 @@ def _ast_grouped_select_type() -> bool:
 
 
 def _nested_select_bounds_warning() -> bool:
-    diagnostics = check_argument_types_text('private _frame = (_frames select _index) select 1;')
-    return any(d.code == "W233" for d in diagnostics)
+    diagnostics = check_argument_types_text('params ["_frames", "_index"]; private _frame = (_frames select _index) select 1;')
+    safe = check_argument_types_text('private _frame = (_frames select 0) select 1;')
+    return any(d.code == "W233" for d in diagnostics) and not any(d.code == "W233" for d in safe)
 
 
 def _ast_namespace_default_type() -> bool:

@@ -83,9 +83,9 @@ checks pair static registrations with removals in the same file, while dynamic
 handler IDs remain unchecked. Remote execution checks the required argument
 array and Boolean JIP position. Public-variable commands require a literal
 variable-name string so typos and accidental value publication are visible.
-| `W233` | Nested `select` may index an empty or short array element; guard the selected element's length. |
-| `W301` | Trailing whitespace. |
-| `W302` | Tab character in source indentation. |
+| `W233` | Dynamic nested `select` on a parameter may index an empty or short array element; guard the selected element's length. |
+| `W301` | Trailing whitespace; the diagnostic reports its character position. |
+| `W302` | Tab character in source indentation; the diagnostic reports its character position. |
 
 ## How cautious is the analysis?
 

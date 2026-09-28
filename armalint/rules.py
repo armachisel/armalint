@@ -47,7 +47,7 @@ RULES = {
     "W230": ("info", "Suppression does not match a diagnostic"),
     "W231": ("warning", "Malformed or unknown suppression directive"),
     "W232": ("warning", "Non-serializable value stored in a namespace variable"),
-    "W233": ("warning", "Nested select may index an empty or short array element"),
+    "W233": ("warning", "Dynamic nested select on a parameter may index an empty or short array element"),
     "W301": ("warning", "Trailing whitespace"),
     "W302": ("warning", "Tab character in source indentation"),
 }

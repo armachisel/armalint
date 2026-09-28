@@ -209,9 +209,9 @@ severities, is in [`docs/rule-catalog.md`](docs/rule-catalog.md).
 | W229 | warning  | An inline suppression is missing a justification.                  |
 | W230 | info     | An inline suppression does not match any diagnostic.               |
 | W231 | warning  | A suppression directive is malformed or names an unknown rule.    |
-| W233 | warning  | Nested `select` may index an empty or short array element.        |
-| W301 | warning  | Trailing whitespace.                                           |
-| W302 | warning  | Tab character in source indentation.                          |
+| W233 | warning  | Dynamic nested `select` on a parameter may index an empty or short array element. |
+| W301 | warning  | Trailing whitespace; reports the character position.             |
+| W302 | warning  | Tab character in source indentation; reports the character position. |
 
 `W203` checks common built-in commands, binary commands, indexed function
 signatures, and extracted mod or mission signatures. It infers types from

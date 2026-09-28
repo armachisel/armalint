@@ -10,9 +10,11 @@ def check_style(source: str) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for line_number, line in enumerate(source.splitlines(), 1):
         if line.endswith((" ", "\t")):
-            diagnostics.append(Diagnostic(Severity.WARNING, "W301", "trailing whitespace", line_number, len(line.rstrip(" \t")) + 1))
+            column = len(line.rstrip(" \t")) + 1
+            diagnostics.append(Diagnostic(Severity.WARNING, "W301", f"trailing whitespace at character {column}", line_number, column))
         if "\t" in line:
-            diagnostics.append(Diagnostic(Severity.WARNING, "W302", "tab character in source indentation", line_number, line.index("\t") + 1))
+            column = line.index("\t") + 1
+            diagnostics.append(Diagnostic(Severity.WARNING, "W302", f"tab character in source indentation at character {column}", line_number, column))
     return diagnostics
 
 

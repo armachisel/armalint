@@ -1757,7 +1757,26 @@ def check_argument_types(
     code_locals: set[str] = set()
     conditional_locals: set[str] = set()
     element_types: dict[str, str] = {}
+    parameter_names: set[str] = set()
     ast_nodes = ast_nodes if ast_nodes is not None else parse(tokens).statements
+    for position, token in enumerate(tokens):
+        if token.type != "keyword" or token.value.lower() != "params":
+            continue
+        opening = position + 1
+        while opening < len(tokens) and tokens[opening].type in _TRIVIA:
+            opening += 1
+        if opening >= len(tokens) or tokens[opening].type != "lbracket":
+            continue
+        depth = 0
+        for cursor in range(opening, len(tokens)):
+            if tokens[cursor].type == "lbracket":
+                depth += 1
+            elif tokens[cursor].type == "rbracket":
+                depth -= 1
+                if depth == 0:
+                    break
+            elif tokens[cursor].type == "local":
+                parameter_names.add(tokens[cursor].value.lower())
     _collect_param_types(tokens, variables)
     _collect_foreach_element_types(tokens, variables, ast_nodes)
     # Collect simple literal assignments. If the same variable is assigned
@@ -2465,7 +2484,7 @@ def check_argument_types(
                    for side in (left, right) if 0 <= side < len(tokens)):
                 continue
             diags.append(Diagnostic(Severity.WARNING, _COMPARISON_CODE, f"comparison cannot match {actual_left} with {actual_right}", tok.line, tok.column))
-    # A nested indexed select such as ``(_frames select _index) select 1``
+    # A dynamic nested indexed select such as ``(_frames select _index) select 1``
     # assumes every selected element is a tuple with at least two fields.
     # SQF raises at runtime when a malformed/empty frame reaches that code;
     # ordinary argument-type inference cannot express that shape constraint.
@@ -2500,12 +2519,20 @@ def check_argument_types(
                           if item.type == "keyword" and item.value.lower() == "select"), None)
         if select_at is None or select_at == 0:
             continue
+        inner_index = select_at + 1
+        if inner_index >= len(inner) or inner[inner_index].type in ("number", "lbrace"):
+            continue
+        try:
+            if int(float(tokens[right].value)) == 0:
+                continue
+        except (TypeError, ValueError):
+            continue
         source = inner[0]
-        if source.type not in ("local", "ident", "keyword"):
+        if source.type != "local" or source.value.lower() not in parameter_names:
             continue
         diags.append(Diagnostic(
             Severity.WARNING, "W233",
-            "nested select may index an empty or short array element; guard its length",
+            "dynamic nested select on a parameter may index an empty or short array element; guard its length",
             tok.line, tok.column,
         ))
 
