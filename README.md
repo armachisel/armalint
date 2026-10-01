@@ -27,19 +27,34 @@ browse the documentation source in [`docs/`](docs/index.md).
 python -m armalint <paths>
 ```
 
-Install an editable checkout with `uv`:
+For a command that is available from any terminal, install the published tool:
 
 ```powershell
-uv tool install --editable .
+uv tool install armalint
+uv tool update-shell
 ```
 
-For an isolated command-line installation, use `uv` or `pipx`:
+`uv tool update-shell` adds uv's tool directory to your user PATH when needed.
+
+If you are developing Armalint from a checkout, use an editable install so
+source changes take effect immediately:
 
 ```powershell
-uv tool install .
+uv tool install --editable C:\path\to\armalint
+uv tool update-shell
+```
+
+For an isolated install from a local checkout, use `uv` or `pipx`:
+
+```powershell
+uv tool install C:\path\to\armalint
 # or
-pipx install .
+pipx install C:\path\to\armalint
 ```
+
+`py -m pip install --user .` also creates the commands, but pip does
+not add Python's user `Scripts` directory to PATH. Use `uv` or `pipx` for a
+globally available CLI unless you are managing that PATH entry yourself.
 
 The package also installs `armalint-update`, `armalint-update-commands`,
 `armalint-mcp`, `armalint-watch`, and `armalint-lsp` entry points. The updater

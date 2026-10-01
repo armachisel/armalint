@@ -619,6 +619,11 @@ def _infer_expression(
     # mission source file.
     classname_properties = {"magazines", "weapons", "items", "backpacks", "compatibleitems"}
     expression_tokens = tokens[start:rhs_end]
+    # ``getDir`` accepts either objects or position arrays and always returns
+    # a scalar direction.  When both positions are grouped, the generic
+    # expression walker can mistake the first array for the whole result.
+    if any(token.value.lower() == "getdir" for token in expression_tokens):
+        return "Number"
     # Calls to unindexed mission/mod functions have opaque return types.  This
     # check must happen before literal-array inference because the call target
     # is commonly preceded by an argument array.
@@ -773,7 +778,7 @@ def _infer_expression(
             if split:
                 items, _close = split
                 if len(items) > 1:
-                    default_type = _simple_item_type(items[1], variables)
+                    default_type = _getvariable_default_type(items[1], variables)
                     if default_type:
                         return default_type
         return None
@@ -796,6 +801,20 @@ def _infer_expression(
             "allstaticweapons", "allair", "allland", "allman",
             "nearobjects", "nearentities", "nearestobjects",
             "nearestterrainobjects", "nearroads"}):
+        producer = tokens[start].value.lower()
+        select_at = next((idx for idx in range(start + 1, rhs_end)
+                          if tokens[idx].value.lower() == "select"), None)
+        if select_at is not None:
+            probe = select_at + 1
+            while probe < rhs_end and tokens[probe].type in _TRIVIA:
+                probe += 1
+            # ``select { code }`` is the filter form and retains the
+            # collection type. An indexed select narrows a known collection
+            # to its element type (for example ``allPlayers select _index``).
+            if probe < rhs_end and tokens[probe].type != "lbrace":
+                element_type = _ARRAY_ELEMENT_TYPES.get(producer)
+                if element_type:
+                    return element_type
         return _COMMAND_RETURN_TYPES[tokens[start].value.lower()]
     # When a unary command wraps another command (for example
     # ``round (speed vehicle _unit)`` or ``speedMode group player``), the
@@ -1046,7 +1065,7 @@ def _infer_expression(
             if split:
                 items, _close = split
                 if len(items) > 1:
-                    return _simple_item_type(items[1], variables)
+                    return _getvariable_default_type(items[1], variables)
     if start < len(tokens) and tokens[start].value.lower() == "faction":
         # Antistasi's Faction(side) helper shadows the legacy engine command
         # and returns a faction HashMap.  The side form is distinguishable
@@ -1090,7 +1109,7 @@ def _infer_expression(
             if split:
                 items, _close = split
                 if len(items) > 1:
-                    return _simple_item_type(items[1], variables)
+                    return _getvariable_default_type(items[1], variables)
     operand_end = start + 1
     while operand_end < len(tokens) and tokens[operand_end].type in _TRIVIA:
         operand_end += 1
@@ -1124,7 +1143,7 @@ def _infer_expression(
             if split:
                 items, _close = split
                 if len(items) > 1:
-                    return _simple_item_type(items[1], variables)
+                    return _getvariable_default_type(items[1], variables)
     if (tokens[start].type != "lbracket"
             and operand_end < len(tokens)
             and tokens[operand_end].value.lower() in _COMMAND_RETURN_TYPES):
@@ -1254,6 +1273,21 @@ def _simple_item_type(item: list[Token], variables: dict[str, str]) -> str | Non
         return None
     # Find token within full input to allow normal literal and symbol typing.
     return _infer_operand(visible, 0, variables)
+
+
+def _getvariable_default_type(item: list[Token], variables: dict[str, str]) -> str | None:
+    """Infer a namespace lookup conservatively from its fallback value.
+
+    ``getVariable`` defaults such as ``false`` and ``objNull`` are commonly
+    sentinel values for an optional runtime object.  They do not establish
+    the type of the stored value, so treating them as the lookup's type
+    creates false W203 reports when the caller has already established the
+    value's shape (for example with a ``typeName`` guard).
+    """
+    inferred = _simple_item_type(item, variables)
+    if inferred in {"Boolean", "Object"}:
+        return None
+    return inferred
 
 
 def _units_loop_element(tokens: list[Token], index: int) -> bool:

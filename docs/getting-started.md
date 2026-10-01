@@ -6,12 +6,22 @@ from anywhere, or keep a checkout around while working on the linter itself.
 ## Install it as a command
 
 ```powershell
-uv tool install .
+uv tool install armalint
+uv tool update-shell
 ```
 
 That gives you `armalint`, `armalint-update`, `armalint-update-commands`,
-`armalint-mcp`, `armalint-watch`, and `armalint-lsp`. `pipx install .` does the same job if that is what
-you already use.
+`armalint-mcp`, `armalint-watch`, and `armalint-lsp`. `pipx install armalint`
+does the same job if that is what you already use.
+
+`uv tool update-shell` adds uv's tool directory to the user PATH when needed.
+For development from a local checkout, use an editable install so source
+changes take effect immediately:
+
+```powershell
+uv tool install --editable C:\path\to\armalint
+uv tool update-shell
+```
 
 For a reproducible development environment, install `uv`, then run:
 
@@ -25,9 +35,13 @@ The project uses Hatchling as its PEP 621 build backend. Both the wheel and
 source archive include the bundled command and function data needed for normal
 linting; extracted mission and mod caches remain outside the package.
 
-On Windows, `uv tool install .` places the CLI tools, including `armalint-watch`
-and `armalint-lsp`, on the uv tool bin directory. `uv tool upgrade armalint` upgrades a published
-release, while `uv tool install --force .` refreshes a local checkout.
+On Windows, `uv tool install` places the CLI tools, including `armalint-watch`
+and `armalint-lsp`, on the uv tool bin directory. `uv tool upgrade armalint`
+upgrades a published release, while `uv tool install --force --editable
+C:\path\to\armalint` refreshes an existing local tool installation.
+
+`pip --user` is also supported, but pip does not add Python's user `Scripts`
+directory to PATH. Add that directory yourself if you choose that route.
 
 ## Lint a mission
 

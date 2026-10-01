@@ -469,6 +469,16 @@ def _types_common_object_collections() -> bool:
     return True
 
 
+def _types_dynamic_object_collection_select() -> bool:
+    source = (
+        'private _index = 0; '
+        'private _anchor = objNull; '
+        '_anchor = allPlayers select _index; '
+        'isNull _anchor; name _anchor;'
+    )
+    return check_argument_types_text(source) == []
+
+
 def _types_vector_angle() -> bool:
     source = '_aimDir = player weaponDirection "rifle"; _desiredDir = [0,0,0] vectorFromTo [1,0,0]; acos (_aimDir vectorCos _desiredDir);'
     return check_argument_types_text(source) == []
@@ -486,6 +496,27 @@ def _types_hashmap_object_key() -> bool:
 
 def _types_is_equal_type_guard() -> bool:
     return check_argument_types_text('if (_value isEqualType []) then { count _value; };') == []
+
+
+def _types_getvariable_sentinel_defaults() -> bool:
+    source = (
+        'private _targetPos = _leader getVariable ["OT_targetPos", objNull]; '
+        'private _p = _targetPos; _expert commandMove _p; _p set [2, 1]; '
+        '_charge setPosATL _p; '
+        'private _attached = _vehicle getVariable ["OT_Attached", false]; '
+        '_gunner moveInGunner _attached;'
+    )
+    dynamic = check_argument_types_text(source)
+    known_mismatch = check_argument_types_text(
+        'private _value = _namespace getVariable ["name", "fallback"]; sleep _value;'
+    )
+    return (not any(item.code == "W203" for item in dynamic)
+            and any(item.code == "W203" for item in known_mismatch))
+
+
+def _types_getdir_position_result() -> bool:
+    source = 'private _direction = ([1, 2] getDir [3, 4]); player setDir _direction;'
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
 
 
 def _types_mission_record_patterns() -> bool:
@@ -718,10 +749,13 @@ CASES = (
     ("nearest object collection inference", _types_nearest_objects),
     ("near entity collection inference", _types_near_entities),
     ("common object collection inference", _types_common_object_collections),
+    ("dynamic object collection select inference", _types_dynamic_object_collection_select),
     ("vector angle inference", _types_vector_angle),
     ("vector producer inference", _types_vector_producers),
     ("HashMap rejects object key", _types_hashmap_object_key),
     ("isEqualType guard narrowing", _types_is_equal_type_guard),
+    ("dynamic getVariable sentinel defaults", _types_getvariable_sentinel_defaults),
+    ("getDir position result", _types_getdir_position_result),
     ("mission record type patterns", _types_mission_record_patterns),
     ("selected fields stay unknown", _types_selected_fields_stay_unknown),
     ("nested type scope isolated", _types_nested_scope_isolated),
