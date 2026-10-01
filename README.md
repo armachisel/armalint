@@ -64,6 +64,28 @@ feedback.
 
 ## Usage
 
+### Lint a project
+
+For a mission project, update its symbol index first, then lint the mission:
+
+```powershell
+armalint-update --mission C:\path\to\MyMission.Altis --download-dependencies
+armalint C:\path\to\MyMission.Altis
+```
+
+The update reads the mission's addon requirements and indexes the matching
+Arma, DLC, and mod functions, signatures, and macros. That gives the linter
+the project context it needs to distinguish missing functions from functions
+provided by the mission's dependencies. The index is cached per project, so
+later updates reuse unchanged data. If declared Workshop dependencies are not
+installed locally, add `--download-dependencies` to the update command.
+
+For a project that uses only built-in commands and does not need an index yet,
+you can run `armalint` directly. The update step is what enables the complete
+mission and mod checks.
+
+### Detailed usage
+
 ```text
 python -m armalint [--json|--sarif] [--style|--no-style] [--ignore GLOB] [--ignore-rule RULE] [--version] <paths>...
 python -m armalint --file PATH [--json|--sarif]

@@ -43,6 +43,21 @@ C:\path\to\armalint` refreshes an existing local tool installation.
 `pip --user` is also supported, but pip does not add Python's user `Scripts`
 directory to PATH. Add that directory yourself if you choose that route.
 
+## First project check
+
+For a mission project, update its index and then lint it:
+
+```powershell
+armalint-update --mission C:\path\to\MyMission.Altis --download-dependencies
+armalint C:\path\to\MyMission.Altis
+```
+
+The update indexes the Arma, DLC, and mod functions, signatures, and macros
+needed by that mission. Armalint uses the index to recognize dependency-provided
+functions and perform more argument checks; unchanged data is reused from the
+project cache. Add `--download-dependencies` when declared Workshop content is
+not already installed locally.
+
 ## Lint a mission
 
 Point Armalint at a mission folder:
