@@ -46,6 +46,12 @@ declared in `CfgFunctions` inside those addon PBOs. They are indexed in the
 same way as mod functions. You can provide locations explicitly when
 automatic discovery is not enough:
 
+For the base game's `functions_f.pbo`, Armalint also checks canonical
+`fn_<name>.sqf` entries. Some Arma versions do not expose every BIS function
+through a complete readable `CfgFunctions` tree, while the script files still
+provide an authoritative public name. This keeps the index useful across game
+versions without adding individual BIS functions to the catalogue.
+
 ```powershell
 armalint-update `
   --mission C:\path\to\MyMission.Altis `

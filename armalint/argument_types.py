@@ -385,10 +385,10 @@ _BINARY_SIGNATURES["allowcrewinimmobile"] = (frozenset(("Boolean", "Array")), "B
 _SIGNATURES["enablegunlights"] = (frozenset(("Boolean", "String")), "Boolean or String")
 _SIGNATURES["dostop"] = (frozenset(("Object", "Array")), "Object or Array")
 _SIGNATURES["hcleader"] = (frozenset(("Group", "Object")), "Group or Object")
-_SIGNATURES["removeaction"] = (frozenset(("Number", "Object")), "Number or Object")
+_SIGNATURES["removeaction"] = (frozenset(("Number", "Object", "String")), "Number, Object or String")
 _BINARY_SIGNATURES["enablegunlights"] = (frozenset(("Boolean", "String")), "Boolean or String")
 _BINARY_SIGNATURES["hcleader"] = (frozenset(("Group", "Object")), "Group or Object")
-_BINARY_SIGNATURES["removeaction"] = (frozenset(("Number", "Object")), "Number or Object")
+_BINARY_SIGNATURES["removeaction"] = (frozenset(("Number", "Object", "String")), "Number, Object or String")
 # Arma 3 also accepts the forced-flight form ``[altitude, force]`` for
 # ``flyInHeight`` alongside the scalar altitude form.
 _SIGNATURES["flyinheight"] = (frozenset(("Number", "Array")), "Number or Array")

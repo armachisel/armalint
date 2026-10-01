@@ -255,7 +255,19 @@ def _postfix_command_syntax() -> bool:
     from armalint.syntax import check_syntax_text
     bad = check_syntax_text('_nodeIds reverse;')
     good = check_syntax_text('_nodeIds = reverse _nodeIds;')
-    return any(item.code == "E009" for item in bad) and not any(item.code == "E009" for item in good)
+    valid_postfix = check_syntax_text('_ctrlEdit ctrlSetFocus;')
+    return (any(item.code == "E009" for item in bad)
+            and not any(item.code == "E009" for item in good)
+            and not any(item.code == "E009" for item in valid_postfix))
+
+
+def _known_command_and_remove_action_signatures() -> bool:
+    known = check_commands_text('if (isFunction "BIS_fnc_createTask") then {};')
+    bad_is_function = check_argument_types_text('isFunction 1;')
+    remove_action = check_argument_types_text('_npc removeAction "Converse";')
+    return (not known
+            and any(item.code == "W203" for item in bad_is_function)
+            and not any(item.code == "W203" for item in remove_action))
 
 
 def _missing_semicolon_after_apply() -> bool:
@@ -713,6 +725,7 @@ CASES = (
     ("semantic and preprocessor diagnostics", _semantic_and_preprocessor_diagnostics),
     ("project known commands", _project_known_commands),
     ("postfix command syntax", _postfix_command_syntax),
+    ("known isFunction and removeAction signatures", _known_command_and_remove_action_signatures),
     ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),
     ("UI and array-encoded commands stay unchecked", _ui_and_array_encoded_commands_stay_unchecked),

@@ -1333,6 +1333,7 @@ ismultiplayer
 ismultiplayersolo
 isnil
 isnilex
+isfunction
 isnotequalref
 isnotequalto
 isnull

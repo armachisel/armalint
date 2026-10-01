@@ -21,6 +21,7 @@ _MISSING_COMMA = "E006"
 _FOREACH_ORDER = "E007"
 _MISSING_SEMICOLON = "E008"
 _INVALID_POSTFIX_COMMAND = "E009"
+_VALID_POSTFIX_COMMANDS = frozenset(("ctrlsetfocus",))
 
 
 def _significant(tokens: list[Token]) -> list[Token]:
@@ -102,7 +103,8 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
             if (len(statement) == 2 and statement[0].type in ("local", "ident")
                     and statement[0].type != "keyword"
                     and not is_known(statement[0].value)
-                    and statement[1].type == "ident" and is_known(statement[1].value)):
+                    and statement[1].type == "ident" and is_known(statement[1].value)
+                    and statement[1].value.lower() not in _VALID_POSTFIX_COMMANDS):
                 command = statement[1]
                 diags.append(Diagnostic(Severity.ERROR, _INVALID_POSTFIX_COMMAND,
                                         f"invalid postfix command expression; use '{command.value} <value>' or assign its result",

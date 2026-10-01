@@ -393,6 +393,7 @@ def _main(argv: list[str] | None = None) -> int:
     input_paths = [*args.paths, *args.files]
 
     if args.snippet is not None:
+        context_path = None
         context_files = _collect_files(args.mission, args.ignore) if args.mission else []
         if args.mission:
             context_files.extend(_collect_macro_files(args.mission))

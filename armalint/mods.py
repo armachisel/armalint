@@ -585,6 +585,15 @@ def _extract_pbo_functions(pbo_path: str, mod_prefix: str | None = None) -> set[
             pass
 
     tag = _addon_tag(pbo_path)
+    # The base game's functions_f addon contains BIS functions whose public
+    # tag is BIS_fnc_ even though many releases do not expose every function
+    # through a complete/decodable CfgFunctions declaration.  Recover those
+    # declarations from the canonical fn_<name>.sqf files so the index remains
+    # useful across game versions.
+    if tag.lower() == "functions_f":
+        for name in files:
+            if _is_hatg_function_path(name):
+                functions.add(_hatg_function_name("BIS", name))
     hatg_tag = _read_prefix_from_files(files) or mod_prefix or tag
     # Some packed addons publish their API under the full addon tag (for
     # example ``*_main_fnc_*``) while their shared header defines a shorter

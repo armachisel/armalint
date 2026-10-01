@@ -101,6 +101,7 @@ _INLINE_COMMANDS: set[str] = {
     "scriptNull", "isScriptRunning", "canSuspend",
     "preprocessFile", "preprocessFileLineNumbers", "loadFile",
     "select", "count", "forEach", "forEachMember", "find", "findIf",
+    "isFunction",
     "arrayIntersect", "pushBack", "append", "pushBackUnique", "resize",
     "reverse", "sort", "list", "apply", "selectRandom",
     # Variables / namespaces / public

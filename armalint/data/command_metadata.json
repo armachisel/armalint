@@ -24118,6 +24118,28 @@
       "uncertain": false,
       "version": "1.66"
     },
+    "isfunction": {
+      "deprecated": false,
+      "game": "arma3",
+      "name": "isFunction",
+      "syntaxes": [
+        {
+          "params": [
+            {
+              "name": "functionName",
+              "optional": false,
+              "order": 1,
+              "type": "STRING"
+            }
+          ],
+          "returns": [
+            "BOOL"
+          ]
+        }
+      ],
+      "uncertain": false,
+      "version": "1.60"
+    },
     "isnil": {
       "deprecated": false,
       "game": "arma",
@@ -34056,6 +34078,25 @@
               "optional": false,
               "order": 1,
               "type": "NUMBER"
+            }
+          ],
+          "returns": [
+            "NOTHING"
+          ]
+        },
+        {
+          "params": [
+            {
+              "name": "unit",
+              "optional": false,
+              "order": 0,
+              "type": "OBJECT"
+            },
+            {
+              "name": "actionName",
+              "optional": false,
+              "order": 1,
+              "type": "STRING"
             }
           ],
           "returns": [
