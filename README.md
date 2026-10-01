@@ -66,12 +66,19 @@ feedback.
 
 ### Lint a project
 
-For a mission project, update its symbol index first, then lint the mission:
+For a mission project, update its symbol index before the first lint, then lint
+the mission:
 
 ```powershell
 armalint-update --mission C:\path\to\MyMission.Altis --download-dependencies
 armalint C:\path\to\MyMission.Altis
 ```
+
+Run the update again after installing or updating Arma, DLC, or Workshop mods.
+Unchanged roots are cached, so routine updates reuse existing scan results.
+When SteamCMD is needed for `--download-dependencies`, it uses a separate
+login session and may log the desktop Steam client out on the same machine.
+Save active Steam work and be prepared to sign in to the desktop client again.
 
 The update reads the mission's addon requirements and indexes the matching
 Arma, DLC, and mod functions, signatures, and macros. That gives the linter
@@ -80,9 +87,10 @@ provided by the mission's dependencies. The index is cached per project, so
 later updates reuse unchanged data. If declared Workshop dependencies are not
 installed locally, add `--download-dependencies` to the update command.
 
-For a project that uses only built-in commands and does not need an index yet,
-you can run `armalint` directly. The update step is what enables the complete
-mission and mod checks.
+You can run `armalint` directly for syntax checks and the bundled built-in
+command registry. The update step also scans the local Arma installation's
+base-game and selected DLC `Addons` folders, adding their functions, signatures,
+macros, and addon metadata for complete mission and mod checks.
 
 ### Detailed usage
 

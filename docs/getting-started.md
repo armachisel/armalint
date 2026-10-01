@@ -45,18 +45,29 @@ directory to PATH. Add that directory yourself if you choose that route.
 
 ## First project check
 
-For a mission project, update its index and then lint it:
+For a mission project, update its index before the first lint and then lint it:
 
 ```powershell
 armalint-update --mission C:\path\to\MyMission.Altis --download-dependencies
 armalint C:\path\to\MyMission.Altis
 ```
 
+Run the update again after installing or updating Arma, DLC, or Workshop mods.
+Unchanged roots are cached, so routine updates reuse existing scan results.
+When SteamCMD is needed for `--download-dependencies`, it uses a separate
+login session and may log the desktop Steam client out on the same machine.
+Save active Steam work and be prepared to sign in to the desktop client again.
+
 The update indexes the Arma, DLC, and mod functions, signatures, and macros
 needed by that mission. Armalint uses the index to recognize dependency-provided
 functions and perform more argument checks; unchanged data is reused from the
 project cache. Add `--download-dependencies` when declared Workshop content is
 not already installed locally.
+
+You can run `armalint` without updating for syntax checks and the bundled
+command registry. Updating also scans the local Arma installation's base-game
+and selected DLC `Addons` folders, which supplies the installed functions,
+signatures, macros, and addon metadata used by complete mission and mod checks.
 
 ## Lint a mission
 
