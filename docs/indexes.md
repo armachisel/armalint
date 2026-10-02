@@ -25,6 +25,11 @@ wrong kind of value.
 Indexing is not required for basic syntax linting. It matters when you want
 useful unknown-function and argument-type diagnostics.
 
+The project being linted is indexed too. Armalint scans local `config.cpp`,
+`.hpp`, `.ext`, and related config fragments for exact `CfgFunctions` entries;
+it does not use `functionTags` as a substitute for local declarations. This
+means a misspelled local function still produces W201.
+
 There are two related sources of built-in knowledge. The updater extracts
 function names and signatures from base-game and DLC addon PBOs. The separate
 `armalint-update-commands` command refreshes the generated list of engine

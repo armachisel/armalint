@@ -619,6 +619,12 @@ def _main(argv: list[str] | None = None) -> int:
         for input_path in input_paths:
             if os.path.isdir(input_path):
                 index_files.extend(_collect_macro_files(input_path))
+        # A targeted file invocation can still be part of a project whose
+        # sibling config.cpp declares its functions.  Include source config
+        # fragments from each discovered project configuration directory so
+        # local CfgFunctions are indexed without requiring --mission.
+        for config_path in set(file_configs.values()):
+            index_files.extend(_collect_macro_files(os.path.dirname(config_path)))
     index_files = sorted(set(index_files))
     token_cache = {}
     cache_anchor = next(iter(file_configs.values()), None) or args.mission or (input_paths[0] if input_paths else os.getcwd())
