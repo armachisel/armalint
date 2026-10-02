@@ -125,6 +125,18 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                 continue
             close = matching_closes.get(condition_start)
             if close is not None and (close + 1 == len(sig) or not (sig[close + 1].type == "keyword" and sig[close + 1].value.lower() in ("then", "exitwith"))):
+                # Parenthesized operands can be followed by a short-circuit
+                # expression before the `then`, e.g. `if (!isNil "X") &&
+                # {X} then {...};`.  The closing parenthesis belongs to the
+                # left operand, not to the complete condition.
+                if close + 1 < len(sig) and sig[close + 1].type == "operator":
+                    cursor = close + 2
+                    while cursor < len(sig) and sig[cursor].type != "semicolon":
+                        if sig[cursor].type == "keyword" and sig[cursor].value.lower() in ("then", "exitwith"):
+                            break
+                        cursor += 1
+                    if cursor < len(sig) and sig[cursor].type == "keyword" and sig[cursor].value.lower() in ("then", "exitwith"):
+                        continue
                 bad = sig[close + 1] if close + 1 < len(sig) else sig[close]
                 diags.append(Diagnostic(Severity.ERROR, _MISSING_THEN, "expected 'then' after if condition", bad.line, bad.column))
         if tok.type == "keyword" and tok.value.lower() == "else":

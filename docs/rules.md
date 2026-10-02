@@ -17,7 +17,7 @@ These are errors by default. The process exit threshold can be changed with
 | `E001` | Unmatched or unclosed `(`, `[`, or `{`. |
 | `E002` | Unterminated string literal. |
 | `E003` | Trailing comma in an array, such as `[1, 2,]`. |
-| `E004` | An `if` condition is not followed by `then`. This also understands the valid `if (...) exitWith {...}` form. |
+| `E004` | An `if` condition is not followed by `then`. Parenthesized operands may continue with short-circuit operators such as `&&` or `||`; the rule also understands the valid `if (...) exitWith {...}` form. |
 | `E005` | `else` is not followed by a code block or another `if`. |
 | `E006` | Adjacent literal values in an array are missing a comma. |
 | `E007` | Reversed `forEach` syntax; the code block must come before `forEach`. |

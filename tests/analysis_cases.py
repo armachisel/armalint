@@ -261,6 +261,12 @@ def _postfix_command_syntax() -> bool:
             and not any(item.code == "E009" for item in valid_postfix))
 
 
+def _if_isnil_short_circuit_condition() -> bool:
+    from armalint.syntax import check_syntax_text
+    diagnostics = check_syntax_text('if (!isNil "X") && {X} then { hint "x"; };')
+    return not any(item.code == "E004" for item in diagnostics)
+
+
 def _known_command_and_remove_action_signatures() -> bool:
     known = check_commands_text('if (isFunction "BIS_fnc_createTask") then {};')
     bad_is_function = check_argument_types_text('isFunction 1;')
@@ -725,6 +731,7 @@ CASES = (
     ("semantic and preprocessor diagnostics", _semantic_and_preprocessor_diagnostics),
     ("project known commands", _project_known_commands),
     ("postfix command syntax", _postfix_command_syntax),
+    ("isNil short-circuit if condition", _if_isnil_short_circuit_condition),
     ("known isFunction and removeAction signatures", _known_command_and_remove_action_signatures),
     ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),
