@@ -85,6 +85,14 @@ property such as `function = "TAG_fnc_createThing"`, rather than under
 rapified addon configs too, so module functions from downloaded mods are
 available to unknown-function checks after the next update.
 
+The exact name still matters. For example, ACE's packed interaction-menu addon
+provides `ace_interact_menu_fnc_addActionToObject`; the updater does not invent
+legacy aliases such as `ace_interactions_addActionToObject`. If a dependency
+function is reported unknown after a rebuild, compare the call spelling with
+the exact name in `.armalint/armalint_mods.json` and the addon's documented API.
+Use a project wrapper or an explicitly declared project function when the
+mission intentionally keeps a compatibility alias.
+
 The first scan may take several minutes for a large installation, mod list, or
 dependency set. Armalint opens each selected PBO to find functions, command
 metadata, macros, and addon provenance. Progress is shown while this work is
