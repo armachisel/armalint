@@ -231,7 +231,11 @@ def collect_description_cfg_functions(source: str, index: SymbolIndex) -> None:
     def class_head(i: int, limit: int) -> tuple[str | None, str, int]:
         # ``i`` is at a ``class`` token; return ``(name, base, lbrace_index)``.
         j = skip(i + 1, limit)
-        if j >= limit or tokens[j].type != "ident":
+        # SQF keywords remain legal config class names (for example a
+        # function named `spawn`).  The tokenizer labels those names as
+        # keywords, but the config grammar still treats them as class
+        # identifiers.
+        if j >= limit or tokens[j].type not in ("ident", "keyword"):
             return None, "", -1
         name = tokens[j].value
         k = skip(j + 1, limit)

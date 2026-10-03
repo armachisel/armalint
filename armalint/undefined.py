@@ -197,6 +197,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     n = len(tokens)
     i = 0
     pending_assignments: set[str] = set()
+    self_assignment_reported: set[str] = set()
 
     while i < n:
         tok = tokens[i]
@@ -274,6 +275,31 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
 
         if ttype == "local":
             if _is_assignment_lhs(tokens, i):
+                # The assignment target is not defined until its RHS has
+                # evaluated.  Catch the common accumulator form when it reads
+                # itself before that point.
+                target = tok.value.lower()
+                cursor = _next_significant(tokens, i)
+                while cursor < n and tokens[cursor].type != "semicolon":
+                    explicitly_declared = any(
+                        earlier.value.lower() == "private"
+                        and pos + 1 < i
+                        and tokens[pos + 1].type == "local"
+                        and tokens[pos + 1].value.lower() == target
+                        for pos, earlier in enumerate(tokens[:i])
+                    )
+                    if (tokens[cursor].type == "local"
+                            and tokens[cursor].value.lower() == target
+                            and not explicitly_declared
+                            and target not in self_assignment_reported):
+                        diags.append(Diagnostic(
+                            Severity.WARNING, _CODE,
+                            f"possible undefined variable: {tokens[cursor].value}",
+                            tokens[cursor].line, tokens[cursor].column,
+                        ))
+                        self_assignment_reported.add(target)
+                        break
+                    cursor += 1
                 pending_assignments.add(tok.value)
             elif tok.value.lower() not in _ALWAYS_DEFINED_LOWER and tok.value.lower() not in defined:
                 diags.append(
@@ -431,8 +457,15 @@ def _assignment_is_on_reachable_path(tokens: list[Token], use: Diagnostic, name:
         elif token.type == "rbrace" and stack:
             stack.pop()
     use_path = ancestors[use_index]
+    statement_start = use_index - 1
+    while statement_start >= 0 and tokens[statement_start].type != "semicolon":
+        statement_start -= 1
     for index, token in enumerate(tokens[:use_index]):
         if token.type != "local" or token.value.lower() != name or not _is_assignment_lhs(tokens, index):
+            continue
+        # An assignment target in the same statement is not a definition that
+        # can dominate a read on its RHS (`_x = _x + 1`).
+        if index > statement_start:
             continue
         assignment_path = ancestors[index]
         if len(assignment_path) <= len(use_path) and use_path[:len(assignment_path)] == assignment_path:
@@ -605,7 +638,7 @@ if __name__ == "__main__":
     assert check_undefined_text('params ["_a", ["_b", 2]]; hint str _a;') == []
     assert check_undefined_text('for "_i" from 0 to 1 do { hint str _i; };') == []
     assert len(check_undefined_text('waitUntil { hint str _ready; };')) == 1
-    assert check_undefined_text("_x = _x + 1;") == []
+    assert any(item.code == _CODE for item in check_undefined_text("_x = _x + 1;"))
 
     diags = check_undefined_text("hint str _z; _z = 5;")
     assert len(diags) == 1 and diags[0].message == "possible undefined variable: _z", diags

@@ -60,7 +60,13 @@ class SymbolIndex:
             return True
         if "_fnc_" in n:
             tag = n.split("_fnc_", 1)[0]
-            if tag in self.tags:
+            # A tag-only allowlist is useful for external dependencies, but
+            # once exact functions for that tag are indexed it must not turn
+            # typos into known names.  Exact declarations are authoritative.
+            has_exact_for_tag = any(
+                item.startswith(tag + "_fnc_") for item in self.functions
+            )
+            if tag in self.tags and not has_exact_for_tag:
                 return True
         return False
 
@@ -107,6 +113,8 @@ if __name__ == "__main__":
     assert idx.is_known_function("ALT_fnc_formatScore")
     # Tag-only lookup: any ALT_fnc_* name is known via its tag.
     assert idx.is_known_function("ALT_fnc_doesNotExist")
+    idx.add_function("ALT_fnc_real")
+    assert not idx.is_known_function("ALT_fnc_doesNotExist")
     assert not idx.is_known_function("BIS_fnc_nope")
     assert not idx.is_known_function("someRandomCommand")
 

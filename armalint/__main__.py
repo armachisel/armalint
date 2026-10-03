@@ -619,6 +619,11 @@ def _main(argv: list[str] | None = None) -> int:
         for input_path in input_paths:
             if os.path.isdir(input_path):
                 index_files.extend(_collect_macro_files(input_path))
+            elif os.path.isfile(input_path):
+                # A standalone file may live beside a local config.cpp even
+                # when the project has no armalint.json.  Local CfgFunctions
+                # are source facts and must not depend on project metadata.
+                index_files.extend(_collect_macro_files(os.path.dirname(input_path)))
         # A targeted file invocation can still be part of a project whose
         # sibling config.cpp declares its functions.  Include source config
         # fragments from each discovered project configuration directory so

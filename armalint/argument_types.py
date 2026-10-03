@@ -161,6 +161,7 @@ _COMMAND_RETURN_TYPES = {
     "nearestobjects": "Array", "nearestterrainobjects": "Array",
     "nearobjects": "Array", "nearentities": "Array",
     "crew": "Array", "units": "Array", "allair": "Array", "allland": "Array",
+    "weapons": "Array", "magazines": "Array", "items": "Array", "assigneditems": "Array",
     "allman": "Array", "allstaticobjects": "Array", "allstaticweapons": "Array",
     "lineintersectswith": "Array",
     "distance": "Number", "distance2d": "Number", "vectormagnitude": "Number",
@@ -1809,8 +1810,13 @@ def check_argument_types(
                 depth -= 1
                 if depth == 0:
                     break
-            elif tokens[cursor].type == "local":
-                parameter_names.add(tokens[cursor].value.lower())
+            elif tokens[cursor].type in ("local", "string"):
+                # Untyped params declarations spell names as strings
+                # (``params ["_items", "_index"]``); typed declarations use
+                # the same string form inside nested entries.
+                value = tokens[cursor].value
+                if tokens[cursor].type == "local" or value.startswith("_"):
+                    parameter_names.add(value.lower())
     _collect_param_types(tokens, variables)
     _collect_foreach_element_types(tokens, variables, ast_nodes)
     # Collect simple literal assignments. If the same variable is assigned
@@ -2045,10 +2051,11 @@ def check_argument_types(
         if (tok.value.lower() == "count" and actual == "Number"
                 and _has_type_recovery_guard(tokens, j)):
             continue
-        if tok.value.lower() == "count" and actual == "Object":
-            if any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects")
-                   for t in tokens[max(0, i - 80):i + 1]):
-                continue
+        if (tok.value.lower() == "count" and tokens[j].type == "local"
+                and _is_unary_copy_local(tokens, tokens[j].value, i)):
+            # Unary + is the SQF array-copy form; for an opaque/global source
+            # its result is still dynamic rather than a proven Number.
+            continue
         if ((tok.value.lower() == "selectrandom" or tok.value.lower().endswith("_selectrandom")) and actual == "Number"
                 and tokens[j].type in ("ident", "keyword", "local")
                 and not tokens[j].value.startswith("_")
@@ -2135,9 +2142,6 @@ def check_argument_types(
         # known, but do not turn an Unknown value into a false contract error.
         if actual in ("Unknown", "Anything"):
             continue
-        if tok.value.lower() == "count" and actual == "Object":
-            if any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects") for t in tokens):
-                continue
         if (tok.value.lower() == "assert" and tokens[j].type == "lparen"
                 and any(t.type == "operator" and t.value in ("==", "!=", "<", ">", "<=", ">=")
                         for t in tokens[j:])):
@@ -2205,7 +2209,7 @@ def check_argument_types(
                 implicit_type = _foreach_implicit_element_type(tokens, j)
                 if implicit_type:
                     actual = implicit_type
-            if _is_untyped_params_local(tokens, j):
+            if _is_untyped_params_local(tokens, j) and tok.value.lower() != "get":
                 actual = None
             elif _is_dynamic_array_element_local(tokens, j, variables):
                 actual = None
@@ -2218,17 +2222,6 @@ def check_argument_types(
                    and any(t.value.lower() in ("getpos", "getposasl", "getposatl", "getposworld", "getposvisual")
                            for t in tokens[k + 2:i])
                    for k in range(i)):
-                continue
-        if tok.value.lower() == "count" and tokens[j].type == "local":
-            name = tokens[j].value.lower()
-            if any(tokens[k].type == "local" and tokens[k].value.lower() == name
-                   and k + 2 < i and tokens[k + 1].value == "="
-                   and any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects") for t in tokens[k + 2:i])
-                   for k in range(i)):
-                continue
-        if tok.value.lower() == "count" and actual == "Object":
-            if any(t.value.lower() in ("nearobjects", "nearentities", "nearestobjects")
-                   for t in tokens[max(0, i - 120):i + 1]):
                 continue
         if tok.value.lower() in ("setpos", "setposasl", "setposatl", "setposworld") and any(
                 t.value.lower() in ("getpos", "getposasl", "getposatl", "getposworld", "getposvisual")
@@ -2254,6 +2247,15 @@ def check_argument_types(
                 # unsuitable for this later call.
                 continue
         accepted, expected = rule
+        if tok.value.lower() == "get":
+            receiver = i - 1
+            while receiver >= 0 and tokens[receiver].type in _TRIVIA:
+                receiver -= 1
+            receiver_type = _infer_operand(tokens, receiver, variables) if receiver >= 0 else None
+            if receiver_type == "Array":
+                accepted, expected = frozenset(("Number",)), "Number"
+            elif receiver_type in ("HashMap", "Namespace", "Config"):
+                accepted, expected = frozenset(("String",)), "String"
         # HashMap deleteAt uses a string key, while Array deleteAt uses a
         # numeric index.  The generated command metadata only describes the
         # Array form, so accept the documented HashMap overload when the left
@@ -2667,8 +2669,8 @@ if __name__ == "__main__":
     assert check_argument_types_text('_unit = objNull; { _unit = _x; } forEach allUnits; count _unit;')[0].code == _CODE
     assert check_argument_types_text('_thing = objNull; { _thing = _x; } forEach allDead; count _thing;')[0].code == _CODE
     assert check_argument_types_text('_allPlayers = ["a"]; { _item = _x; } forEach _allPlayers; count _item;') == []
-    assert check_argument_types_text('_thing = 0; { _thing = _x; } forEach (nearestObjects [player, ["Car"], 50]); count _thing;')[0].code == _CODE
-    assert check_argument_types_text('_thing = 0; { _thing = _x; } forEach (player nearObjects 50); count _thing;')[0].code == _CODE
+    assert any(item.code == _CODE for item in check_argument_types_text('_thing = 0; { _thing = _x; } forEach (nearestObjects [player, ["Car"], 50]); count _thing;'))
+    assert any(item.code == _CODE for item in check_argument_types_text('_thing = 0; { _thing = _x; } forEach (player nearObjects 50); count _thing;'))
     assert check_argument_types_text('private _range = 500; player nearObjects ["Sign_Pointer_Cyan_F", _range];') == []
     assert check_argument_types_text('_items = [1]; _index = _items pushBack 2; sleep _index;') == []
     assert check_argument_types_text('_common = [1] arrayIntersect [2]; count _common;') == []

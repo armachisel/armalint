@@ -645,6 +645,31 @@ def _cfgfunctions_fragment_tag() -> bool:
     return index.is_known_function("Col_fnc_nestLoc_get")
 
 
+def _cfgfunctions_rejects_near_miss() -> bool:
+    source = ('class CfgFunctions { class MyMod { class core { '
+              'file = "\\my_mod\\addons\\main\\functions\\core"; '
+              'class helper {}; }; }; };')
+    index = SymbolIndex()
+    collect_description_cfg_functions(source, index)
+    return (index.is_known_function("MyMod_fnc_helper")
+            and not index.is_known_function("MyMod_fnc_helpr"))
+
+
+def _cfgfunctions_keyword_named_entry() -> bool:
+    index = SymbolIndex()
+    collect_description_cfg_functions(
+        'class CfgFunctions { class Tag { class C { file = "x"; '
+        'class spawn {}; class spawnTriage {}; }; }; };', index)
+    return index.functions == {"tag_fnc_spawn", "tag_fnc_spawntriage"}
+
+
+def _magazines_returns_array() -> bool:
+    diagnostics = check_argument_types_text(
+        'private _m = magazines _unit; selectRandom _m;'
+    )
+    return not any(item.code == "W203" for item in diagnostics)
+
+
 def _suppression_multi_code() -> bool:
     source = "// armalint: disable-next-line W206 W101\nif (true) then {};"
     diagnostics = [
@@ -786,6 +811,9 @@ CASES = (
     ("typed selects and vector reductions", _types_typed_select_and_vector_reductions),
     ("SQF command overloads and returns", _types_scrt_command_overloads),
     ("CfgFunctions fragment tags", _cfgfunctions_fragment_tag),
+    ("CfgFunctions rejects near miss", _cfgfunctions_rejects_near_miss),
+    ("CfgFunctions keyword named entry", _cfgfunctions_keyword_named_entry),
+    ("magazines returns array", _magazines_returns_array),
     ("multi-code suppression", _suppression_multi_code),
     ("suppression quality", _suppression_quality),
     ("malformed suppression", _malformed_suppression),
