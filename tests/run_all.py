@@ -203,7 +203,7 @@ def main() -> int:
     if "0 diagnostic" not in clean.stdout:
         failures.append("clean.sqf: expected 0 diagnostics in output")
 
-    print("--- CLI: multiline fixture (expect exit 0, 0 diagnostics) ---")
+    print("--- CLI: multiline fixture (expect exit 0, W302 style diagnostics) ---")
     total += 1
     multiline = run_cli(str(MULTILINE_FIXTURE), "--json")
     multiline_payload = []
@@ -212,7 +212,8 @@ def main() -> int:
             multiline_payload = json.loads(multiline.stdout)
         except json.JSONDecodeError:
             multiline_payload = []
-    multiline_ok = multiline.returncode == 0 and len(multiline_payload) == 0
+    multiline_codes = [item.get("code") for item in multiline_payload if isinstance(item, dict)]
+    multiline_ok = multiline.returncode == 0 and multiline_codes and set(multiline_codes) == {"W302"}
     print(f"[{'PASS' if multiline_ok else 'FAIL'}] multiline.sqf exit={multiline.returncode} diagnostics={len(multiline_payload)}")
     if multiline_payload:
         for line in json.dumps(multiline_payload, indent=2).splitlines():
@@ -222,8 +223,8 @@ def main() -> int:
     else:
         if multiline.returncode != 0:
             failures.append("multiline.sqf: expected exit 0")
-        if len(multiline_payload) != 0:
-            failures.append(f"multiline.sqf: expected 0 diagnostics, got {len(multiline_payload)}")
+        if not multiline_codes or set(multiline_codes) != {"W302"}:
+            failures.append(f"multiline.sqf: expected only W302 diagnostics, got {multiline_codes}")
 
     print("--- CLI: buggy fixture (expect exit 1 + E001/W101/W201) ---")
     total += 1

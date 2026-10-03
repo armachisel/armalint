@@ -1457,6 +1457,7 @@ bis_fnc_setrespawninventory
 bis_fnc_setservervariable
 bis_fnc_settask
 bis_fnc_settasklocal
+bis_fnc_settaskstate
 bis_fnc_settopairs
 bis_fnc_setunitinsignia
 bis_fnc_setvehiclemass

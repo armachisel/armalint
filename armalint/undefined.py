@@ -140,29 +140,75 @@ def _collect_params_names(
     """
     names: list[str] = []
     depth = 0
+    element_start: int | None = None
+
+    def collect_item(start: int, end: int) -> None:
+        """Collect parameter tuples through framework-added wrapper arrays.
+
+        A normal optional item is ``["_name", default, validators]``. Some
+        callers group several such items in another array, so the fourth
+        parameter can appear below the first tuple. Once a bracketed item has
+        a name as its first element, stop descending: later arrays are its
+        default/validator data rather than additional declarations.
+        """
+        cursor = _next_significant(tokens, start - 1)
+        if cursor >= end:
+            return
+        token = tokens[cursor]
+        if token.type == "string":
+            if token.value.startswith("_"):
+                names.append(token.value)
+            return
+        if token.type != "lbracket":
+            return
+        depth = 0
+        close = None
+        for probe in range(cursor, end):
+            if tokens[probe].type == "lbracket":
+                depth += 1
+            elif tokens[probe].type == "rbracket":
+                depth -= 1
+                if depth == 0:
+                    close = probe
+                    break
+        if close is None:
+            return
+        child_start = cursor + 1
+        depth = 0
+        for probe in range(child_start, close + 1):
+            token_type = tokens[probe].type
+            if token_type == "lbracket":
+                depth += 1
+            elif token_type == "rbracket":
+                depth -= 1
+            elif token_type == "comma" and depth == 0:
+                collect_item(child_start, probe)
+                child_start = probe + 1
+        collect_item(child_start, close)
+
+    def finish_element(end: int) -> None:
+        if element_start is None:
+            return
+        collect_item(element_start, end)
+
     k = bracket_index
     while k < len(tokens):
         ttype = tokens[k].type
         if ttype == "lbracket":
+            if depth == 0 and element_start is None:
+                element_start = k + 1
+            elif depth == 1 and element_start is None:
+                element_start = k
             depth += 1
-            if depth == 2:
-                # Nested array within the params list: its first significant
-                # element names an optional parameter.
-                m = _next_significant(tokens, k)
-                if (
-                    m < len(tokens)
-                    and tokens[m].type == "string"
-                    and tokens[m].value.startswith("_")
-                ):
-                    names.append(tokens[m].value)
         elif ttype == "rbracket":
-            depth -= 1
-            if depth <= 0:
+            if depth == 1:
+                finish_element(k)
                 k += 1
                 break
-        elif ttype == "string" and tokens[k].value.startswith("_"):
-            if depth == 1:
-                names.append(tokens[k].value)
+            depth -= 1
+        elif ttype == "comma" and depth == 1:
+            finish_element(k)
+            element_start = k + 1
         k += 1
     return names, k
 
@@ -187,11 +233,13 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
     # older mission code.
     if any(token.value.lower() == "onmapsingleclick" for token in tokens):
         defined.add("_pos")
-    # BIS_fnc_holdActionAdd supplies ``_target`` and ``_caller`` to each of
-    # its progress, completion, interruption, and start callback blocks.  The
-    # callbacks are commonly assembled in an array, so lexical analysis sees
-    # no params declaration for these engine-provided locals.
-    if any(token.value.lower() == "bis_fnc_holdactionadd" for token in tokens):
+    # BIS_fnc_holdActionAdd and action callback APIs supply ``_target`` and
+    # ``_caller`` to their code blocks. The callbacks are commonly assembled
+    # in an array, so lexical analysis sees no params declaration for these
+    # engine-provided locals.
+    if any(token.value.lower() in {
+        "bis_fnc_holdactionadd", "addaction", "ace_interactions_addaction",
+    } for token in tokens):
         defined.update(("_target", "_caller"))
     diags: list[Diagnostic] = []
     n = len(tokens)
@@ -290,6 +338,7 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
                     )
                     if (tokens[cursor].type == "local"
                             and tokens[cursor].value.lower() == target
+                            and target not in defined
                             and not explicitly_declared
                             and target not in self_assignment_reported):
                         diags.append(Diagnostic(
@@ -318,6 +367,45 @@ def _scan_tokens(tokens: list[Token], defined: set[str] | None = None) -> tuple[
 
     defined.update(name.lower() for name in pending_assignments)
     return diags, defined
+
+
+def _has_variable_action_callback(tokens: list[Token]) -> bool:
+    """Return whether a variable-held code block is passed to an action API.
+
+    Direct ``addAction [.., { ... }]`` callbacks are visible to the block's
+    token scan. When a callback is assigned first and passed later, the block
+    and registration are separate AST nodes, so the callback magic locals are
+    otherwise missed. This deliberately recognizes the generic shape rather
+    than any mission-specific variable name.
+    """
+    action_positions = [
+        index for index, token in enumerate(tokens)
+        if token.value.lower() in {"addaction", "ace_interactions_addaction"}
+    ]
+    if not action_positions:
+        return False
+    callback_variables: set[str] = set()
+    for index, token in enumerate(tokens[:-2]):
+        if token.type != "local" or not _is_assignment_lhs(tokens, index):
+            continue
+        equals = _next_significant(tokens, index)
+        value = _next_significant(tokens, equals)
+        if value < len(tokens) and tokens[value].type == "lbrace":
+            callback_variables.add(token.value.lower())
+    if not callback_variables:
+        return False
+    for position in action_positions:
+        depth = 0
+        for token in tokens[position + 1:]:
+            if token.type in ("lbracket", "lparen", "lbrace"):
+                depth += 1
+            elif token.type in ("rbracket", "rparen", "rbrace"):
+                depth = max(0, depth - 1)
+            elif token.type == "semicolon" and depth == 0:
+                break
+            if token.type == "local" and token.value.lower() in callback_variables:
+                return True
+    return False
 
 
 def _local_names(nodes: list[Node]) -> set[str]:
@@ -540,6 +628,8 @@ def check_undefined(
         token.value.lower() for token in tokens
         if token.type == "local" and token.value.lower() in external_names
     }
+    if _has_variable_action_callback(tokens):
+        defined.update(("_target", "_caller"))
     for node in tree.statements:
         node_diags, defined = _walk_node(node, defined)
         diags.extend(node_diags)
@@ -636,6 +726,25 @@ if __name__ == "__main__":
     # Additional rule coverage.
     assert check_undefined_text('private ["_a", "_b"]; hint str _a; hint str _b;') == []
     assert check_undefined_text('params ["_a", ["_b", 2]]; hint str _a;') == []
+    assert check_undefined_text('params [["_npc", objNull, [objNull]]]; hint str _npc;') == []
+    assert check_undefined_text('player addAction ["Test", { hint str _target; hint str _caller; }];') == []
+    assert check_undefined_text('private _inRange = { ((!isNull _caller) && {alive _target}) }; player addAction ["Test", {}, _inRange];') == []
+    assert check_undefined_text('params [["_a", 0], /* comment\n inside\n params */ [["_b", nil, [objNull]]]]; hint str _b;') == []
+    closure_scope = check_undefined_text('private _crewedCount = 0; { if (_pick >= 0) then { _crewedCount = _crewedCount + 1; }; } forEach _statics;')
+    assert not any(item.code == _CODE and "_crewedCount" in item.message for item in closure_scope), closure_scope
+    closure_scope = check_undefined_text('private _squadIndex = 0; { if (_pick >= 0) then { _squadIndex = _squadIndex + 1; }; } forEach _squads;')
+    assert not any(item.code == _CODE and "_squadIndex" in item.message for item in closure_scope), closure_scope
+    nested_closure_scope = check_undefined_text(
+        'private _historyBlock = ""; private _state = "hostile"; private _grievance = 0; '
+        'private _canSpare = true; private _ownLine = ""; private _outcome = "answer"; '
+        'private _context = format ["%1%2%3%4%5%6%7%8", _historyBlock, _state, '
+        '_grievance, _canSpare, _ownLine, "", '
+        'if (_state == "hostile") then {"furious"} else {_state}, '
+        'if (_outcome == "answer") then {"answer"} '
+        'else {if (_outcome == "partial") then {"partial"} '
+        'else {if (_outcome == "refuse") then {"refuse"} else {"empty"}}}];'
+    )
+    assert not any(item.code == _CODE and "_outcome" in item.message for item in nested_closure_scope), nested_closure_scope
     assert check_undefined_text('for "_i" from 0 to 1 do { hint str _i; };') == []
     assert len(check_undefined_text('waitUntil { hint str _ready; };')) == 1
     assert any(item.code == _CODE for item in check_undefined_text("_x = _x + 1;"))

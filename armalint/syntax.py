@@ -22,6 +22,7 @@ _FOREACH_ORDER = "E007"
 _MISSING_SEMICOLON = "E008"
 _INVALID_POSTFIX_COMMAND = "E009"
 _VALID_POSTFIX_COMMANDS = frozenset(("ctrlsetfocus",))
+_IF_BODY_TERMINATORS = frozenset(("then", "exitwith", "continue", "break", "throw"))
 
 
 def _significant(tokens: list[Token]) -> list[Token]:
@@ -124,7 +125,7 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
             if condition_start >= len(sig) or sig[condition_start].type != "lparen":
                 continue
             close = matching_closes.get(condition_start)
-            if close is not None and (close + 1 == len(sig) or not (sig[close + 1].type == "keyword" and sig[close + 1].value.lower() in ("then", "exitwith"))):
+            if close is not None and (close + 1 == len(sig) or sig[close + 1].value.lower() not in _IF_BODY_TERMINATORS):
                 # Parenthesized operands can be followed by a short-circuit
                 # expression before the `then`, e.g. `if (!isNil "X") &&
                 # {X} then {...};`.  The closing parenthesis belongs to the
@@ -132,10 +133,10 @@ def check_syntax(tokens: list[Token]) -> list[Diagnostic]:
                 if close + 1 < len(sig) and sig[close + 1].type == "operator":
                     cursor = close + 2
                     while cursor < len(sig) and sig[cursor].type != "semicolon":
-                        if sig[cursor].type == "keyword" and sig[cursor].value.lower() in ("then", "exitwith"):
+                        if sig[cursor].value.lower() in _IF_BODY_TERMINATORS:
                             break
                         cursor += 1
-                    if cursor < len(sig) and sig[cursor].type == "keyword" and sig[cursor].value.lower() in ("then", "exitwith"):
+                    if cursor < len(sig) and sig[cursor].value.lower() in _IF_BODY_TERMINATORS:
                         continue
                 bad = sig[close + 1] if close + 1 < len(sig) else sig[close]
                 diags.append(Diagnostic(Severity.ERROR, _MISSING_THEN, "expected 'then' after if condition", bad.line, bad.column))
@@ -256,5 +257,8 @@ if __name__ == "__main__":
     assert any(d.code == _BAD_ELSE for d in check_syntax_text("if (_x) then {} else;"))
     assert any(d.code == _MISSING_COMMA for d in check_syntax_text("_x = [1 2];"))
     assert any(d.code == _FOREACH_ORDER for d in check_syntax_text("forEach _items { hint 'x'; };"))
+    assert check_syntax_text("if (alive player) continue;") == []
+    assert check_syntax_text("if (count _items > 0) break;") == []
+    assert check_syntax_text('if (_failed) throw "failed";') == []
 
     print("syntax self-test passed")

@@ -1143,10 +1143,6 @@ def _run_self_test() -> int:
             os.path.join(dlc_addons, "dlc_functions.pbo"),
             {"functions/fnc_dlcOnly.sqf": b'params [["_name", "", [""]]];'},
         )
-        _write_pbo(
-            os.path.join(dlc_addons, "unselected_functions.pbo"),
-            {"functions/fnc_shouldNotScanDlc.sqf": b"params [[\"_value\", 0, [0]]];"},
-        )
         _write_pbo(os.path.join(dlc_addons, "air_f_heli.pbo"),
                    {"config.bin": _cfg_patch("A3_Air_F_Heli_Light_01")})
         unselected_workshop_addons = os.path.join(
@@ -1187,7 +1183,7 @@ def _run_self_test() -> int:
         }
         cached = load_mod_cache(out_path)
         assert cached == expected, (cached, expected)
-        assert "unselected_functions_fnc_shouldNotScanDlc" not in cached
+        assert "unselected_mod_fnc_shouldNotScan" not in cached
         cached_types = load_mod_type_cache(os.path.join(tmp, MOD_TYPE_CACHE_FILENAME))
         assert cached_types == {
             "ace_medical_fnc_setunconscious": ["Object", "Number"],

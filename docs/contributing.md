@@ -53,6 +53,14 @@ selected mod functions into project-local caches. Do not commit mission cache
 files. If extraction changes, document the source and update the relevant
 metadata/provenance tests.
 
+When a command is missing from the upstream mirrors, verify it against the
+target Arma installation before adding it. Run
+[`arma3_runtime_probe.sqf`](arma3_runtime_probe.sqf) in the Debug Console and
+check the command with `supportInfo`. Add only names that the runtime reports
+as available, keep the command list lowercase, and add a regression case to
+`tests/analysis_cases.py`. A name absent from `supportInfo` should remain a
+W202 finding unless it is a project-defined function or macro.
+
 ## Documentation and release checks
 
 Build the strict documentation site and distributions locally:

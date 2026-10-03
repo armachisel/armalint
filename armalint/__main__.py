@@ -629,6 +629,11 @@ def _main(argv: list[str] | None = None) -> int:
         # fragments from each discovered project configuration directory so
         # local CfgFunctions are indexed without requiring --mission.
         for config_path in set(file_configs.values()):
+            # A file-level lint still needs the rest of its configured
+            # project in the symbol index. Otherwise calls to functions
+            # declared in sibling SQF files are reported as W201 even though
+            # the project configuration was discovered successfully.
+            index_files.extend(_collect_files(os.path.dirname(config_path), collection_ignores))
             index_files.extend(_collect_macro_files(os.path.dirname(config_path)))
     index_files = sorted(set(index_files))
     token_cache = {}

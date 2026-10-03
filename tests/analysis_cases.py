@@ -21,6 +21,7 @@ from armalint.sqf_contracts import check_sqf_contracts_text
 from armalint.value_flow import check_value_flow_text
 from armalint.preprocessor_checks import check_preprocessor
 from armalint.commands import check_commands_text
+from armalint.functions import check_functions_text
 from armalint.config import extract_known_commands
 from armalint.linter import build_symbol_index
 from armalint.collect import collect_description_cfg_functions
@@ -63,13 +64,15 @@ def _sqf_contracts() -> bool:
         'player addEventHandler ["Killed", compile "hint \\\"x\\\";"]; '
         '[] remoteExec ["TAG_fnc_update", 2, true]; publicVariable "ready";'
     )
+    nested_valid = check_sqf_contracts_text('params [["_npc", objNull, [objNull]]];')
+    dynamic_event = check_sqf_contracts_text('private _event = "EachFrame"; addMissionEventHandler [_event, {}];')
     invalid = check_sqf_contracts_text(
         'params "_x"; missionNamespace setVariable 1; '
         'player removeEventHandler ["Killed", 9]; '
         '[] remoteExec ["TAG_fnc_update", 2, 1]; publicVariable 42;'
     )
     codes = {item.code for item in invalid}
-    return not valid and {"W217", "W218", "W219", "W220", "W221"} <= codes
+    return not valid and not nested_valid and not dynamic_event and {"W217", "W218", "W219", "W220", "W221"} <= codes
 
 
 def _semantic_and_preprocessor_diagnostics() -> bool:
@@ -267,13 +270,91 @@ def _if_isnil_short_circuit_condition() -> bool:
     return not any(item.code == "E004" for item in diagnostics)
 
 
+def _if_one_line_terminators() -> bool:
+    from armalint.syntax import check_syntax_text
+    return all(
+        not check_syntax_text(source)
+        for source in (
+            'if (alive player) continue;',
+            'if (count _items > 0) break;',
+            'if (_failed) throw "failed";',
+        )
+    )
+
+
+def _undefined_outer_foreach_scope() -> bool:
+    diagnostics = check_undefined_text(
+        'private _crewedCount = 0; '
+        '{ if (_pick >= 0) then { _crewedCount = _crewedCount + 1; }; } '
+        'forEach _statics; if (_crewedCount > 0) then { hint str _crewedCount; };'
+    )
+    return not any(item.code == "W101" and "_crewedCount" in item.message for item in diagnostics)
+
+
+def _undefined_nested_outer_scope() -> bool:
+    source = (
+        'private _historyBlock = ""; private _state = "hostile"; private _grievance = 0; '
+        'private _canSpare = true; private _ownLine = ""; private _outcome = "answer"; '
+        'private _context = format ["%1%2%3%4%5%6%7%8", _historyBlock, _state, '
+        '_grievance, _canSpare, _ownLine, "", '
+        'if (_state == "hostile") then {"furious"} else {_state}, '
+        'if (_outcome == "answer") then {"answer"} '
+        'else {if (_outcome == "partial") then {"partial"} '
+        'else {if (_outcome == "refuse") then {"refuse"} else {"empty"}}}];'
+    )
+    return not any(item.code == "W101" and "_outcome" in item.message
+                   for item in check_undefined_text(source))
+
+
+def _undefined_action_callback_variable() -> bool:
+    source = 'private _inRange = { ((!isNull _caller) && {alive _target}) }; player addAction ["Test", {}, _inRange];'
+    return not any(item.code == "W101" and ("_caller" in item.message or "_target" in item.message)
+                   for item in check_undefined_text(source))
+
+
+def _undefined_params_comments() -> bool:
+    source = (
+        'params [["_player", objNull, [objNull]], ["_text", "", [""]], '
+        '[["_npc", objNull, [objNull]], /* PROSODY\n'
+        ' comment inside params\n and another line\n */ '
+        '[["_prosody", nil, [objNull]]]]]; '
+        'if (isNull _prosody) then { _prosody = createHashMap; };'
+    )
+    return not any(item.code == "W101" and "_prosody" in item.message
+                   for item in check_undefined_text(source))
+
+
 def _known_command_and_remove_action_signatures() -> bool:
     known = check_commands_text('if (isFunction "BIS_fnc_createTask") then {};')
     bad_is_function = check_argument_types_text('isFunction 1;')
     remove_action = check_argument_types_text('_npc removeAction "Converse";')
+    engine_commands = check_commands_text(
+        'setZ [objNull, 1]; ctrlMap 1; allPylons objNull; '
+        'setPylonMagazine [objNull, 1, "mag"]; compatibleItems objNull; '
+        'vectorSubtract [[1, 2, 3], [1, 1, 1]]; hitPoints objNull; '
+        'createWaypoint [grpNull, [0, 0, 0]]; return 0; '
+        'buldozer_enableRoadDiag; buldozer_isEnabledRoadDiag; '
+        'buldozer_loadNewRoads; buldozer_reloadOpMap; '
+        'ctrlRelToScreen 0; ctrlScreenToRel 0; '
+        'diag_allMissionEventHandlers; diag_deltaTime; '
+        'diag_dynamicSimulationEnd; diag_localized; diag_remainsCollector; '
+        'diag_scope; diag_stackTrace; diag_testScriptSimpleVM; '
+        'getWindletParams; setSkyOverlayMaterial []; setWindletParams []; '
+        '[1, 2] sortBy { _x }; _combo enable true;'
+    )
+    bis_functions = check_functions_text(
+        '[] call BIS_fnc_sortBy; 0 call BIS_fnc_lerp;'
+    )
     return (not known
             and any(item.code == "W203" for item in bad_is_function)
-            and not any(item.code == "W203" for item in remove_action))
+            and not any(item.code == "W203" for item in remove_action)
+            and not any(item.code == "W202" for item in engine_commands)
+            and not any(item.code == "W201" for item in bis_functions))
+
+
+def _known_bis_task_function() -> bool:
+    diagnostics = check_functions_text('["task", "SUCCEEDED"] call BIS_fnc_setTaskState;')
+    return not any(item.code == "W201" for item in diagnostics)
 
 
 def _missing_semicolon_after_apply() -> bool:
@@ -508,8 +589,39 @@ def _types_vector_producers() -> bool:
 
 
 def _types_hashmap_object_key() -> bool:
-    source = 'params ["_road"]; private _cache = createHashMap; _cached = _cache get _road; _info = getRoadInfo _road;'
+    source = 'private _road = objNull; private _cache = createHashMap; _cached = _cache get _road; _info = getRoadInfo _road;'
     return any(item.code == "W203" and "get expects" in item.message for item in check_argument_types_text(source))
+
+
+def _types_hashmap_get_collection() -> bool:
+    source = 'private _truth = createHashMap; private _cells = _truth get "cells"; count _cells;'
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
+
+
+def _types_hashmap_getvariable_flow() -> bool:
+    source = (
+        'private _truth = missionNamespace getVariable ["OLT_truthDB", nil]; '
+        'if (isNil "_truth") then { '
+        '    _truth = missionNamespace getVariable ["OLT_truthDB", createHashMap]; '
+        '}; '
+        'count (_truth get "cells");'
+    )
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
+
+
+def _types_collection_count_before_select_reassignment() -> bool:
+    source = (
+        'private _log = missionNamespace getVariable ["OLT_eventLog", []]; '
+        'if ((count _log) > 400) then { '
+        '    _log = _log select ((count _log) - 400); '
+        '};'
+    )
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
+
+
+def _types_command_overloads() -> bool:
+    source = 'private _targetPos = getPosATL objNull; objNull doFire _targetPos; objNull disableAI true;'
+    return not any(item.code == "W203" for item in check_argument_types_text(source))
 
 
 def _types_is_equal_type_guard() -> bool:
@@ -757,7 +869,13 @@ CASES = (
     ("project known commands", _project_known_commands),
     ("postfix command syntax", _postfix_command_syntax),
     ("isNil short-circuit if condition", _if_isnil_short_circuit_condition),
+    ("one-line if terminators", _if_one_line_terminators),
+    ("outer locals in forEach closures", _undefined_outer_foreach_scope),
+    ("outer locals in nested conditional expressions", _undefined_nested_outer_scope),
+    ("variable-held action callback locals", _undefined_action_callback_variable),
+    ("params names through comments and wrappers", _undefined_params_comments),
     ("known isFunction and removeAction signatures", _known_command_and_remove_action_signatures),
+    ("known BIS task function", _known_bis_task_function),
     ("missing semicolon after apply", _missing_semicolon_after_apply),
     ("generated signature forms", _generated_signature_forms),
     ("UI and array-encoded commands stay unchecked", _ui_and_array_encoded_commands_stay_unchecked),
@@ -798,6 +916,10 @@ CASES = (
     ("vector angle inference", _types_vector_angle),
     ("vector producer inference", _types_vector_producers),
     ("HashMap rejects object key", _types_hashmap_object_key),
+    ("HashMap get collection remains dynamic", _types_hashmap_get_collection),
+    ("HashMap getVariable flow inference", _types_hashmap_getvariable_flow),
+    ("collection count before select reassignment", _types_collection_count_before_select_reassignment),
+    ("doFire and disableAI overloads", _types_command_overloads),
     ("isEqualType guard narrowing", _types_is_equal_type_guard),
     ("dynamic getVariable sentinel defaults", _types_getvariable_sentinel_defaults),
     ("getDir position result", _types_getdir_position_result),

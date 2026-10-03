@@ -193,6 +193,19 @@ def check_sqf_contracts(tokens: list[Token], source: str | None = None) -> list[
                     continue
                 fields, _ = nested
                 name_token = _first(fields[0]) if fields else None
+                # A few frameworks wrap an optional-parameter tuple in one
+                # additional array. Unwrap that one syntactic layer, but do
+                # not search arbitrary defaults/validators for a name.
+                if (name_token is None or name_token.type != "string"
+                        or not name_token.value.startswith("_")) and fields:
+                    wrapper = _first(fields[0])
+                    if wrapper is not None and wrapper.type == "lbracket":
+                        wrapped = _items(fields[0], fields[0].index(wrapper))
+                        if wrapped is not None and wrapped[0]:
+                            candidate = _first(wrapped[0][0])
+                            if (candidate is not None and candidate.type == "string"
+                                    and candidate.value.startswith("_")):
+                                name_token = candidate
                 if name_token is None or name_token.type != "string" or not name_token.value.startswith("_"):
                     diagnostics.append(_diag(_PARAMS, "params declaration must start with a local variable name", first))
                 if len(fields) > 4:
@@ -241,7 +254,13 @@ def check_sqf_contracts(tokens: list[Token], source: str | None = None) -> list[
                 continue
             event = _first(parsed[0][0])
             handler = _first(parsed[0][1])
-            if event is None or event.type != "string" or handler is None or handler.type not in ("lbrace", "string", "ident", "keyword", "local"):
+            # Event names may be literals or expressions that resolve to a
+            # string at runtime (for example a local selected from a table or
+            # a config lookup). Only reject an unmistakably malformed first
+            # argument; the engine performs the final event-name validation.
+            if (event is None or event.type not in ("string", "ident", "keyword", "local", "lparen")
+                    or handler is None
+                    or handler.type not in ("lbrace", "string", "ident", "keyword", "local")):
                 diagnostics.append(_diag(_EVENT, f"{token.value} has an invalid event-handler declaration", token))
             target = tokens[i - 1].value.lower() if i else "<unknown>"
             registrations.add((target, event.value.lower() if event and event.type == "string" else "<unknown>", "*"))
@@ -284,6 +303,7 @@ def check_sqf_contracts_text(source: str) -> list[Diagnostic]:
 
 if __name__ == "__main__":
     assert check_sqf_contracts_text('params ["_x", ["_y", 0, [0]]];') == []
+    assert check_sqf_contracts_text('params [["_npc", objNull, [objNull]]];') == []
     assert check_sqf_contracts_text('params [["_x", [0, 0], [[]], [2]]];') == []
     assert check_sqf_contracts_text('params ["", "", "_value"];') == []
     assert any(d.code == _PARAMS for d in check_sqf_contracts_text('params "_x";'))
@@ -292,6 +312,7 @@ if __name__ == "__main__":
     assert check_sqf_contracts_text('uiNamespace getVariable (_this select 0);') == []
     assert check_sqf_contracts_text('with uiNamespace do { pBar = findDisplay 46 ctrlCreate ["RscProgress", -1]; };') == []
     assert check_sqf_contracts_text('player addEventHandler ["Killed", { hint "x"; }]; player removeEventHandler ["Killed", 0];') == []
+    assert check_sqf_contracts_text('private _event = "EachFrame"; addMissionEventHandler [_event, {}];') == []
     assert any(d.code == _EVENT for d in check_sqf_contracts_text('player removeEventHandler ["Killed", 0];'))
     assert any(d.code == _REMOTE for d in check_sqf_contracts_text('[] remoteExec ["fn", 2, 1];'))
     assert any(d.code == _PUBLIC for d in check_sqf_contracts_text('publicVariable 42;'))

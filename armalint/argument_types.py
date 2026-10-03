@@ -338,6 +338,10 @@ _SIGNATURES["parsenumber"] = (frozenset(("String", "Boolean")), "String or Boole
 _SIGNATURES["getfsmvariable"] = (frozenset(("String", "Array")), "String or Array")
 _BINARY_SIGNATURES["getfsmvariable"] = (frozenset(("String", "Array")), "String or Array")
 _SIGNATURES["getunitloadout"] = (frozenset(("Object", "String", "Config")), "Object, String or Config")
+_SIGNATURES["dofire"] = (frozenset(("Object", "Array")), "Object or Array")
+_SIGNATURES["disableai"] = (frozenset(("String", "Boolean")), "String or Boolean")
+_BINARY_SIGNATURES["dofire"] = (frozenset(("Object", "Array")), "Object or Array")
+_BINARY_SIGNATURES["disableai"] = (frozenset(("String", "Boolean")), "String or Boolean")
 _SIGNATURES["ctrlcommitted"] = (frozenset(("Control", "Object")), "Control or Object")
 _SIGNATURES["side"] = (frozenset(("Object", "Group", "Location")), "Object, Group or Location")
 _BINARY_SIGNATURES["reveal"] = (frozenset(("Object", "Array")), "Object or Array")
@@ -620,6 +624,17 @@ def _infer_expression(
     # mission source file.
     classname_properties = {"magazines", "weapons", "items", "backpacks", "compatibleitems"}
     expression_tokens = tokens[start:rhs_end]
+    # Selecting an element from a non-literal array is deliberately opaque:
+    # its element type depends on the producer's runtime contents.  Recognize
+    # this before the broad arithmetic fallback below, which otherwise sees a
+    # subtraction inside a dynamic index such as ``_log select ((count _log)
+    # - 400)`` and incorrectly infers Number for the selected value.
+    if start < len(tokens) and tokens[start].type == "local":
+        command = start + 1
+        while command < rhs_end and tokens[command].type in _TRIVIA:
+            command += 1
+        if command < rhs_end and tokens[command].value.lower() == "select":
+            return None
     # ``getDir`` accepts either objects or position arrays and always returns
     # a scalar direction.  When both positions are grouped, the generic
     # expression walker can mistake the first array for the whole result.
@@ -757,7 +772,7 @@ def _infer_expression(
                 return "Control"
             # Binary collection commands inside parentheses retain their
             # array result (for example ``count (player nearObjects [...])``).
-            if any(t.value.lower() in {"nearobjects", "nearentities", "nearestobjects", "nearroads"}
+            if any(t.value.lower() in {"nearobjects", "nearentities", "nearestobjects", "nearroads", "targets"}
                    for t in inner_tokens):
                 return "Array"
             if any(t.value.lower() == "nearestobject" for t in inner_tokens):
@@ -792,6 +807,11 @@ def _infer_expression(
         return "Array"
     if any(token.value.lower() == "nearestobject" for token in tokens[start:rhs_end]):
         return "Object"
+    # Binary collection queries retain their array result when the receiver
+    # is an object expression (for example ``player targets [...]``).  This
+    # also covers the same expression wrapped in parentheses.
+    if any(token.value.lower() == "targets" for token in tokens[start:rhs_end]):
+        return "Array"
     # Collection commands retain their own result type when their operand is
     # another command (``units group player``).  The generic chain rule below
     # would otherwise see ``group`` first and incorrectly return Group.
@@ -1286,6 +1306,11 @@ def _getvariable_default_type(item: list[Token], variables: dict[str, str]) -> s
     value's shape (for example with a ``typeName`` guard).
     """
     inferred = _simple_item_type(item, variables)
+    if inferred is None:
+        visible = [token for token in item if token.type not in _TRIVIA]
+        if (len(visible) == 1
+                and visible[0].value.lower() in _COMMAND_RETURN_TYPES):
+            inferred = _COMMAND_RETURN_TYPES[visible[0].value.lower()]
     if inferred in {"Boolean", "Object"}:
         return None
     return inferred
@@ -1753,6 +1778,46 @@ def _latest_assignment_type(
     return None
 
 
+def _latest_assignment_is_opaque_select(
+    tokens: list[Token], name: str, before: int,
+) -> bool:
+    """Whether the nearest assignment selects an element of a local array.
+
+    The selected element type is runtime-dependent.  This small fact lets
+    callers avoid falling back to a stale file-wide type while preserving the
+    existing producer-specific inference for foreach assignments.
+    """
+    key = name.lower()
+    for i in range(before - 1, -1, -1):
+        if (tokens[i].type == "local" and tokens[i].value.lower() == key
+                and i + 1 < before and tokens[i + 1].value == "="):
+            rhs = i + 2
+            while rhs < before and tokens[rhs].type in _TRIVIA:
+                rhs += 1
+            if rhs >= before or tokens[rhs].type != "local":
+                return False
+            command = rhs + 1
+            while command < before and tokens[command].type in _TRIVIA:
+                command += 1
+            return command < before and tokens[command].value.lower() == "select"
+    return False
+
+
+def _has_conflicting_assignments(
+    tokens: list[Token], name: str, before: int, variables: dict[str, str],
+) -> bool:
+    """Whether a local has been assigned multiple known types before a use."""
+    key = name.lower()
+    types: set[str] = set()
+    for i in range(before - 1, -1, -1):
+        if (tokens[i].type == "local" and tokens[i].value.lower() == key
+                and i + 1 < before and tokens[i + 1].value == "="):
+            inferred = _infer_expression(tokens, i + 2, variables)
+            if inferred and inferred != "Unknown":
+                types.add(inferred)
+    return len(types) > 1
+
+
 def _is_unary_copy_local(tokens: list[Token], name: str, before: int) -> bool:
     """Whether a local was copied with SQF's unary ``+`` operator."""
     key = name.lower()
@@ -2031,9 +2096,16 @@ def check_argument_types(
             # expression, such as ``aCos ([0,0,1] vectorCos _normal)``.
             actual = "Number"
         if tokens[j].type == "local":
+            latest = _latest_assignment_type(tokens, tokens[j].value, i, variables)
+            conflict = (
+                latest is not None
+                and _has_conflicting_assignments(tokens, tokens[j].value, i, variables)
+            )
+            if conflict:
+                latest = None
             actual = (_narrowed_type(tokens, j, variables)
-                      or _latest_assignment_type(tokens, tokens[j].value, i, variables)
-                      or actual)
+                      or latest
+                      or (None if conflict or _latest_assignment_is_opaque_select(tokens, tokens[j].value, i) else actual))
             if tokens[j].value.lower() == "_x":
                 implicit_type = _foreach_implicit_element_type(tokens, j)
                 if implicit_type:
@@ -2202,9 +2274,16 @@ def check_argument_types(
             if implicit_type:
                 actual = implicit_type
         if tokens[j].type == "local":
+            latest = _latest_assignment_type(tokens, tokens[j].value, i, variables)
+            conflict = (
+                latest is not None
+                and _has_conflicting_assignments(tokens, tokens[j].value, i, variables)
+            )
+            if conflict:
+                latest = None
             actual = (_narrowed_type(tokens, j, variables)
-                      or _latest_assignment_type(tokens, tokens[j].value, i, variables)
-                      or actual)
+                      or latest
+                      or (None if conflict or _latest_assignment_is_opaque_select(tokens, tokens[j].value, i) else actual))
             if tokens[j].value.lower() == "_x":
                 implicit_type = _foreach_implicit_element_type(tokens, j)
                 if implicit_type:
@@ -2252,10 +2331,27 @@ def check_argument_types(
             while receiver >= 0 and tokens[receiver].type in _TRIVIA:
                 receiver -= 1
             receiver_type = _infer_operand(tokens, receiver, variables) if receiver >= 0 else None
+            if receiver >= 0 and tokens[receiver].type == "local":
+                # Namespace lookups and helper returns often cross the
+                # lexical boundary of this file.  Prefer the nearest
+                # assignment before this use when the file-wide map has no
+                # reliable receiver type.
+                receiver_type = (
+                    _narrowed_type(tokens, receiver, variables)
+                    or _latest_assignment_type(tokens, tokens[receiver].value, receiver + 1, variables)
+                    or receiver_type
+                )
             if receiver_type == "Array":
                 accepted, expected = frozenset(("Number",)), "Number"
             elif receiver_type in ("HashMap", "Namespace", "Config"):
                 accepted, expected = frozenset(("String",)), "String"
+            elif receiver_type is None and actual == "String":
+                # ``get`` is overloaded by its receiver.  A String key is
+                # valid for HashMaps, Namespaces and Configs, while an
+                # unknown receiver cannot justify rejecting it as an Array
+                # index.  Keep the check useful for known Array receivers
+                # and known bad keys, but avoid a cross-file false positive.
+                continue
         # HashMap deleteAt uses a string key, while Array deleteAt uses a
         # numeric index.  The generated command metadata only describes the
         # Array form, so accept the documented HashMap overload when the left
@@ -2650,8 +2746,20 @@ if __name__ == "__main__":
     assert check_argument_types_text('_ok = (1 > 0); sleep _ok;')[0].code == _CODE
     assert check_argument_types_text('_alt = round (((getPosATL player) select 2) max 0);') == []
     assert check_argument_types_text('_aimDir = player weaponDirection "rifle"; _desiredDir = [0,0,0] vectorFromTo [1,0,0]; acos (_aimDir vectorCos _desiredDir);') == []
-    bad_hash_key = check_argument_types_text('params ["_road"]; private _cache = createHashMap; _cached = _cache get _road; _info = getRoadInfo _road;')
+    bad_hash_key = check_argument_types_text('private _road = objNull; private _cache = createHashMap; _cached = _cache get _road; _info = getRoadInfo _road;')
     assert any(item.code == _CODE and "get expects" in item.message for item in bad_hash_key), bad_hash_key
+    assert check_argument_types_text('private _truth = createHashMap; private _cells = _truth get "cells"; count _cells;') == []
+    assert check_argument_types_text(
+        'private _truth = missionNamespace getVariable ["OLT_truthDB", nil]; '
+        'if (isNil "_truth") then { '
+        '_truth = missionNamespace getVariable ["OLT_truthDB", createHashMap]; '
+        '}; count (_truth get "cells");'
+    ) == []
+    assert check_argument_types_text(
+        'private _log = missionNamespace getVariable ["OLT_eventLog", []]; '
+        'if ((count _log) > 400) then { _log = _log select ((count _log) - 400); };'
+    ) == []
+    assert check_argument_types_text('private _targetPos = getPosATL objNull; objNull doFire _targetPos; objNull disableAI true;') == []
     assert check_argument_types_text('private _state = "run"; allowDamage (_state in ["run", "freeflight"]);') == []
     assert check_argument_types_text('{ sin _x; cos _x; } forEach [18, 15];') == []
     assert check_argument_types_text('{ sin _x; cos _x; } forEach ([18, 15]);') == []

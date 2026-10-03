@@ -21,7 +21,7 @@
 #   3. Names already in this file (regeneration is additive; nothing is lost).
 #   4. The inline _INLINE_COMMANDS fallback in armalint/known.py.
 #
-# Total commands in this file: 2740
+# Total commands in this file: 2775
 #
 # To regenerate, run: python -m armalint.update_commands
 # (add --dry-run to preview changes without writing).
@@ -163,6 +163,7 @@ allowgetin
 allowservice
 allowsprint
 allplayers
+allpylons
 allsimpleobjects
 allsites
 allturrets
@@ -258,6 +259,10 @@ briefing
 briefingname
 buildingexit
 buildingpos
+buldozer_enableroaddiag
+buldozer_isenabledroaddiag
+buldozer_loadnewroads
+buldozer_reloadopermap
 buttonaction
 buttonsetaction
 c
@@ -451,6 +456,7 @@ createunit
 createvehicle
 createvehiclecrew
 createvehiclelocal
+createwaypoint
 crew
 ctaddheader
 ctaddrow
@@ -487,6 +493,7 @@ ctrlforegroundcolor
 ctrlhtmlloaded
 ctrlidc
 ctrlidd
+ctrlmap
 ctrlmapanimadd
 ctrlmapanimclear
 ctrlmapanimcommit
@@ -507,9 +514,11 @@ ctrlmouseposition
 ctrlparent
 ctrlparentcontrolsgroup
 ctrlposition
+ctrlreltoscreen
 ctrlremovealleventhandlers
 ctrlremoveeventhandler
 ctrlscale
+ctrlscreentorel
 ctrlscrollvalues
 ctrlsetactivecolor
 ctrlsetangle
@@ -680,11 +689,14 @@ diag_activemissionfsms
 diag_activescripts
 diag_activesqfscripts
 diag_activesqsscripts
+diag_allmissioneventhandlers
 diag_captureframe
 diag_captureframetofile
 diag_captureslowframe
 diag_codeperformance
+diag_deltatime
 diag_drawmode
+diag_dynamicsimulationend
 diag_enable
 diag_enabled
 diag_fps
@@ -692,12 +704,17 @@ diag_fpsmin
 diag_frameno
 diag_lightnewload
 diag_list
+diag_localized
 diag_log
 diag_logslowframe
 diag_mergeconfigfile
 diag_recordturretlimits
+diag_remainscollector
 diag_resetshapes
+diag_scope
 diag_setlightnew
+diag_stacktrace
+diag_testscriptsimplevm
 diag_ticktime
 diag_toggle
 dialog
@@ -782,6 +799,7 @@ effectivecommander
 elevateperiscope
 else
 emptypositions
+enable
 enableai
 enableaifeature
 enableaimprecision
@@ -1147,6 +1165,7 @@ getsuppression
 getterraingrid
 getterrainheight
 getterrainheightasl
+getterrainheightworld
 getterraininfo
 gettext
 gettextraw
@@ -1174,8 +1193,10 @@ getvehicletipars
 getvideooptions
 getwaterfillpercentage
 getwaterleakiness
+getwaypoint
 getweaponcargo
 getweaponsway
+getwindletparams
 getwingsorientationrtd
 getwingspositionrtd
 getworld
@@ -1237,6 +1258,7 @@ hintc
 hintcadet
 hintcadetailed
 hintsilent
+hitpoints
 hmd
 hostmission
 htmlload
@@ -1294,6 +1316,7 @@ isawake
 isbleeding
 isburning
 isclass
+isclassname
 iscollisionlighton
 iscopilotenabled
 isdamageallowed
@@ -1313,6 +1336,7 @@ isflashlighton
 isflatempty
 isforcedwalk
 isformationleader
+isfunction
 isgamefocused
 isgamepaused
 isgroupdeletedwhenempty
@@ -1333,7 +1357,6 @@ ismultiplayer
 ismultiplayersolo
 isnil
 isnilex
-isfunction
 isnotequalref
 isnotequalto
 isnull
@@ -1674,6 +1697,7 @@ namesound
 ne
 nearentities
 nearestbuilding
+nearestbuildings
 nearestlocation
 nearestlocations
 nearestlocationwithdubbing
@@ -1838,6 +1862,7 @@ rain
 rainbow
 rainparams
 random
+randomseed
 rank
 rankid
 rating
@@ -1939,6 +1964,7 @@ resize
 resources
 respawnvehicle
 restarteditorcamera
+return
 reveal
 revealmine
 reverse
@@ -2258,6 +2284,7 @@ setposatl
 setposition
 setposworld
 setpylonloadout
+setpylonmagazine
 setpylonspriority
 setradiomsg
 setrain
@@ -2279,6 +2306,7 @@ setsimpletasktype
 setsimulweatherlayers
 setsize
 setskill
+setskyoverlaymaterial
 setslingload
 setsoundeffect
 setspeaker
@@ -2385,9 +2413,11 @@ setweaponzeroing
 setwind
 setwinddir
 setwindforce
+setwindletparams
 setwindstr
 setwingforcescalertd
 setwppos
+setz
 show3dicons
 showchat
 showcinemaborder
@@ -2456,6 +2486,7 @@ slingloadassistantshown
 soldiermagazines
 someammo
 sort
+sortby
 soundparams
 soundvolume
 spawn
@@ -2551,10 +2582,12 @@ titlersc
 titletext
 to
 toarray
+toascii
 tofixed
 tojson
 tolower
 toloweransi
+tolowerarray
 tostring
 toupper
 toupperansi
@@ -2678,6 +2711,7 @@ vectormultiply
 vectornormalized
 vectorside
 vectorsidevisual
+vectorsubtract
 vectorup
 vectorupvisual
 vectorworldtomodel

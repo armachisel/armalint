@@ -71,6 +71,21 @@ For a quick check without creating a file, pass SQF directly:
 armalint --snippet 'params [["_delay", 0]]; sleep _delay;' --json
 ```
 
+### Verify names against a running Arma instance
+
+Static metadata can lag behind the game or a loaded mod set. The repository
+includes [`arma3_runtime_probe.sqf`](arma3_runtime_probe.sqf), which checks
+commands with `supportInfo` and Functions Library entries with `isFunction`.
+Paste its contents into Arma 3's Debug Console and execute it in editor preview
+or on the server. It copies a tab-separated report to the clipboard and writes
+the same report to the RPT. `copyToClipboard` is restricted in multiplayer, so
+run it on the server or in a local preview when the clipboard is needed.
+`supportInfo` reports the commands registered by that exact game build, so a
+`false` result is evidence that a name is not an engine builtin. This is useful
+for distinguishing a stale command catalogue from a misspelled or version-
+specific command. The probe also includes likely replacement names so they can
+be compared in the same runtime report.
+
 Use `--max-issues N` when a first pass is too noisy. Armalint stops after
 the file that reaches the limit and reports only the first `N` diagnostics;
 the normal `--fail-on` exit policy still applies.
@@ -83,9 +98,11 @@ armalint --ignore-rule W302 path/to/replay_playback.sqf
 ```
 
 Use `--file` when an explicit single-file option is more convenient than a
-positional path. Add `--mission` to resolve mission functions and signatures
-without linting every mission file. A snippet cannot be combined with file or
-directory paths.
+positional path. When the file belongs to a project with `armalint.json`, its
+project sources are used to resolve local functions and signatures without
+linting every file. Add `--mission` when the project has no configuration or
+when you want to select a different mission context. A snippet cannot be
+combined with file or directory paths.
 
 Rules can also be suppressed in source comments:
 

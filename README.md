@@ -156,6 +156,11 @@ Use a mission as context when checking a function call or local signature:
 python -m armalint --mission MyMission.Altis --snippet 'ALT_fnc_start call [];'
 ```
 
+When `--file` points into a project with `armalint.json`, Armalint uses that
+project's source files to resolve local functions and signatures without
+linting every file. Use `--mission` when there is no project configuration or
+when you want a different mission context.
+
 ### Examples
 
 Lint a single file:
@@ -213,7 +218,7 @@ severities, is in [`docs/rule-catalog.md`](docs/rule-catalog.md).
 | E001 | error    | Bracket balance: an unclosed or unmatched `(`, `[`, or `{`.         |
 | E002 | error    | Unterminated string literal.                                        |
 | E003 | error    | Trailing comma in an array.                                         |
-| E004 | error    | Missing `then` after an `if` condition, including conditions continued with `&&` or `||`. |
+| E004 | error    | Missing `then` or a valid one-line terminator after an `if` condition, including conditions continued with `&&` or `||`. |
 | E005 | error    | Invalid token after `else`.                                         |
 | E006 | error    | Missing comma between adjacent literal array elements.              |
 | E007 | error    | Reversed `forEach` form.                                             |
